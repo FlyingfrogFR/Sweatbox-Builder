@@ -13,14 +13,14 @@ export function TabBar({ active, onChange, poolCount, scenarioCount }: any) {
     { id: "saved", label: "Saved", icon: "folder" },
   ];
   return (
-    <div className="flex border-b border-slate-700 bg-slate-900 overflow-x-auto">
+    <div className="flex border-b border-slate-800 bg-slate-900/60 overflow-x-auto">
       {tabs.map((t) => (
         <button
           key={t.id}
           onClick={() => onChange(t.id)}
-          className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors ${active === t.id ? "text-sky-400 border-b-2 border-sky-400 bg-slate-800" : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"}`}
+          className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 -mb-px transition-colors ${active === t.id ? "text-sky-300 border-sky-400 bg-slate-800/70" : "text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/40"}`}
         >
-          <Icon name={t.icon} size={14} />
+          <Icon name={t.icon} size={14} className={active === t.id ? "text-sky-400" : ""} />
           {t.label}
         </button>
       ))}

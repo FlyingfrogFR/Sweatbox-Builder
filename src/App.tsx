@@ -254,13 +254,18 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 flex flex-col">
-      <header className="bg-slate-900 border-b border-slate-700 px-6 py-3 flex items-center justify-between">
+      <header className="bg-slate-900/80 backdrop-blur border-b border-slate-800 px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="text-sky-400">
-            <Icon name="plane" size={20} />
+          <div className="grid place-items-center w-9 h-9 rounded-lg bg-gradient-to-br from-sky-500 to-sky-700 text-white shadow-sm shadow-sky-900/50">
+            <Icon name="plane" size={18} />
           </div>
           <div>
-            <h1 className="text-sm font-semibold">Sweatbox Builder v6</h1>
+            <h1 className="text-sm font-semibold tracking-tight flex items-center gap-2">
+              Sweatbox Builder
+              <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-sky-500/15 text-sky-300 border border-sky-500/20">
+                v6
+              </span>
+            </h1>
             <p className="text-xs text-slate-500">
               {scenario.name} · {scenario.aircraft.length} ac · {pool.length} pool · {(scenario.rules || []).length} rules ·{" "}
               {(scenario.holdings || []).length} hold · {gates.length} gates
@@ -268,8 +273,13 @@ export default function App() {
           </div>
         </div>
         <div className="flex gap-2 items-center">
-          <button onClick={() => { if (confirm("Discard scenario?")) setScenario(defaultScenario()); }} className="text-xs text-slate-400 hover:text-slate-200 px-3 py-1 border border-slate-700 rounded">
-            New
+          <button
+            onClick={() => {
+              if (confirm("Discard scenario?")) setScenario(defaultScenario());
+            }}
+            className="text-xs text-slate-300 hover:text-white px-3 py-1.5 border border-slate-700 hover:border-slate-600 hover:bg-slate-800 rounded-md transition-colors"
+          >
+            New scenario
           </button>
         </div>
       </header>
