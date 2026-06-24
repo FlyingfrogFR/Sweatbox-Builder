@@ -21,3 +21,6 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+
+# delivery artifacts (sent to user, not source)
+*.bundle
