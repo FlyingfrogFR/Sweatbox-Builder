@@ -10,5 +10,4 @@ import "./s2";
 import "./s3";
 import "./c1";
 
-export { getGenerators, onRegister, registerGenerator } from "./registry";
-export type { Generator } from "./registry";
+export { getGenerators, onRegister, registerGenerator, type Generator } from "./registry";

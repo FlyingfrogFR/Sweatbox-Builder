@@ -9,11 +9,10 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { Icon } from "../ui/Icon";
-import { genCS } from "../core/callsign";
+import { genCS, poolIcaosByRegion } from "../core/callsign";
 import { trimRoute } from "../core/route";
 import { computeSpawnGs, machToTas, iasToTas } from "../core/speed";
 import { GS_BY_WTC, TYPE_CATS } from "../core/tables";
-import { poolIcaosByRegion } from "../core/callsign";
 import { SRC_LABELS } from "../core/pool";
 import { emptyRule } from "../core/model";
 import { generateFromRule } from "../core/generateFromRule";
