@@ -20,6 +20,7 @@ module.exports = {
     "@typescript-eslint/ban-ts-comment": "off",
     "no-empty": "off",
     "no-control-regex": "off",
+    "prefer-const": "off",
   },
   ignorePatterns: ["dist/", "node_modules/", "src-tauri/", "reference/", "tests/fixtures/"],
 };
