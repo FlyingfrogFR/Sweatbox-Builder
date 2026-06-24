@@ -56,6 +56,17 @@ platform emits its native installers. Build on the target OS (Tauri does not
 cross-compile installers out of the box) — i.e. build the Windows installers on
 Windows.
 
+### Continuous builds (GitHub Actions)
+
+`.github/workflows/build.yml` runs the test suite on every push/PR, and builds
+the **Windows installers** without needing a local Windows toolchain:
+
+- **On demand:** GitHub → **Actions** → *CI & Build* → **Run workflow**. When it
+  finishes, download the `sweatbox-builder-windows` artifact from the run page
+  (contains the `.msi`, NSIS `.exe`, and standalone `.exe`).
+- **Tagged release:** push a tag like `v6.0.0` (`git tag v6.0.0 && git push origin
+  v6.0.0`) and the installers are attached to a published GitHub **Release**.
+
 ---
 
 ## No CORS proxy needed on desktop
