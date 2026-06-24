@@ -1,0 +1,1319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sweatbox Builder v6 · rc3</title>
+<script>
+window.SB={
+  _registry:[],
+  _listeners:[],
+  registerGenerator(g){if(!g||!g.id)return;this._registry=this._registry.filter(x=>x.id!==g.id).concat(g);this._listeners.forEach(fn=>{try{fn();}catch(e){}});},
+  onRegister(fn){this._listeners.push(fn);return()=>{this._listeners=this._listeners.filter(f=>f!==fn);};}
+};
+window.SB._loadPlugins=async function(manifestUrl='plugins.json'){
+  if(!window.Babel){console.warn('[SB] Babel not loaded');return{loaded:[],failed:[]};}
+  const inline=document.querySelectorAll('script[data-plugin]');
+  if(inline.length>0){
+    const loaded=[],failed=[];
+    for(const el of inline){
+      const name=el.dataset.plugin||'inline';
+      try{const compiled=window.Babel.transform(el.textContent,{presets:['react']}).code;(new Function(compiled))();loaded.push(name);}
+      catch(e){failed.push({file:name,error:String(e.message||e)});console.error('[SB] inline plugin load failed:',name,e);}
+    }
+    return{loaded,failed,mode:'inline'};
+  }
+  let manifest;
+  try{const r=await fetch(manifestUrl,{cache:'no-cache'});if(!r.ok)throw new Error('HTTP '+r.status);manifest=await r.json();}
+  catch(e){return{loaded:[],failed:[],manifestError:String(e.message||e),mode:'fetch'};}
+  const files=Array.isArray(manifest)?manifest:(manifest.plugins||[]);
+  const loaded=[],failed=[];
+  for(const file of files){
+    try{const src=await fetch(file,{cache:'no-cache'}).then(x=>{if(!x.ok)throw new Error('HTTP '+x.status);return x.text();});const compiled=window.Babel.transform(src,{presets:['react']}).code;(new Function(compiled))();loaded.push(file);}
+    catch(e){failed.push({file,error:String(e.message||e)});console.error('[SB] plugin load failed:',file,e);}
+  }
+  return{loaded,failed,mode:'fetch'};
+};
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,sans-serif;background:#020617}::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-track{background:#0f172a}::-webkit-scrollbar-thumb{background:#334155;border-radius:5px}::-webkit-scrollbar-thumb:hover{background:#475569}
+input[type=range]{-webkit-appearance:none;appearance:none;background:transparent}
+input[type=range]::-webkit-slider-runnable-track{height:6px;background:#1e293b;border-radius:3px;border:1px solid #334155}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;height:16px;width:16px;background:#0ea5e9;border-radius:50%;margin-top:-6px;border:2px solid #0c4a6e}
+input[type=range]::-moz-range-track{height:6px;background:#1e293b;border-radius:3px;border:1px solid #334155}
+input[type=range]::-moz-range-thumb{height:16px;width:16px;background:#0ea5e9;border-radius:50%;border:2px solid #0c4a6e}
+</style>
+</head>
+<body><div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useMemo } = React;
+
+const storage={
+  get(k){try{const v=localStorage.getItem(k);return v?JSON.parse(v):null;}catch{return null;}},
+  set(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true;}catch{return false;}},
+  del(k){try{localStorage.removeItem(k);}catch{}}
+};
+const KEYS={waypoints:'sb:wpts',airports:'sb:apts',positions:'sb:pos',runways:'sb:rwy',stars:'sb:stars',copx:'sb:copx',gates:'sb:gates',navMeta:'sb:meta',current:'sb:cur',list:'sb:list',sbUser:'sb:sbuser',pool:'sb:pool',navAirac:'sb:navairac',poolAirac:'sb:poolairac',rampAgent:'sb:rampagent',rampConfig:'sb:rampconfig'};
+
+const GATE_DENYLIST=[
+  /^TWR$/i,/^TOWER$/i,/^HANGARS?$/i,/^TERMINAL$/i,
+  /^FRET$/i,/^CARGO$/i,/^FUEL$/i,/^DEICE(ING)?$/i,
+  /^MAINT(ENANCE)?$/i,/^FIRE$/i,/^CIE$/i,/^ACB$/i,
+];
+
+// --- IO helpers (replaces 4 inline blob/download blocks and 4 FileReader blocks) ---
+function downloadJsonBundle(filename,payload){
+  const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=filename;a.click();
+  URL.revokeObjectURL(url);
+}
+function readJsonFile(file){
+  return new Promise((resolve,reject)=>{
+    const r=new FileReader();
+    r.onload=e=>{try{resolve(JSON.parse(String(e.target?.result||'')));}catch(err){reject(err);}};
+    r.onerror=()=>reject(new Error(`Failed to read ${file.name}`));
+    r.readAsText(file);
+  });
+}
+function readTextFile(file){
+  return new Promise((resolve,reject)=>{
+    const r=new FileReader();
+    r.onload=e=>resolve(String(e.target?.result||''));
+    r.onerror=()=>reject(new Error(`Failed to read ${file.name}`));
+    r.readAsText(file);
+  });
+}
+
+function Icon({name,size=16,className=''}){
+  const p={width:size,height:size,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2,strokeLinecap:"round",strokeLinejoin:"round",className};
+  switch(name){
+    case 'plus':return<svg {...p}><line x1="12"y1="5"x2="12"y2="19"/><line x1="5"y1="12"x2="19"y2="12"/></svg>;
+    case 'x':return<svg {...p}><line x1="18"y1="6"x2="6"y2="18"/><line x1="6"y1="6"x2="18"y2="18"/></svg>;
+    case 'trash':return<svg {...p}><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>;
+    case 'edit':return<svg {...p}><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>;
+    case 'copy':return<svg {...p}><rect x="9"y="9"width="13"height="13"rx="2"ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>;
+    case 'download':return<svg {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12"y1="15"x2="12"y2="3"/></svg>;
+    case 'upload':return<svg {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12"y1="3"x2="12"y2="15"/></svg>;
+    case 'save':return<svg {...p}><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>;
+    case 'folder':return<svg {...p}><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>;
+    case 'search':return<svg {...p}><circle cx="11"cy="11"r="8"/><line x1="21"y1="21"x2="16.65"y2="16.65"/></svg>;
+    case 'plane':return<svg {...p}><path d="M17.8 19.2L16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></svg>;
+    case 'landing':return<svg {...p}><path d="M2 22h20"/><path d="M3.77 10.77l17.31 4.64a2 2 0 0 0 2.45-1.41l.25-.96L12 9 7 5.5 5.45 6.91a2 2 0 0 0-.88.3L3 8l.77 2.77z"/></svg>;
+    case 'takeoff':return<svg {...p}><path d="M2 22h20"/><path d="M6.36 17.4L4 17l-2-4 1.1-.55a2 2 0 0 1 1.8 0l.17.1a2 2 0 0 0 1.8 0L8 12 7 9l2 1 2-1 8 3 .73.27a2 2 0 0 1 1.27 1.73L21 14l-8.5-.5L10 17h1.5l1 2H9L7.5 17l-1.14.4z"/></svg>;
+    case 'file':return<svg {...p}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16"y1="13"x2="8"y2="13"/><line x1="16"y1="17"x2="8"y2="17"/></svg>;
+    case 'settings':return<svg {...p}><circle cx="12"cy="12"r="3"/><path d="M12 1v3m0 16v3m11-11h-3M4 12H1m17.07-7.07L16.95 7.05M7.05 16.95l-2.12 2.12m12.02 0l-2.12-2.12M7.05 7.05L4.93 4.93"/></svg>;
+    case 'database':return<svg {...p}><ellipse cx="12"cy="5"rx="9"ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>;
+    case 'cloud':return<svg {...p}><path d="M17.5 19a4.5 4.5 0 1 0 0-9 6.5 6.5 0 0 0-12.7 1.5A4.5 4.5 0 0 0 6.5 19h11z"/></svg>;
+    case 'zap':return<svg {...p}><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>;
+    case 'check':return<svg {...p}><polyline points="20 6 9 17 4 12"/></svg>;
+    case 'refresh':return<svg {...p}><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>;
+    case 'radio':return<svg {...p}><circle cx="12"cy="12"r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"/></svg>;
+    case 'layers':return<svg {...p}><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>;
+    case 'alert':return<svg {...p}><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12"y1="9"x2="12"y2="13"/><line x1="12"y1="17"x2="12.01"y2="17"/></svg>;
+    case 'rotate':return<svg {...p}><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>;
+    default:return null;
+  }
+}
+
+function parseDMS(str){
+  const m=str.match(/([NS])(\d{1,3})\.(\d{1,2})\.(\d{1,2})\.?(\d{0,3})\s+([EW])(\d{1,3})\.(\d{1,2})\.(\d{1,2})\.?(\d{0,3})/);
+  if(!m)return null;
+  const[,nsh,nd,nm,ns,nms,ewh,ed,em,es,ems]=m;
+  let lat=+nd+(+nm/60)+(+ns+(+nms||0)/1000)/3600;if(nsh==='S')lat=-lat;
+  let lon=+ed+(+em/60)+(+es+(+ems||0)/1000)/3600;if(ewh==='W')lon=-lon;
+  return{lat:+lat.toFixed(7),lon:+lon.toFixed(7)};
+}
+function parseSectorFile(text){
+  const waypoints=[],airports=[],runways=[],seen=new Set();let section=null;
+  for(const raw of text.split(/\r?\n/)){
+    const line=raw.replace(/;.*$/,'').trim();if(!line)continue;
+    const s=line.match(/^\[([A-Z]+)\]/);if(s){section=s[1];continue;}
+    if(!section)continue;
+    if(section==='RUNWAY'){
+      const parts=line.split(/\s+/);if(parts.length<9)continue;
+      const[id1,id2,h1,h2,lat1s,lon1s,lat2s,lon2s,apt]=parts;
+      const c1=parseDMS(lat1s+' '+lon1s);const c2=parseDMS(lat2s+' '+lon2s);
+      if(!c1||!c2)continue;
+      runways.push({ident1:id1,ident2:id2,hdg1:+h1||0,hdg2:+h2||0,lat1:c1.lat,lon1:c1.lon,lat2:c2.lat,lon2:c2.lon,airport:(apt||'').toUpperCase()});
+      continue;
+    }
+    const coord=parseDMS(line);if(!coord)continue;
+    const name=line.split(/\s+/)[0].toUpperCase();
+    if(!name||name.length>10)continue;
+    const key=`${section}:${name}`;if(seen.has(key))continue;seen.add(key);
+    const entry={name,...coord,type:section};
+    if(section==='AIRPORT')airports.push(entry);
+    else if(['FIXES','VOR','NDB'].includes(section))waypoints.push(entry);
+  }
+  return{waypoints,airports,runways};
+}
+function detectIaf(name,waypoints){
+  let lastMatch=null;
+  for(const part of (name||'').split(/x/i)){
+    const m=part.match(/^([A-Z]+)\d[A-Z]?$/i);
+    if(!m)continue;
+    const prefix=m[1].toUpperCase();
+    const exact=waypoints.find(w=>w.toUpperCase()===prefix);
+    if(exact){lastMatch=exact;continue;}
+    const prefixMatch=waypoints.find(w=>w.toUpperCase().startsWith(prefix));
+    if(prefixMatch)lastMatch=prefixMatch;
+  }
+  return lastMatch;
+}
+function parseESE(text){
+  const positions=[],stars=[],copx=[],gates=[];
+  const seen=new Set();let section=null;
+  for(const raw of text.split(/\r?\n/)){
+    const line=raw.replace(/;.*$/,'').trim();if(!line)continue;
+    const s=line.match(/^\[([A-Z]+)\]/i);if(s){section=s[1].toUpperCase();continue;}
+    if(section==='POSITIONS'){
+      const parts=line.split(':');if(parts.length<3)continue;
+      let callsign,name,freq,type='';
+      if(/^\d+\.\d+$/.test(parts[2])){callsign=parts[0].trim();name=parts[1].trim();freq=parts[2].trim();type=(parts[3]||'').trim();}
+      else if(parts.length>=4&&/^\d+\.\d+$/.test(parts[3])){callsign=parts[0].trim();name=(parts[1]+' '+parts[2]).trim();freq=parts[3].trim();type=(parts[4]||'').trim();}
+      else continue;
+      if(!callsign||!freq)continue;
+      const key=callsign+':'+freq;if(seen.has(key))continue;seen.add(key);
+      positions.push({callsign,name,freq,type});
+    }
+    if(section==='SIDSSTARS'){
+      const p=line.split(':');
+      if(p[0].toUpperCase()==='STAR'&&p.length>=5){
+        const wpts=p[4].trim().split(/\s+/).filter(Boolean);
+        if(wpts.length>0){const starName=p[3].trim();const iaf=detectIaf(starName,wpts);if(iaf)stars.push({airport:p[1].trim().toUpperCase(),runway:p[2].trim().toUpperCase(),name:starName,waypoints:wpts,iaf});}
+      }
+    }
+    if(section==='COPX'){
+      const p=line.split(':');if(p.length<4)continue;
+      let level=null;
+      for(let i=p.length-1;i>=1;i--){
+        const t=p[i].trim();const m=t.match(/^(?:FL)?(\d{2,5})$/i);
+        if(m){const n=+m[1];level=(t.toUpperCase().startsWith('FL')||n<1000)?n*100:n;break;}
+      }
+      if(level===null)continue;
+      let fix=null,destApt='';
+      for(const f of p.slice(1)){
+        const t=f.trim();if(t==='*'||!t)continue;
+        if(/^[A-Z]{4}$/.test(t)&&!destApt){destApt=t;continue;}
+        if(/^[A-Z]{2,6}$/.test(t)&&!fix){fix=t;}
+      }
+      if(fix)copx.push({fix:fix.toUpperCase(),level,destApt:destApt.toUpperCase()});
+    }
+    if(section==='FREETEXT'){
+      const p=line.split(':');
+      if(p.length<4)continue;
+      const groupMatch=(p[2]||'').match(/^([A-Z]{4})[\s_\/\-]+(?:Gates?|Stands?|Parking|Apron)/i);
+      if(!groupMatch)continue;
+      const label=(p[3]||'').trim();
+      if(!label||GATE_DENYLIST.some(re=>re.test(label)))continue;
+      const coord=parseDMS(p[0]+' '+p[1]);
+      if(!coord)continue;
+      gates.push({icao:groupMatch[1].toUpperCase(),label,lat:coord.lat,lon:coord.lon});
+    }
+  }
+  return{positions,stars,copx,gates};
+}
+
+async function fetchSimbrief(u){
+  const p=/^\d+$/.test(u.trim())?`userid=${u.trim()}`:`username=${encodeURIComponent(u.trim())}`;
+  const r=await fetch(`https://www.simbrief.com/api/xml.fetcher.php?${p}&json=1`);
+  if(!r.ok)throw new Error(`SimBrief ${r.status}`);return r.json();
+}
+function parseSimbriefOFP(d){
+  const origin=(d.origin?.icao_code||d.params?.orig_icao||'').toUpperCase();
+  const dest=(d.destination?.icao_code||d.params?.dest_icao||'').toUpperCase();
+  const callsign=(d.atc?.callsign||((d.general?.icao_airline||'')+(d.general?.flight_number||''))||'').toUpperCase();
+  const type=(d.aircraft?.icaocode||d.aircraft?.base_type||'').toUpperCase();
+  const cruiseFL=Math.round((+d.general?.initial_altitude||35000)/100);
+  const route=(d.atc?.route||d.general?.route||'').replace(origin,'').replace(dest,'').trim();
+  return{origin,dest,callsign,type,cruiseFL,route,squawk:d.atc?.sqwk||'2000',alternate:d.alternate?.icao_code||''};
+}
+
+async function fetchVatsimData(){const r=await fetch('https://data.vatsim.net/v3/vatsim-data.json');if(!r.ok)throw new Error(`VATSIM ${r.status}`);return r.json();}
+function filterVatsimPilots(data,icao,mode){
+  const uc=icao.toUpperCase();
+  return[...(data.pilots||[]),...(data.prefiles||[])].filter(p=>{
+    const fp=p.flight_plan;if(!fp)return false;
+    if(mode==='dep')return fp.departure===uc;if(mode==='arr')return fp.arrival===uc;
+    return fp.departure===uc||fp.arrival===uc;
+  }).map(p=>({callsign:p.callsign,type:p.flight_plan?.aircraft_short||'',dep:p.flight_plan?.departure||'',arr:p.flight_plan?.arrival||'',route:p.flight_plan?.route||'',squawk:p.flight_plan?.assigned_transponder||p.transponder||'2000',alt:p.altitude||0,gs:p.groundspeed||0,isPrefiled:!p.latitude,cruiseFL:Math.round(parseInt(p.flight_plan?.altitude||0)/100)||0}));
+}
+
+function bearingBetween(la1,lo1,la2,lo2){
+  const φ1=la1*Math.PI/180,φ2=la2*Math.PI/180,Δλ=(lo2-lo1)*Math.PI/180;
+  return(Math.atan2(Math.sin(Δλ)*Math.cos(φ2),Math.cos(φ1)*Math.sin(φ2)-Math.sin(φ1)*Math.cos(φ2)*Math.cos(Δλ))*180/Math.PI+360)%360;
+}
+function destinationPoint(lat,lon,brg,nm){
+  const R=3440.065,d=nm/R,φ1=lat*Math.PI/180,λ1=lon*Math.PI/180,θ=brg*Math.PI/180;
+  const φ2=Math.asin(Math.sin(φ1)*Math.cos(d)+Math.cos(φ1)*Math.sin(d)*Math.cos(θ));
+  const λ2=λ1+Math.atan2(Math.sin(θ)*Math.sin(d)*Math.cos(φ1),Math.cos(d)-Math.sin(φ1)*Math.sin(φ2));
+  return{lat:φ2*180/Math.PI,lon:(λ2*180/Math.PI+540)%360-180};
+}
+// preEntryOffset: place the aircraft `nm` NM upstream from `wptName`.
+// Tries simRoute, fpRoute, starRoute in that order to find an upstream
+// fix to bearing-back from. Falls back to bearing-forward (downstream fix
+// reversed) if no upstream fix is available.
+function preEntryOffset(wptName,simRoute,nm,wpts,fpRoute,starRoute){
+  if(!nm||nm<=0)return null;
+  const wp=wpts.find(w=>w.name===wptName);if(!wp)return null;
+  const tok=s=>String(s||'').trim().split(/\s+/).filter(Boolean).map(t=>t.split('/')[0].toUpperCase());
+  const target=wptName.toUpperCase();
+  let brg,fallback;
+  for(const route of [simRoute,fpRoute,starRoute]){
+    if(!route)continue;
+    const toks=tok(route);
+    const idx=toks.findIndex(t=>t===target);
+    if(idx<0)continue;
+    if(idx>0){
+      const p=wpts.find(w=>w.name===toks[idx-1]);
+      if(p){brg=bearingBetween(p.lat,p.lon,wp.lat,wp.lon);break;}
+    }
+    if(fallback===undefined&&idx<toks.length-1){
+      const n=wpts.find(w=>w.name===toks[idx+1]);
+      if(n)fallback=bearingBetween(wp.lat,wp.lon,n.lat,n.lon);
+    }
+  }
+  if(brg===undefined)brg=fallback;
+  if(brg===undefined)return null;
+  return destinationPoint(wp.lat,wp.lon,(brg+180)%360,nm);
+}
+
+const GS_BY_WTC={L:200,M:280,H:300,J:300};
+function iasToTas(ias,alt){const sigma=Math.pow(Math.max(0.1,1-6.877e-6*Math.max(0,alt)),4.2561);return ias/Math.sqrt(sigma);}
+function machToTas(mach,alt){const tempK=Math.max(216.65,288.15-0.00198*Math.max(0,alt));return mach*Math.sqrt(1.4*287.05*tempK)*1.94384;}
+function computeSpawnGs(rule,type){
+  const mode=rule.gsMode||'wtc';
+  // 'natural' — no speed lock at spawn. Returns 0 so @N writes gs=0; SIMDATA's
+  // `0.010:0.0` (accel:initial_speed) then takes over and the aircraft
+  // accelerates from rest. Use for departures that should spool up from V2,
+  // not appear pinned at a fixed IAS the instant they materialise.
+  if(mode==='natural')return 0;
+  if(mode==='fixed'){
+    const alt=+rule.spawnAlt||18000;
+    const sp=rule.speedType==='mach'?(+rule.assignedSpeed||0.78):(+rule.assignedSpeed||280);
+    return Math.round(rule.speedType==='mach'?machToTas(sp,alt):iasToTas(sp,alt));
+  }
+  const cat=Object.keys(TYPE_CATS).find(c=>TYPE_CATS[c].types.includes((type||'').toUpperCase()));
+  return GS_BY_WTC[cat]||GS_BY_WTC.M;
+}
+
+function generateSweatbox(s,waypoints=[],opts={}){
+  const initPP=(opts.initPseudoPilot||'').trim();
+  const L=['PSEUDOPILOT:ALL','',`AIRPORT_ALT:${(+s.airportAlt).toFixed(1)}`,''];
+  for(const ils of s.ils)L.push(`ILS${ils.name}:${(+ils.lat1).toFixed(7)}:${(+ils.lon1).toFixed(7)}:${(+ils.lat2).toFixed(7)}:${(+ils.lon2).toFixed(7)}`);
+  // HOLDING:<fix>:<inbound>:<-1|1>   (−1 = left, 1 = right)
+  for(const h of (s.holdings||[]))if(h.fix)L.push(`HOLDING:${h.fix}:${+h.inboundCourse||0}:${h.turn==='L'?-1:1}`);
+  L.push('');
+  for(const c of s.controllers){L.push('PSEUDOPILOT:ALL');L.push(`CONTROLLER:${c.callsign}:${c.freq}`);}
+  for(const a of s.aircraft){
+    let sLat=+a.lat,sLon=+a.lon;
+    if((+a.preEntryNm||0)>0&&a.spawnWaypoint&&waypoints.length>0){
+      const off=preEntryOffset(a.spawnWaypoint,a.simRoute,+a.preEntryNm,waypoints,a.fpRoute);
+      if(off){sLat=off.lat;sLon=off.lon;}
+    }
+    // Initial heading — encoded into @N's 9th field per EuroScope's
+    // scenario file docs (https://www.euroscope.hu/wp/scenario-file/).
+    // The documented format is:
+    //   @<flag>:<cs>:<sqk>:1:<lat>:<lon>:<alt>:0:<encoded_heading>:0
+    // Fields 8 and 10 are LITERAL ZEROS. Field 9 is heading encoded as:
+    //   ((int)(heading * 2.88 + 0.5)) << 2     ≡   round(h * 2.88) * 4
+    //
+    // Previous code wrote `gs` into field 9 (treating it as groundspeed,
+    // which @N has no field for) and computed heading into field 8
+    // (which is a static 0). EuroScope was decoding the `gs` value as an
+    // encoded heading: gs of 0–280 decodes to 0°–26°, which is exactly
+    // the "every aircraft spawns pointing north" symptom we started from.
+    //
+    // Heading computation:
+    // - Primary: bearing from the (post-offset) spawn position to the
+    //   immediate next route token. Walking further when it's not in
+    //   navdata can pick a far waypoint in a misleading direction.
+    // - Departure fallback: runway heading × 10 when the next-token
+    //   lookup fails. SIDs typically hold runway heading on the first
+    //   leg, so this beats defaulting to 0.
+    let hdg=null;
+    if(a.simRoute&&waypoints.length>0){
+      const toks=String(a.simRoute).trim().split(/\s+/).filter(Boolean).map(t=>t.split('/')[0].toUpperCase());
+      const spawnWpt=(a.spawnWaypoint||'').toUpperCase();
+      const targetIdx=toks[0]===spawnWpt?1:0;
+      if(targetIdx<toks.length){
+        const target=waypoints.find(w=>w.name===toks[targetIdx]);
+        if(target)hdg=Math.round(bearingBetween(sLat,sLon,target.lat,target.lon));
+      }
+    }
+    if(hdg===null&&a.isDeparture&&a.runway){
+      const m=String(a.runway).match(/^(\d{1,2})/);
+      if(m)hdg=(+m[1])*10;
+    }
+    if(hdg===null)hdg=0;
+    const encodedHdg=Math.round(hdg*2.88)*4;
+    L.push('','PSEUDOPILOT:ALL');
+    L.push(`@N:${a.callsign}:${a.squawk}:1:${sLat.toFixed(7)}:${sLon.toFixed(7)}:${a.alt}:0:${encodedHdg}:0`);
+    L.push(`$FP${a.callsign}:*A:I:${a.type}:420:${a.origin}:0000:0000:${a.cruiseAlt}:${a.dest}:00:00:0:0::/v/:${a.fpRoute}`);
+    L.push(`SIMDATA:${a.callsign}:*:*:25:1:0.010:0.0`);
+    L.push(`$ROUTE:${a.simRoute}`);
+    if(a.start!==''&&a.start!=null&&+a.start>0)L.push(`START:${a.start}`);
+    L.push('DELAY:3:7');
+    if(a.reqAltWpt&&a.reqAltVal)L.push(`REQALT:${a.reqAltWpt}:${a.reqAltVal}`);
+    if(initPP)L.push(`INITIALPSEUDOPILOT:${initPP}`);
+  }
+  L.push('');return L.join('\n');
+}
+
+const ICAO_CS={eu_legacy:['AFR','BAW','DLH','KLM','IBE','SWR','AUA','THY','FIN','SAS','ITY','TAP','BEL','AEE','LOT','CSA','AFL','VIR'],eu_lcc:['EZY','RYR','VLG','WZZ','NAX','TRA','TVF','EJU','PGT'],middle_east:['UAE','ETD','QTR','SVA','KAC','GFA','OMA','RJA','MEA','IRA'],north_am:['AAL','UAL','DAL','SWA','ACA','JBU','ASA','NKS','WJA','UPS','FDX'],east_asia:['JAL','ANA','KAL','AAR','CCA','CES','CSN','CAL','EVA','CPA','HVN'],se_asia:['SIA','THA','GIA','MAS','AXM','PAL','VJC','CEB'],oceania:['QFA','VOZ','ANZ','JST','FJI'],south_am:['LAN','GLO','AVA','ARG','AMX','AZU'],africa:['ETH','SAA','RAM','KQA','AMC']};
+const REGION_PFX={E:['eu_legacy','eu_lcc'],L:['eu_legacy','eu_lcc'],B:['eu_legacy'],U:['eu_legacy','eu_lcc'],K:['north_am'],C:['north_am'],M:['north_am','south_am'],S:['south_am'],T:['north_am','south_am'],O:['middle_east'],H:['middle_east','africa'],V:['se_asia','east_asia'],W:['se_asia'],Z:['east_asia'],R:['east_asia'],Y:['oceania'],N:['oceania'],F:['africa'],G:['africa','eu_legacy'],D:['africa']};
+const LH_CS=['UAE','UAE','UAE','ETD','ETD','QTR','QTR','SVA','KAC','GFA','OMA','AFR','BAW','DLH','KLM','VIR','IBE','SWR','AUA','THY','TAP','AFL','ITY','FIN','LOT','AAL','UAL','DAL','ACA','JAL','ANA','KAL','AAR','CCA','CES','CSN','CAL','EVA','CPA','HVN','SIA','THA','GIA','MAS','PAL','QFA','ANZ','FJI','ETH','SAA','RAM','LAN'];
+const TYPE_CATS={
+  L:{label:'Light',desc:'MTOW < 7 000 kg',color:'text-emerald-300 bg-emerald-900/40 border-emerald-700',types:['C172','C182','C208','PC12','TBM9','TBM7','SR22','SR20','BE20','DA42','C525','C510','PA28','PA34']},
+  M:{label:'Medium',desc:'7 000 – 136 000 kg',color:'text-sky-300 bg-sky-900/40 border-sky-700',types:['A320','A321','A319','A318','B737','B738','B739','B736','A20N','A21N','B38M','B39M','E190','E195','E175','E170','CRJ9','CRJ7','AT76','AT75','DH8D','DH8C','F100','F70','E145']},
+  H:{label:'Heavy',desc:'> 136 000 kg',color:'text-amber-300 bg-amber-900/40 border-amber-700',types:['A332','A333','A343','A345','A346','A359','A35K','B762','B763','B764','B772','B773','B77W','B77L','B779','B788','B789','B78X','B741','B742','B743','B744','B74S','A306','MD11']},
+  J:{label:'Super',desc:'A380 / B748 only',color:'text-rose-300 bg-rose-900/40 border-rose-700',types:['A388','B748']},
+};
+const HJ_TYPES=new Set([...TYPE_CATS.H.types,...TYPE_CATS.J.types]);
+
+function poolIcaosByRegion(pool,field){
+  const RNAMES={eu_legacy:'Europe',eu_lcc:'Europe (LCC)',middle_east:'Middle East',north_am:'North America',east_asia:'East Asia',se_asia:'SE Asia / Pacific',oceania:'Oceania',south_am:'South America',africa:'Africa'};
+  const grouped={};const seen=new Set();
+  for(const e of pool){const icao=(e[field]||'').toUpperCase();if(!icao||seen.has(icao))continue;seen.add(icao);const reg=(REGION_PFX[icao.charAt(0)]||['other'])[0];const label=RNAMES[reg]||'Other';if(!grouped[label])grouped[label]=[];grouped[label].push(icao);}
+  Object.values(grouped).forEach(a=>a.sort());return grouped;
+}
+function pickIcao(org,{heavy=false}={}){
+  if(heavy)return LH_CS[Math.floor(Math.random()*LH_CS.length)];
+  const pfx=(org||'').charAt(0).toUpperCase();const regs=REGION_PFX[pfx]||['eu_legacy'];
+  const r=Math.random();let pool;
+  if(r<0.75||regs.length===1)pool=ICAO_CS[regs[0]];else if(r<0.95&&regs[1])pool=ICAO_CS[regs[1]];else pool=Object.values(ICAO_CS).flat();
+  return pool[Math.floor(Math.random()*pool.length)];
+}
+function genCS(org,used=new Set(),{pfx=null,heavy=false}={}){
+  for(let t=0;t<50;t++){const ic=pfx||pickIcao(org,{heavy});const n=Math.floor(Math.random()*8999)+100;const cs=`${ic}${n}`;if(!used.has(cs)){used.add(cs);return cs;}}
+  const fb=`${pickIcao(org,{heavy})}${Date.now().toString().slice(-4)}`;used.add(fb);return fb;
+}
+function trimRoute(route,wpt){
+  if(!route||!wpt)return route||'';
+  const toks=String(route).trim().split(/\s+/).filter(Boolean);
+  const idx=toks.findIndex(t=>t.toUpperCase()===wpt.toUpperCase());
+  return idx===-1?route:toks.slice(idx).join(' ');
+}
+function assignSquawk(rule,type){
+  if(rule.squawkMode!=='random')return rule.squawk||'1000';
+  const isHJ=HJ_TYPES.has((type||'').toUpperCase());
+  let opts=(rule.squawkOptions||['1000']).filter(o=>!(isHJ&&o==='1000'));
+  if(!opts.length)opts=['2000'];
+  const choice=opts[Math.floor(Math.random()*opts.length)];
+  if(choice==='5600')return`56${Math.floor(Math.random()*8)}${Math.floor(Math.random()*8)}`;
+  return choice;
+}
+
+function uid(){return crypto.randomUUID?.()??String(Date.now()+Math.random());}
+function defaultScenario(){return{name:'LFPG QFU Ouest',airportAlt:0.0,ils:[{name:'26L',lat1:48.9949188,lon1:2.6024601,lat2:48.9929434,lon2:2.5657057},{name:'27R',lat1:49.0266380,lon1:2.5617251,lat2:49.0247256,lon2:2.5248595},{name:'27PB',lat1:48.9650377,lon1:2.4455994,lat2:48.9636585,lon2:2.4204486},{name:'25PO',lat1:48.7277643,lon1:2.4040114,lat2:48.7192115,lon2:2.3577571}],controllers:[{callsign:'LFPO_APP',freq:'123.875'},{callsign:'LFPG_F_APP',freq:'126.430'},{callsign:'LFPG_TWR',freq:'119.250'}],aircraft:[],rules:[],holdings:[],groundConfig:null};}
+function emptyAc(dep=false){return{id:uid(),callsign:'',squawk:dep?'1200':'1000',type:'',origin:'',dest:'',cruiseAlt:35000,lat:dep?49.0186:50.0,lon:dep?2.47:4.0,alt:dep?1200:18000,gs:dep?3012:420,runway:dep?'27L':'27R',spawnWaypoint:'',preEntryNm:0,fpRoute:'',simRoute:'',start:'',reqAltWpt:'',reqAltVal:'',isDeparture:dep,ruleId:null};}
+function emptyRule(){return{id:uid(),name:'New Rule',mode:'S3',isDeparture:false,poolSource:false,poolDep:'',poolArr:'',spawnWaypoint:'',preEntryNm:10,rwyInUse:'',fpRouteTemplate:'',fpRouteTemplates:[],simRouteTemplate:'',rate:8,duration:30,startOffset:0,runway:'',originPool:'EHAM,EGLL,EDDF,LEMD,LIRF',destPool:'LFPG',typePool:'A320,A321,B738,A20N,E190',typeCategories:[],callsignPattern:'AFR###',randomCallsign:true,heavy:false,seq:1,cruiseAlt:35000,spawnAlt:18000,gsMode:'wtc',speedType:'ias',assignedSpeed:280,squawk:'1000',squawkMode:'fixed',squawkOptions:['1000','2000'],reqAltWpt:'',reqAltVal:'',schedulingMode:'rate',nmSeparation:10,excludeNonRouting:true};}
+function pickPool(csv,i){const a=(csv||'').split(',').map(s=>s.trim()).filter(Boolean);return a.length?a[i%a.length]:'';}
+function expandCS(pat,seq){if(!pat)return'UNK'+seq;const m=pat.match(/^(.*?)(#+)(.*)$/);if(!m)return pat+seq;return m[1]+String(seq).padStart(m[2].length,'0')+m[3];}
+
+function generateFromRule(rule,waypoints,usedSet=new Set(),pool=[]){
+  const wp=waypoints.find(w=>w.name===rule.spawnWaypoint);
+  if(!wp)return{aircraft:[],error:`Waypoint "${rule.spawnWaypoint}" not found in navdata`};
+  const _rgs=(()=>{if(rule.gsMode==='fixed')return computeSpawnGs(rule,'');const ft=(rule.typePool||'').split(',')[0].trim().toUpperCase();return computeSpawnGs(rule,ft)||GS_BY_WTC.M;})();
+  const intMin=rule.schedulingMode==='separation'?(rule.nmSeparation/Math.max(_rgs,1))*60:60/Math.max(rule.rate,0.1);
+  const rwy=rule.rwyInUse||rule.runway||'';
+  const fpTemplates=(rule.fpRouteTemplates||[]).filter(Boolean);
+  const pickFP=()=>fpTemplates.length>0?fpTemplates[Math.floor(Math.random()*fpTemplates.length)]:(rule.fpRouteTemplate||'');
+
+  if(rule.poolSource){
+    const dDep=(rule.poolDep||'').toUpperCase().trim();const dArr=(rule.poolArr||'').toUpperCase().trim();
+    const dDepList=dDep.split(',').map(s=>s.trim()).filter(Boolean);
+    const dArrList=dArr.split(',').map(s=>s.trim()).filter(Boolean);
+    // routeContains — comma-separated waypoint tokens that MUST appear in
+    // the pool aircraft's filed route for it to be eligible. Use this for
+    // departures (where spawnWaypoint is a synthetic runway-end fix that
+    // never appears in real FPs) or any rule where you want a directional
+    // filter beyond DEP/ARR. E.g. routeContains: "BATAG,PO302" keeps only
+    // LFPO departures heading southeast on the BATAG family.
+    const rcList=(rule.routeContains||'').toUpperCase().trim().split(',').map(s=>s.trim()).filter(Boolean);
+    let matches=pool.filter(p=>{
+      if(dDepList.length&&!dDepList.includes(p.origin))return false;
+      if(dArrList.length&&!dArrList.includes(p.dest))return false;
+      if(rcList.length){
+        const tokens=(p.route||'').toUpperCase().split(/\s+/).map(t=>t.split('/')[0]);
+        if(!rcList.some(tok=>tokens.includes(tok)))return false;
+      }
+      return true;
+    });
+    if(rule.excludeNonRouting!==false&&rule.spawnWaypoint){
+      const spwn=rule.spawnWaypoint.toUpperCase();
+      const rwy=(rule.rwyInUse||rule.runway||'').toUpperCase();
+      const acceptable=new Set([spwn]);
+      // Seed acceptable with routeContains tokens so the excludeNonRouting
+      // check below doesn't reject aircraft that already passed the
+      // routeContains filter (especially relevant for departures where the
+      // synthetic spawnWaypoint won't be in any FP).
+      for(const tok of rcList)acceptable.add(tok);
+      for(const s of (window.SB.stars||[])){
+        if((s.iaf||'').toUpperCase()!==spwn)continue;
+        if(rwy&&(s.runway||'').toUpperCase()!==rwy)continue;
+        const wpts=(s.waypoints||[]).map(w=>w.toUpperCase());
+        const iafIdx=wpts.indexOf(spwn);
+        if(iafIdx<0)continue;
+        for(let i=0;i<iafIdx;i++)acceptable.add(wpts[i]);
+      }
+      const before=matches.length;
+      matches=matches.filter(p=>(p.route||'').toUpperCase().split(/\s+/).some(t=>acceptable.has(t.split('/')[0])));
+      if(!matches.length){
+        const upstreams=[...acceptable].filter(w=>w!==spwn);
+        const hint=upstreams.length?` (or its STAR entry fix${upstreams.length>1?'es':''}: ${upstreams.join(', ')})`:'';
+        return{aircraft:[],error:`No pool aircraft route via "${rule.spawnWaypoint}"${hint}. ${before} matched DEP/ARR. Disable "Exclude non-routing" to override.`};
+      }
+    }
+    if(!matches.length)return{aircraft:[],error:`No pool aircraft match DEP="${dDep||'any'}" ARR="${dArr||'any'}"`};
+    const count=Math.max(1,Math.floor(rule.duration/intMin)+1);const out=[];
+    for(let i=0;i<Math.min(count,matches.length);i++){
+      const tmpl=matches[i];const startMin=rule.startOffset+i*intMin;
+      const fpR=tmpl.route||pickFP();const typ=tmpl.type||pickPool(rule.typePool,i);
+      let cs=tmpl.callsign;if(!cs)cs=genCS((rule.isDeparture?dArr:dDep)||'',usedSet,{heavy:!!rule.heavy});
+      out.push({id:uid(),callsign:cs,squawk:rule.squawkMode==='random'?assignSquawk(rule,typ):((tmpl.squawk&&tmpl.squawk!=='0000')?tmpl.squawk:(rule.squawk||'1000')),type:typ,origin:tmpl.origin,dest:tmpl.dest,cruiseAlt:(tmpl.cruiseFL||350)*100,lat:wp.lat,lon:wp.lon,alt:+rule.spawnAlt||18000,gs:computeSpawnGs(rule,typ),runway:rwy,spawnWaypoint:rule.spawnWaypoint,preEntryNm:+rule.preEntryNm||0,fpRoute:fpR,simRoute:trimRoute(rule.simRouteTemplate||fpR,rule.spawnWaypoint),starRoute:rule.simRouteTemplate||'',start:Math.round(startMin*10)/10,reqAltWpt:rule.reqAltWpt,reqAltVal:rule.reqAltVal,isDeparture:rule.isDeparture,ruleId:rule.id});
+    }
+    return{aircraft:out,error:null};
+  }
+
+  const count=Math.max(1,Math.floor(rule.duration/intMin)+1);
+  const useRand=rule.randomCallsign!==false;
+  const regICAO=rule.isDeparture?(rule.destPool||'').split(',')[0].trim():(rule.originPool||'').split(',')[0].trim();
+  const out=[];
+  for(let i=0;i<count;i++){
+    const startMin=rule.startOffset+i*intMin;const seq=(rule.seq||1)+i;
+    let cs;
+    if(useRand){cs=genCS(regICAO,usedSet,{heavy:!!rule.heavy});}
+    else{cs=expandCS(rule.callsignPattern,seq);let b=0;while(usedSet.has(cs)&&b<100){b++;cs=expandCS(rule.callsignPattern,seq+b*1000);}usedSet.add(cs);}
+    const type=pickPool(rule.typePool,i);const fpR=pickFP();
+    const simR=rule.simRouteTemplate?trimRoute(rule.simRouteTemplate,rule.spawnWaypoint):trimRoute(fpR,rule.spawnWaypoint);
+    out.push({id:uid(),callsign:cs,squawk:assignSquawk(rule,type),type,origin:rule.isDeparture?'LFPG':pickPool(rule.originPool,i),dest:rule.isDeparture?pickPool(rule.destPool,i):'LFPG',cruiseAlt:+rule.cruiseAlt||35000,lat:wp.lat,lon:wp.lon,alt:+rule.spawnAlt||18000,gs:computeSpawnGs(rule,type),runway:rwy,spawnWaypoint:rule.spawnWaypoint,preEntryNm:+rule.preEntryNm||0,fpRoute:fpR,simRoute:simR,starRoute:rule.simRouteTemplate||'',start:Math.round(startMin*10)/10,reqAltWpt:rule.reqAltWpt,reqAltVal:rule.reqAltVal,isDeparture:rule.isDeparture,ruleId:rule.id});
+  }
+  return{aircraft:out,error:null};
+}
+
+function addToPool(pool,items,source){
+  const map=new Map(pool.map(p=>[p.callsign||p.id,p]));
+  for(const item of items){
+    const key=item.callsign||uid();
+    const existing=map.get(key);
+    map.set(key,{id:existing?.id||uid(),addedAt:existing?.addedAt||Date.now(),...(existing||{}),...item,source});
+  }
+  return Array.from(map.values());
+}
+function poolToAc(e,dep=false){return{...emptyAc(dep),callsign:e.callsign||'',type:e.type||'',origin:e.origin||'',dest:e.dest||'',cruiseAlt:(e.cruiseFL||350)*100,fpRoute:e.route||'',simRoute:e.route||'',squawk:e.squawk||'1000'};}
+const SRC_LABELS={vatsim:{label:'VATSIM',color:'text-emerald-400 bg-emerald-900/30'},simbrief:{label:'SimBrief',color:'text-blue-400 bg-blue-900/30'},manual:{label:'Manual',color:'text-slate-400 bg-slate-800'}};
+
+function migrateRules(rules){return(rules||[]).map(r=>({...r,mode:r.mode||'S3'}));}
+
+function detectRampFileKind(json){
+  if(!json||typeof json!=='object')return null;
+  if(json.AircraftWingspans&&typeof json.AircraftWingspans==='object')return 'config';
+  if(json.ICAO&&json.Stands&&typeof json.Stands==='object')return 'airport';
+  return null;
+}
+function parseRampAirport(json){
+  const icao=String(json.ICAO||'').toUpperCase().trim();
+  if(!/^[A-Z]{4}$/.test(icao))throw new Error(`Invalid or missing ICAO: "${json.ICAO}"`);
+  const stands=[];
+  for(const[label,s]of Object.entries(json.Stands||{})){
+    if(!s||typeof s!=='object')continue;
+    const coords=String(s.Coordinates||'').split(':').map(x=>parseFloat(x.trim()));
+    if(coords.length<2||!isFinite(coords[0])||!isFinite(coords[1]))continue;
+    stands.push({label:String(label),lat:coords[0],lon:coords[1],code:s.Code?String(s.Code).toUpperCase():null,wingspan:typeof s.Wingspan==='number'?s.Wingspan:null,use:s.Use?String(s.Use).toUpperCase():null,priority:typeof s.Priority==='number'?s.Priority:5,callsigns:Array.isArray(s.Callsigns)?s.Callsigns.map(c=>String(c).toUpperCase()):[],block:Array.isArray(s.Block)?s.Block.map(String):[],remark:s.Remark||null,});
+  }
+  return{kind:'airport',icao,version:json.version||null,stands};
+}
+function parseRampConfig(json){
+  return{kind:'config',version:json.version||null,aircraftWingspans:Object.fromEntries(Object.entries(json.AircraftWingspans||{}).map(([k,v])=>[k.toUpperCase(),+v]).filter(([,v])=>isFinite(v))),generalAviation:new Set((json.GeneralAviation||[]).map(t=>t.toUpperCase())),helicopters:new Set((json.Helicopters||[]).map(t=>t.toUpperCase())),cargoOperators:new Set((json.CargoOperator||[]).map(c=>c.toUpperCase())),military:new Set((json.Military||[]).map(t=>t.toUpperCase())),raw:json,};
+}
+function parseRampAgent(json){
+  const kind=detectRampFileKind(json);
+  if(kind==='config')return parseRampConfig(json);
+  if(kind==='airport')return parseRampAirport(json);
+  throw new Error('Unrecognised RampAgent JSON (no AircraftWingspans, no ICAO+Stands)');
+}
+function wingspanToCode(ws){if(!isFinite(ws))return 'C';if(ws<15)return 'A';if(ws<24)return 'B';if(ws<36)return 'C';if(ws<52)return 'D';if(ws<65)return 'E';return 'F';}
+const WTC_FALLBACK={L:13,M:36,H:60,J:80};
+function aircraftFootprint(type){
+  const t=String(type||'').toUpperCase();const cfg=window.SB.rampConfig;let ws=cfg?.aircraftWingspans?.[t];
+  if(!isFinite(ws)){let wtc='M';for(const[cat,info]of Object.entries(TYPE_CATS)){if(info.types.includes(t)){wtc=cat;break;}}ws=WTC_FALLBACK[wtc];}
+  return{code:wingspanToCode(ws),ws};
+}
+function standFitsType(stand,type){
+  const fp=aircraftFootprint(type);
+  if(stand.code&&!stand.code.includes(fp.code))return false;
+  if(stand.wingspan!==null&&fp.ws>stand.wingspan)return false;
+  return true;
+}
+function pickStand(stands,type,{occupied=new Set(),callsignPrefix=null,useFilter=null}={}){
+  const blocked=new Set();
+  for(const lbl of occupied){const s=stands.find(x=>x.label===lbl);if(s)for(const b of s.block)blocked.add(b);}
+  const candidates=stands.filter(s=>{if(occupied.has(s.label))return false;if(blocked.has(s.label))return false;if(useFilter&&s.use&&s.use!==useFilter)return false;return standFitsType(s,type);});
+  if(!candidates.length)return null;
+  candidates.sort((a,b)=>{const aMatch=callsignPrefix&&a.callsigns.includes(callsignPrefix)?0:1;const bMatch=callsignPrefix&&b.callsigns.includes(callsignPrefix)?0:1;if(aMatch!==bMatch)return aMatch-bMatch;if(a.priority!==b.priority)return a.priority-b.priority;return a.label.localeCompare(b.label);});
+  return candidates[0];
+}
+
+// --- Reusable hook: persist a value to localStorage and (optionally) mirror to SB global ---
+function usePersist(value,key,loaded,mirror){
+  useEffect(()=>{
+    if(!loaded)return;
+    if(value===undefined||value===null){storage.del(key);}
+    else{storage.set(key,value);}
+    if(mirror)mirror(value);
+  },[value,loaded]);
+}
+
+function TabBar({active,onChange,poolCount,scenarioCount}){
+  const tabs=[{id:'navdata',label:'Navdata',icon:'database'},{id:'setup',label:'Setup',icon:'settings'},{id:'plans',label:'Flight Plans',icon:'cloud'},{id:'pool',label:`Pool${poolCount>0?` (${poolCount})`:''}`,icon:'layers'},{id:'generators',label:'Generators',icon:'zap'},{id:'scenario',label:`Scenario${scenarioCount>0?` (${scenarioCount})`:''}`,icon:'plane'},{id:'export',label:'Export',icon:'file'},{id:'saved',label:'Saved',icon:'folder'}];
+  return<div className="flex border-b border-slate-700 bg-slate-900 overflow-x-auto">{tabs.map(t=><button key={t.id} onClick={()=>onChange(t.id)} className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors ${active===t.id?'text-sky-400 border-b-2 border-sky-400 bg-slate-800':'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'}`}><Icon name={t.icon} size={14}/>{t.label}</button>)}</div>;
+}
+
+function NavdataPanel({waypoints,airports,positions,runways,stars,copx,gates,navMeta,airac,onSetAirac,onParseSct,onParseEse,onResetSct,onResetEse,onImportBundle,rampAgent,rampConfig,onLoadRampAgent,onLoadRampConfig,onResetRampAgent}){
+  const[sctText,setSctText]=useState('');const[eseText,setEseText]=useState('');
+  const[filter,setFilter]=useState('');const[gateFilter,setGateFilter]=useState('');const[status,setStatus]=useState('');
+  const[airacInput,setAiracInput]=useState(airac||'');
+  useEffect(()=>setAiracInput(airac||''),[airac]);
+  const filtered=useMemo(()=>{const f=filter.trim().toUpperCase();return f?waypoints.filter(w=>w.name.includes(f)).slice(0,200):waypoints.slice(0,200);},[waypoints,filter]);
+  const filteredGates=useMemo(()=>{const f=gateFilter.trim().toUpperCase();return f?gates.filter(g=>g.icao.includes(f)||g.label.toUpperCase().includes(f)).slice(0,200):gates.slice(0,200);},[gates,gateFilter]);
+  const fmtTs=ts=>ts?new Date(ts).toLocaleString():null;
+  const rampAirports=Object.keys(rampAgent||{}).sort();
+
+  async function handleFileUpload(e,kind){
+    const file=e.target.files?.[0];if(!file)return;e.target.value='';
+    try{
+      const text=await readTextFile(file);
+      if(!text.trim()){setStatus(`${file.name} is empty`);return;}
+      if(kind==='sct'){
+        const r=parseSectorFile(text);
+        if(!r.waypoints.length&&!r.airports.length&&!r.runways.length){setStatus(`Parsed ${file.name} but found nothing — is this a valid .sct file?`);return;}
+        onParseSct(r);
+        setStatus(`Loaded ${file.name}: ${r.waypoints.length} wpts, ${r.airports.length} apt, ${r.runways.length} rwy`);
+      }else{
+        const r=parseESE(text);onParseEse(r);
+        setStatus(`Loaded ${file.name}: ${r.positions.length} positions · ${r.stars.length} STARs · ${r.copx.length} COPX · ${r.gates.length} gates`);
+      }
+    }catch(err){setStatus(`Failed to parse ${file.name}: ${err.message||err}`);}
+  }
+
+  function exportBundle(){
+    downloadJsonBundle('navdata.json',{kind:'sweatbox-navdata',version:1,airac:airac||'',exportedAt:new Date().toISOString(),navMeta,waypoints,airports,positions,runways,stars,copx,gates});
+    setStatus('Exported navdata.json');
+  }
+
+  async function handleRampUpload(e){
+    const files=Array.from(e.target.files||[]);if(!files.length)return;e.target.value='';
+    let airportCount=0,configCount=0,failCount=0;
+    await Promise.all(files.map(async file=>{
+      try{
+        const json=await readJsonFile(file);
+        const parsed=parseRampAgent(json);
+        if(parsed.kind==='config'){onLoadRampConfig(parsed);configCount++;}
+        else{onLoadRampAgent(parsed);airportCount++;}
+      }catch(err){failCount++;}
+    }));
+    const parts=[];
+    if(airportCount)parts.push(`${airportCount} airport${airportCount!==1?'s':''}`);
+    if(configCount)parts.push(`config.json`);
+    if(failCount)parts.push(`${failCount} failed`);
+    setStatus('Loaded: '+(parts.join(' · ')||'nothing'));
+  }
+
+  async function importBundle(e){
+    const file=e.target.files?.[0];if(!file)return;e.target.value='';
+    try{
+      const bundle=await readJsonFile(file);
+      if(bundle.kind!=='sweatbox-navdata')throw new Error('Not a navdata bundle');
+      onImportBundle(bundle);setStatus(`Imported ${file.name}${bundle.airac?` (AIRAC ${bundle.airac})`:''}`);
+    }catch(err){setStatus('Import failed: '+(err.message||err));}
+  }
+
+  return(
+    <div className="p-6 space-y-4">
+      <div className="bg-slate-900 border border-slate-800 rounded-lg p-3 flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-slate-400 font-semibold uppercase">AIRAC</label>
+          <input value={airacInput} onChange={e=>setAiracInput(e.target.value)} onBlur={()=>onSetAirac(airacInput.trim())} onKeyDown={e=>{if(e.key==='Enter')e.target.blur();}} placeholder="2511" className="w-24 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-sm text-slate-200 font-mono"/>
+          <span className="text-xs text-slate-500">tag this navdata</span>
+        </div>
+        <div className="flex-1"/>
+        <div className="flex items-center gap-2">
+          <button onClick={exportBundle} disabled={!waypoints.length&&!positions.length} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:text-slate-600 rounded text-xs text-slate-200"><Icon name="download" size={12}/>Export navdata.json</button>
+          <label className="flex items-center gap-1.5 px-3 py-1.5 bg-sky-700 hover:bg-sky-600 rounded text-xs text-white cursor-pointer"><Icon name="upload" size={12}/>Import bundle<input type="file" accept=".json,application/json" onChange={importBundle} className="hidden"/></label>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="space-y-4">
+        <div>
+          <div className="flex items-center justify-between mb-2"><h2 className="text-lg font-semibold text-slate-200">Sector File (.sct)</h2>{waypoints.length>0?<div className="flex gap-2 items-center"><span className="text-xs text-emerald-400"><Icon name="check"size={12}className="inline"/> {waypoints.length} wpts</span><button onClick={onResetSct} className="text-xs text-rose-400 underline">Clear</button></div>:<span className="text-xs text-slate-500">FIXES, VOR, NDB, AIRPORT, RUNWAY</span>}</div>
+          {navMeta?.sctAt&&<p className="text-xs text-slate-500 mb-1">Parsed {fmtTs(navMeta.sctAt)}</p>}
+          <div className="flex gap-2 mb-2">
+            <label className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 rounded text-xs text-white cursor-pointer"><Icon name="upload" size={12}/>Upload .sct file<input type="file" accept=".sct,.txt,text/plain" onChange={e=>handleFileUpload(e,'sct')} className="hidden"/></label>
+            <span className="text-xs text-slate-500 self-center">or paste below</span>
+          </div>
+          <textarea value={sctText} onChange={e=>setSctText(e.target.value)} placeholder="[FIXES]&#10;MOPIL N050.13.53.000 E004.07.49.000" className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-xs font-mono text-slate-300 focus:border-sky-500 focus:outline-none h-36"/>
+          <button onClick={()=>{if(!sctText.trim()){setStatus('Paste .sct first');return;}const r=parseSectorFile(sctText);onParseSct(r);setStatus(`${r.waypoints.length} wpts, ${r.airports.length} apt, ${r.runways.length} rwy`);setSctText('');}} className="mt-2 flex items-center gap-2 px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded text-sm"><Icon name="upload"/>Parse pasted .sct</button>
+        </div>
+        <div>
+          <div className="flex items-center justify-between mb-2"><h2 className="text-lg font-semibold text-slate-200">ESE File (.ese)</h2>{positions.length>0?<div className="flex gap-2 items-center"><span className="text-xs text-emerald-400"><Icon name="check"size={12}className="inline"/> {positions.length} pos · {stars.length} STARs · {copx.length} COPX · {gates.length} gates</span><button onClick={onResetEse} className="text-xs text-rose-400 underline">Clear</button></div>:<span className="text-xs text-slate-500">[POSITIONS] [SIDSSTARS] [COPX] [FREETEXT]</span>}</div>
+          {navMeta?.eseAt&&<p className="text-xs text-slate-500 mb-1">Parsed {fmtTs(navMeta.eseAt)}</p>}
+          <div className="flex gap-2 mb-2">
+            <label className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 rounded text-xs text-white cursor-pointer"><Icon name="upload" size={12}/>Upload .ese file<input type="file" accept=".ese,.txt,text/plain" onChange={e=>handleFileUpload(e,'ese')} className="hidden"/></label>
+            <span className="text-xs text-slate-500 self-center">or paste below</span>
+          </div>
+          <textarea value={eseText} onChange={e=>setEseText(e.target.value)} placeholder="[POSITIONS]&#10;LFPG_TWR:..." className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-xs font-mono text-slate-300 focus:border-sky-500 focus:outline-none h-28"/>
+          <button onClick={()=>{if(!eseText.trim()){setStatus('Paste .ese first');return;}const r=parseESE(eseText);onParseEse(r);setStatus(`${r.positions.length} positions · ${r.stars.length} STARs · ${r.copx.length} COPX · ${r.gates.length} gates`);setEseText('');}} className="mt-2 flex items-center gap-2 px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded text-sm"><Icon name="upload"/>Parse pasted .ese</button>
+        </div>
+        {status&&<div className="text-xs text-emerald-400">{status}</div>}
+      </div>
+      <div className="space-y-4">
+        <div>
+          <div className="flex items-center justify-between mb-2"><h2 className="text-lg font-semibold text-slate-200">Waypoints</h2><span className="text-xs text-slate-500">{waypoints.length} · {airports.length} apt · {runways.length} rwy</span></div>
+          <div className="relative mb-2"><div className="absolute left-3 top-2.5 text-slate-500"><Icon name="search"size={14}/></div><input value={filter} onChange={e=>setFilter(e.target.value)} placeholder="Filter..." className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-9 pr-3 py-2 text-sm text-slate-300"/></div>
+          <div className="bg-slate-950 border border-slate-700 rounded-lg h-44 overflow-auto"><table className="w-full text-xs font-mono"><thead className="sticky top-0 bg-slate-900 text-slate-400"><tr><th className="text-left p-2">Name</th><th className="text-left p-2">Type</th><th className="text-right p-2">Lat</th><th className="text-right p-2">Lon</th></tr></thead><tbody>{filtered.map(w=><tr key={`${w.type}-${w.name}`} className="border-t border-slate-800 hover:bg-slate-900/50"><td className="p-2 text-slate-200 font-semibold">{w.name}</td><td className="p-2 text-slate-500">{w.type}</td><td className="p-2 text-slate-400 text-right">{w.lat.toFixed(5)}</td><td className="p-2 text-slate-400 text-right">{w.lon.toFixed(5)}</td></tr>)}{!filtered.length&&<tr><td colSpan="4" className="p-4 text-center text-slate-500">No waypoints</td></tr>}</tbody></table></div>
+        </div>
+        <div>
+          <div className="flex items-center justify-between mb-2"><h2 className="text-lg font-semibold text-slate-200">Gates / Stands</h2><span className="text-xs text-slate-500">{gates.length}</span></div>
+          {gates.length>0&&<div className="relative mb-2"><div className="absolute left-3 top-2.5 text-slate-500"><Icon name="search"size={14}/></div><input value={gateFilter} onChange={e=>setGateFilter(e.target.value)} placeholder="Filter ICAO or label..." className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-9 pr-3 py-2 text-sm text-slate-300"/></div>}
+          <div className="bg-slate-950 border border-slate-700 rounded-lg max-h-36 overflow-auto"><table className="w-full text-xs font-mono"><thead className="sticky top-0 bg-slate-900 text-slate-400"><tr><th className="text-left p-2">ICAO</th><th className="text-left p-2">Stand</th><th className="text-right p-2">Lat</th><th className="text-right p-2">Lon</th></tr></thead><tbody>{filteredGates.map((g,i)=><tr key={i} className="border-t border-slate-800"><td className="p-2 text-sky-300 font-semibold">{g.icao}</td><td className="p-2 text-slate-200">{g.label}</td><td className="p-2 text-slate-400 text-right">{g.lat.toFixed(5)}</td><td className="p-2 text-slate-400 text-right">{g.lon.toFixed(5)}</td></tr>)}{!filteredGates.length&&<tr><td colSpan="4" className="p-3 text-center text-slate-500">{gates.length?'No matches':'No gates parsed'}</td></tr>}</tbody></table></div>
+        </div>
+        <div>
+          <div className="flex items-center justify-between mb-2"><h2 className="text-lg font-semibold text-slate-200">RampAgent stands</h2>{(rampAirports.length>0||rampConfig)?<div className="flex gap-2 items-center"><span className="text-xs text-emerald-400"><Icon name="check"size={12}className="inline"/> {rampAirports.length} airport{rampAirports.length!==1?'s':''}{rampConfig?` · config (${Object.keys(rampConfig.aircraftWingspans||{}).length} types)`:''}</span><button onClick={onResetRampAgent} className="text-xs text-rose-400 underline">Clear</button></div>:<span className="text-xs text-slate-500">VAC France RampAgent JSON</span>}</div>
+          <p className="text-xs text-slate-500 mb-2">Upload one or more files. <code className="text-slate-400">config.json</code> provides aircraft wingspans; per-airport JSONs provide stand catalogues.</p>
+          {!rampConfig&&rampAirports.length>0&&<div className="text-xs text-amber-400 bg-amber-950/30 border border-amber-900/30 rounded p-2 mb-2 flex items-center gap-1.5"><Icon name="alert" size={12}/>Airports loaded but no <code className="text-amber-300">config.json</code> — wingspan check uses WTC fallback values.</div>}
+          <div className="flex gap-2 mb-2">
+            <label className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 rounded text-xs text-white cursor-pointer"><Icon name="upload" size={12}/>Upload RampAgent JSON (multi)<input type="file" accept=".json,application/json" multiple onChange={handleRampUpload} className="hidden"/></label>
+          </div>
+          <div className="bg-slate-950 border border-slate-700 rounded-lg max-h-36 overflow-auto"><table className="w-full text-xs font-mono"><thead className="sticky top-0 bg-slate-900 text-slate-400"><tr><th className="text-left p-2">ICAO</th><th className="text-right p-2">Stands</th><th className="text-right p-2">With wingspan</th><th className="text-right p-2">Code F</th></tr></thead><tbody>{rampAirports.map(icao=>{const ra=rampAgent[icao];const ws=ra.stands.filter(s=>s.wingspan!==null).length;const cf=ra.stands.filter(s=>s.code&&s.code.includes('F')).length;return<tr key={icao} className="border-t border-slate-800"><td className="p-2 text-sky-300 font-semibold">{icao}</td><td className="p-2 text-slate-300 text-right">{ra.stands.length}</td><td className="p-2 text-slate-400 text-right">{ws}</td><td className="p-2 text-slate-400 text-right">{cf||'—'}</td></tr>;})}{!rampAirports.length&&<tr><td colSpan="4" className="p-3 text-center text-slate-500">No airport data loaded</td></tr>}</tbody></table></div>
+        </div>
+        <div>
+          <div className="flex items-center justify-between mb-2"><h2 className="text-lg font-semibold text-slate-200">STARs</h2><span className="text-xs text-slate-500">{stars.length}</span></div>
+          <div className="bg-slate-950 border border-slate-700 rounded-lg max-h-36 overflow-auto"><table className="w-full text-xs font-mono"><thead className="sticky top-0 bg-slate-900 text-slate-400"><tr><th className="text-left p-2">Airport</th><th className="text-left p-2">Runway</th><th className="text-left p-2">Name</th><th className="text-left p-2">Entry Fix</th></tr></thead><tbody>{stars.map((s,i)=><tr key={i} className="border-t border-slate-800"><td className="p-2 text-slate-300">{s.airport}</td><td className="p-2 text-slate-400">{s.runway}</td><td className="p-2 text-sky-400">{s.name}</td><td className="p-2 text-emerald-400">{s.iaf}</td></tr>)}{!stars.length&&<tr><td colSpan="4" className="p-3 text-center text-slate-500">No STARs</td></tr>}</tbody></table></div>
+        </div>
+      </div>
+      </div>
+    </div>
+  );
+}
+
+function SetupPanel({scenario,onChange,positions,runways,waypoints}){
+  const set=(f,v)=>onChange({...scenario,[f]:v});
+  const setIls=(i,f,v)=>{const a=[...scenario.ils];a[i]={...a[i],[f]:f==='name'?v:+v};onChange({...scenario,ils:a});};
+  const delIls=i=>onChange({...scenario,ils:scenario.ils.filter((_,j)=>j!==i)});
+  const setCtrl=(i,f,v)=>{const a=[...scenario.controllers];a[i]={...a[i],[f]:v};onChange({...scenario,controllers:a});};
+  const addCtrl=()=>onChange({...scenario,controllers:[...scenario.controllers,{callsign:'',freq:''}]});
+  const delCtrl=i=>onChange({...scenario,controllers:scenario.controllers.filter((_,j)=>j!==i)});
+
+  const holdings=scenario.holdings||[];
+  const setHold=(i,f,v)=>{const a=[...holdings];a[i]={...a[i],[f]:v};onChange({...scenario,holdings:a});};
+  const addHold=()=>onChange({...scenario,holdings:[...holdings,{fix:'',inboundCourse:0,turn:'R'}]});
+  const delHold=i=>onChange({...scenario,holdings:holdings.filter((_,j)=>j!==i)});
+
+  const[ilsApt,setIlsApt]=useState('');const[ilsRwy,setIlsRwy]=useState('');const[ilsName,setIlsName]=useState('');
+  const rwyAirports=useMemo(()=>[...new Set((runways||[]).map(r=>r.airport))].sort(),[runways]);
+  const rwyList=useMemo(()=>{if(!ilsApt)return[];const out=[];for(const r of(runways||[]).filter(r=>r.airport===ilsApt)){out.push({key:`${r.airport}|${r.ident1}`,ident:r.ident1});out.push({key:`${r.airport}|${r.ident2}`,ident:r.ident2});}return out;},[runways,ilsApt]);
+  useEffect(()=>{if(!ilsRwy){setIlsName('');return;}const[,id]=ilsRwy.split('|');setIlsName(id);},[ilsRwy]);
+  function addIlsFromRwy(){if(!ilsRwy||!ilsName.trim())return;const[apt,id]=ilsRwy.split('|');const rwy=(runways||[]).find(r=>r.airport===apt&&(r.ident1===id||r.ident2===id));if(!rwy)return;let la1,lo1,la2,lo2;if(rwy.ident1===id){la1=rwy.lat1;lo1=rwy.lon1;la2=rwy.lat2;lo2=rwy.lon2;}else{la1=rwy.lat2;lo1=rwy.lon2;la2=rwy.lat1;lo2=rwy.lon1;}onChange({...scenario,ils:[...scenario.ils,{name:ilsName.trim(),lat1:la1,lon1:lo1,lat2:la2,lon2:lo2}]});setIlsRwy('');setIlsName('');}
+
+  const ip="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-sm text-slate-200 font-mono";
+
+  return(
+    <div className="p-6 space-y-6 max-w-5xl">
+      <div className="grid grid-cols-2 gap-4"><div><label className="block text-xs text-slate-400 mb-1">Scenario Name</label><input value={scenario.name} onChange={e=>set('name',e.target.value)} className={ip}/></div><div><label className="block text-xs text-slate-400 mb-1">Airport Altitude (ft)</label><input type="number" value={scenario.airportAlt} onChange={e=>set('airportAlt',+e.target.value)} step="0.1" className={ip}/></div></div>
+
+      <div className="space-y-3">
+        <div className="flex items-center justify-between"><h2 className="text-lg font-semibold text-slate-200">ILS Lines</h2><button onClick={()=>onChange({...scenario,ils:[...scenario.ils,{name:'',lat1:0,lon1:0,lat2:0,lon2:0}]})} className="flex items-center gap-1 px-3 py-1 text-xs bg-slate-700 hover:bg-slate-600 rounded text-slate-200"><Icon name="plus"size={14}/>Add blank</button></div>
+        {(runways||[]).length>0&&<div className="bg-slate-900 border border-slate-800 rounded p-3 space-y-2"><h4 className="text-xs font-semibold text-slate-400 uppercase">Auto-add from runways</h4><div className="grid grid-cols-12 gap-2 items-end"><div className="col-span-3"><select value={ilsApt} onChange={e=>{setIlsApt(e.target.value);setIlsRwy('');}} className={ip}><option value="">— airport —</option>{rwyAirports.map(a=><option key={a} value={a}>{a}</option>)}</select></div><div className="col-span-3"><select value={ilsRwy} onChange={e=>setIlsRwy(e.target.value)} disabled={!ilsApt} className={`${ip} disabled:opacity-50`}><option value="">— runway —</option>{rwyList.map(o=><option key={o.key} value={o.key}>{o.ident}</option>)}</select></div><div className="col-span-4"><input value={ilsName} onChange={e=>setIlsName(e.target.value)} placeholder="26L" className={ip}/></div><div className="col-span-2"><button onClick={addIlsFromRwy} disabled={!ilsRwy||!ilsName.trim()} className="w-full px-3 py-1.5 bg-sky-600 hover:bg-sky-500 disabled:bg-slate-700 rounded text-sm text-white">Add ILS</button></div></div></div>}
+        <div className="space-y-2">{scenario.ils.map((ils,i)=><div key={i} className="grid grid-cols-12 gap-2 items-center bg-slate-900 p-2 rounded"><input value={ils.name} onChange={e=>setIls(i,'name',e.target.value)} placeholder="26L" className="col-span-2 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 font-mono"/><input type="number" step="0.0000001" value={ils.lat1} onChange={e=>setIls(i,'lat1',e.target.value)} className="col-span-2 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 font-mono"/><input type="number" step="0.0000001" value={ils.lon1} onChange={e=>setIls(i,'lon1',e.target.value)} className="col-span-2 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 font-mono"/><input type="number" step="0.0000001" value={ils.lat2} onChange={e=>setIls(i,'lat2',e.target.value)} className="col-span-2 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 font-mono"/><input type="number" step="0.0000001" value={ils.lon2} onChange={e=>setIls(i,'lon2',e.target.value)} className="col-span-2 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 font-mono"/><button onClick={()=>delIls(i)} className="text-rose-400 hover:text-rose-300"><Icon name="trash"size={14}/></button></div>)}</div>
+      </div>
+
+      <div className="space-y-3">
+        <div className="flex items-center justify-between"><h2 className="text-lg font-semibold text-slate-200 flex items-center gap-2"><Icon name="rotate" size={18}/>Holding Patterns</h2><button onClick={addHold} className="flex items-center gap-1 px-3 py-1 text-xs bg-slate-700 hover:bg-slate-600 rounded text-slate-200"><Icon name="plus" size={14}/>Add holding</button></div>
+        <p className="text-xs text-slate-500">Published holds over a fix. Outputs <code className="text-sky-400">HOLDING:&lt;fix&gt;:&lt;inbound&gt;:&lt;-1|1&gt;</code> in the scenario file (−1 = left, 1 = right).</p>
+        {holdings.length>0&&<div className="grid grid-cols-12 gap-2 px-2 text-xs text-slate-500 uppercase font-semibold">
+          <div className="col-span-3">Fix</div>
+          <div className="col-span-2">Inbnd °</div>
+          <div className="col-span-2">Turn</div>
+          <div className="col-span-4">Preview</div>
+          <div className="col-span-1"/>
+        </div>}
+        <div className="space-y-2">
+          {holdings.map((h,i)=>{
+            const preview=h.fix?`HOLDING:${h.fix}:${h.inboundCourse||0}:${h.turn==='L'?-1:1}`:'—';
+            const fixExists=h.fix&&(waypoints||[]).some(w=>w.name===h.fix.toUpperCase());
+            return(
+              <div key={i} className="grid grid-cols-12 gap-2 items-center bg-slate-900 p-2 rounded">
+                <input value={h.fix||''} onChange={e=>setHold(i,'fix',e.target.value.toUpperCase())} placeholder="OKABO" className={`col-span-3 bg-slate-950 border ${h.fix&&!fixExists?'border-amber-700':'border-slate-700'} rounded px-2 py-1 text-xs text-slate-200 font-mono`} title={h.fix&&!fixExists?'Fix not found in current navdata':''}/>
+                <input type="number" min="0" max="359" value={h.inboundCourse??0} onChange={e=>setHold(i,'inboundCourse',+e.target.value)} className="col-span-2 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 font-mono"/>
+                <select value={h.turn||'R'} onChange={e=>setHold(i,'turn',e.target.value)} className="col-span-2 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 font-mono">
+                  <option value="R">Right</option>
+                  <option value="L">Left</option>
+                </select>
+                <span className="col-span-4 text-xs text-slate-500 font-mono truncate" title={preview}>{preview}</span>
+                <button onClick={()=>delHold(i)} className="col-span-1 text-rose-400 hover:text-rose-300 flex justify-center"><Icon name="trash" size={14}/></button>
+              </div>
+            );
+          })}
+          {!holdings.length&&<p className="text-xs text-slate-500 italic px-2">No holdings defined. Click <strong>Add holding</strong> above to define one.</p>}
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <div className="flex items-center justify-between"><h2 className="text-lg font-semibold text-slate-200">Controllers</h2><button onClick={addCtrl} className="flex items-center gap-1 px-3 py-1 text-xs bg-slate-700 hover:bg-slate-600 rounded text-slate-200"><Icon name="plus"size={14}/>Add</button></div>
+        <div className="space-y-2">{scenario.controllers.map((c,i)=><div key={i} className="grid grid-cols-12 gap-2 items-center bg-slate-900 p-2 rounded">{positions.length>0?<select value={c.callsign&&c.freq?`${c.callsign}|${c.freq}`:''} onChange={e=>{if(!e.target.value){const a=[...scenario.controllers];a[i]={callsign:'',freq:''};onChange({...scenario,controllers:a});return;}const[cs,fr]=e.target.value.split('|');const p=positions.find(x=>x.callsign===cs&&x.freq===fr);if(!p)return;const a=[...scenario.controllers];a[i]={callsign:p.callsign,freq:p.freq};onChange({...scenario,controllers:a});}} className="col-span-5 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-sm text-slate-200 font-mono"><option value="">— pick —</option>{positions.map(p=><option key={p.callsign+p.freq} value={`${p.callsign}|${p.freq}`}>{p.callsign} · {p.freq}</option>)}</select>:<input value={c.callsign} onChange={e=>setCtrl(i,'callsign',e.target.value)} placeholder="LFPG_TWR" className="col-span-5 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-sm text-slate-200 font-mono"/>}<input value={c.freq} onChange={e=>setCtrl(i,'freq',e.target.value)} placeholder="119.250" className="col-span-5 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-sm text-slate-200 font-mono"/><button onClick={()=>delCtrl(i)} className="col-span-2 text-rose-400 hover:text-rose-300 flex justify-center"><Icon name="trash"size={14}/></button></div>)}</div>
+      </div>
+    </div>
+  );
+}
+
+function FlightPlansPanel({onAddToPool,vatsimCache,setVatsimCache}){
+  const[src,setSrc]=useState('simbrief');
+  const btn=(id,label,icon)=><button onClick={()=>setSrc(id)} className={`flex items-center gap-2 px-4 py-2 rounded text-sm font-medium ${src===id?'bg-sky-700 text-white':'bg-slate-800 text-slate-400 hover:text-slate-200'}`}><Icon name={icon} size={14}/>{label}</button>;
+  return(
+    <div className="p-6 space-y-4 max-w-6xl">
+      <div className="flex gap-2">{btn('simbrief','SimBrief','file')}{btn('vatsim','VATSIM Live','radio')}</div>
+      <p className="text-xs text-slate-500">All imports go to the <strong className="text-slate-300">Aircraft Pool</strong> tab.</p>
+      {src==='simbrief'&&<SimBriefSection onAddToPool={onAddToPool}/>}
+      {src==='vatsim'&&<VatsimSection onAddToPool={onAddToPool} cache={vatsimCache} setCache={setVatsimCache}/>}
+    </div>
+  );
+}
+function SimBriefSection({onAddToPool}){
+  const[username,setUsername]=useState(()=>storage.get(KEYS.sbUser)||'');
+  const[loading,setLoading]=useState(false);const[error,setError]=useState('');const[ofp,setOfp]=useState(null);
+  async function fetch_(){if(!username.trim()){setError('Enter username or pilot ID');return;}setError('');setLoading(true);setOfp(null);storage.set(KEYS.sbUser,username.trim());try{const data=await fetchSimbrief(username);if(data.fetch?.status==='Error'||data.error)throw new Error(data.fetch?.message||'SimBrief error');setOfp(parseSimbriefOFP(data));}catch(e){const m=String(e.message||e);if(m.includes('Failed to fetch')||m.includes('CORS'))setError('CORS blocked — run the local proxy.');else setError(m);}finally{setLoading(false);}}
+  return(
+    <div className="space-y-4 max-w-2xl">
+      <div className="bg-slate-900 rounded-lg p-4 space-y-3">
+        <h3 className="text-sm font-semibold text-slate-200">SimBrief — Latest OFP</h3>
+        <div className="flex gap-2"><input value={username} onChange={e=>setUsername(e.target.value)} onKeyDown={e=>e.key==='Enter'&&fetch_()} placeholder="Navigraph username or Pilot ID" className="flex-1 bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 font-mono"/><button onClick={fetch_} disabled={loading} className="flex items-center gap-2 px-4 py-2 bg-sky-600 hover:bg-sky-500 disabled:bg-slate-700 rounded text-sm text-white"><Icon name={loading?'cloud':'refresh'}/>{loading?'…':'Fetch'}</button></div>
+        {error&&<p className="text-xs text-rose-400 bg-rose-950/30 border border-rose-900 rounded p-2">{error}</p>}
+      </div>
+      {ofp&&<div className="bg-slate-900 rounded-lg p-4 space-y-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="bg-slate-950 border border-slate-800 rounded p-2"><div className="text-xs text-slate-500 mb-1">Flight</div><div className="text-sm font-mono font-semibold text-sky-400">{ofp.callsign||'—'}</div><div className="text-xs text-slate-400">{ofp.origin}→{ofp.dest}</div></div>
+          <div className="bg-slate-950 border border-slate-800 rounded p-2"><div className="text-xs text-slate-500 mb-1">Aircraft</div><div className="text-sm font-mono font-semibold text-slate-200">{ofp.type||'—'}</div><div className="text-xs text-slate-400">FL{ofp.cruiseFL}</div></div>
+          <div className="col-span-2 bg-slate-950 border border-slate-800 rounded p-2"><div className="text-xs text-slate-500 mb-1">Route</div><div className="text-xs font-mono text-slate-300 max-h-16 overflow-auto">{ofp.route||'(none)'}</div></div>
+        </div>
+        <button onClick={()=>onAddToPool([{callsign:ofp.callsign,type:ofp.type,origin:ofp.origin,dest:ofp.dest,route:ofp.route,cruiseFL:ofp.cruiseFL,squawk:ofp.squawk}],'simbrief')} className="w-full px-3 py-2 bg-emerald-600 hover:bg-emerald-500 rounded text-sm text-white font-medium">Add to Aircraft Pool</button>
+      </div>}
+    </div>
+  );
+}
+function VatsimSection({onAddToPool,cache,setCache}){
+  const[icao,setIcao]=useState(cache.icao||'');const[mode,setMode]=useState(cache.mode||'arr');
+  const[loading,setLoading]=useState(false);const[error,setError]=useState('');const[sel,setSel]=useState(new Set());
+  const pilots=cache.pilots||[];
+  async function doFetch(){if(!icao.trim()){setError('Enter airport ICAO');return;}setError('');setLoading(true);setSel(new Set());try{const data=await fetchVatsimData();const filtered=filterVatsimPilots(data,icao,mode);setCache({pilots:filtered,icao:icao.toUpperCase(),mode,fetchedAt:new Date().toLocaleTimeString()});if(!filtered.length)setError(`No ${mode} found for ${icao.toUpperCase()}.`);}catch(e){setError(String(e.message||e));}finally{setLoading(false);}}
+  const toggleSel=cs=>{setSel(prev=>{const n=new Set(prev);n.has(cs)?n.delete(cs):n.add(cs);return n;});};
+  function addSel(){const items=pilots.filter(p=>sel.has(p.callsign)).map(p=>({callsign:p.callsign,type:p.type,origin:p.dep,dest:p.arr,route:p.route,cruiseFL:p.cruiseFL||350,squawk:p.squawk}));if(!items.length)return;onAddToPool(items,'vatsim');setSel(new Set());}
+  const mb=(v,l)=><button onClick={()=>setMode(v)} className={`px-3 py-1.5 rounded text-xs font-medium ${mode===v?'bg-sky-600 text-white':'bg-slate-800 text-slate-400 hover:text-slate-200'}`}>{l}</button>;
+  return(
+    <div className="space-y-4">
+      <div className="bg-slate-900 rounded-lg p-4 space-y-3">
+        <div><h3 className="text-sm font-semibold text-slate-200 mb-1">VATSIM Live</h3><p className="text-xs text-slate-500">Cached until Refresh.</p></div>
+        <div className="flex gap-2 items-end flex-wrap">
+          <div><label className="block text-xs text-slate-400 mb-1">Airport ICAO</label><input value={icao} onChange={e=>setIcao(e.target.value.toUpperCase())} onKeyDown={e=>e.key==='Enter'&&doFetch()} placeholder="LFPG" className="w-32 bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 font-mono"/></div>
+          <div><label className="block text-xs text-slate-400 mb-1">Show</label><div className="flex gap-1">{mb('arr','Arrivals')}{mb('dep','Departures')}{mb('both','Both')}</div></div>
+          <button onClick={doFetch} disabled={loading} className="flex items-center gap-2 px-4 py-2 bg-sky-600 hover:bg-sky-500 disabled:bg-slate-700 rounded text-sm text-white h-9"><Icon name="refresh" size={14}/>{loading?'…':'Refresh'}</button>
+          {cache.fetchedAt&&<span className="text-xs text-slate-500">Last: {cache.fetchedAt} · {pilots.length}</span>}
+        </div>
+        {error&&<p className="text-xs text-rose-400 bg-rose-950/30 border border-rose-900 rounded p-2">{error}</p>}
+      </div>
+      {pilots.length>0&&<div className="bg-slate-900 rounded-lg p-4 space-y-3">
+        <div className="flex items-center justify-between flex-wrap gap-2"><span className="text-sm font-semibold text-slate-200">{pilots.length} flights</span><div className="flex gap-2 items-center"><button onClick={()=>setSel(new Set(pilots.map(p=>p.callsign)))} className="text-xs px-2 py-1 bg-slate-700 rounded text-slate-300">All</button><button onClick={()=>setSel(new Set())} className="text-xs px-2 py-1 bg-slate-700 rounded text-slate-300">None</button><span className="text-xs text-slate-500">{sel.size} sel</span></div></div>
+        <div className="bg-slate-950 border border-slate-700 rounded max-h-80 overflow-auto"><table className="w-full text-xs"><thead className="sticky top-0 bg-slate-900 text-slate-400"><tr><th className="p-2 w-8"></th><th className="p-2 text-left">Callsign</th><th className="p-2 text-left">Type</th><th className="p-2 text-left">DEP</th><th className="p-2 text-left">ARR</th><th className="p-2 text-left">FL</th><th className="p-2 text-left">Status</th></tr></thead><tbody>{pilots.map(p=><tr key={p.callsign} onClick={()=>toggleSel(p.callsign)} className={`border-t border-slate-800 cursor-pointer hover:bg-slate-800/40 ${sel.has(p.callsign)?'bg-sky-950/30':''}`}><td className="p-2"><input type="checkbox" readOnly checked={sel.has(p.callsign)} className="accent-sky-500"/></td><td className="p-2 font-mono font-semibold text-slate-200">{p.callsign}</td><td className="p-2 font-mono text-slate-300">{p.type||'—'}</td><td className="p-2 font-mono text-slate-400">{p.dep}</td><td className="p-2 font-mono text-slate-400">{p.arr}</td><td className="p-2 font-mono text-slate-400">{p.cruiseFL?`FL${p.cruiseFL}`:'—'}</td><td className="p-2">{p.isPrefiled?<span className="px-1.5 py-0.5 bg-amber-900/40 text-amber-300 rounded">PRE</span>:<span className="px-1.5 py-0.5 bg-emerald-900/40 text-emerald-300 rounded">LIVE</span>}</td></tr>)}</tbody></table></div>
+        <button onClick={addSel} disabled={!sel.size} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 rounded text-sm text-white font-medium"><Icon name="plus"size={14}/>Add {sel.size||''} to Pool</button>
+      </div>}
+    </div>
+  );
+}
+
+function AircraftPoolPanel({pool,onDelete,onAddToScenario,airac,onSetAirac,onImportPool}){
+  const[fQ,setFQ]=useState('');const[fDep,setFDep]=useState('');const[fArr,setFArr]=useState('');const[fSrc,setFSrc]=useState('');const[sel,setSel]=useState(new Set());
+  const[airacInput,setAiracInput]=useState(airac||'');const[status,setStatus]=useState('');
+  useEffect(()=>setAiracInput(airac||''),[airac]);
+  const filtered=useMemo(()=>pool.filter(p=>{if(fQ&&!p.callsign.toUpperCase().includes(fQ.toUpperCase()))return false;if(fDep&&p.origin!==fDep.toUpperCase())return false;if(fArr&&p.dest!==fArr.toUpperCase())return false;if(fSrc&&p.source!==fSrc)return false;return true;}),[pool,fQ,fDep,fArr,fSrc]);
+  const toggleSel=id=>{setSel(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);return n;});};
+  const counts=useMemo(()=>pool.reduce((a,p)=>{a[p.source]=(a[p.source]||0)+1;return a;},{}),[pool]);
+  const inp="bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-xs text-slate-200 font-mono";
+  const flash=m=>{setStatus(m);setTimeout(()=>setStatus(''),3000);};
+
+  function exportPool(){
+    downloadJsonBundle('pool.json',{kind:'sweatbox-pool',version:1,airac:airac||'',exportedAt:new Date().toISOString(),pool});
+    flash('Exported pool.json');
+  }
+  async function importPool(e){
+    const file=e.target.files?.[0];if(!file)return;e.target.value='';
+    try{
+      const bundle=await readJsonFile(file);
+      if(bundle.kind!=='sweatbox-pool')throw new Error('Not a pool bundle');
+      onImportPool(bundle);
+      flash(`Imported ${file.name}${bundle.airac?` (AIRAC ${bundle.airac})`:''}: ${(bundle.pool||[]).length} entries`);
+    }catch(err){flash('Import failed: '+(err.message||err));}
+  }
+
+  return(
+    <div className="p-6 space-y-4 max-w-6xl">
+      <div className="bg-slate-900 border border-slate-800 rounded-lg p-3 flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-slate-400 font-semibold uppercase">AIRAC</label>
+          <input value={airacInput} onChange={e=>setAiracInput(e.target.value)} onBlur={()=>onSetAirac(airacInput.trim())} onKeyDown={e=>{if(e.key==='Enter')e.target.blur();}} placeholder="2511" className="w-24 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-sm text-slate-200 font-mono"/>
+          <span className="text-xs text-slate-500">tag this pool</span>
+        </div>
+        <div className="flex-1"/>
+        <div className="flex items-center gap-2">
+          <button onClick={exportPool} disabled={!pool.length} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:text-slate-600 rounded text-xs text-slate-200"><Icon name="download" size={12}/>Export pool.json</button>
+          <label className="flex items-center gap-1.5 px-3 py-1.5 bg-sky-700 hover:bg-sky-600 rounded text-xs text-white cursor-pointer"><Icon name="upload" size={12}/>Import bundle<input type="file" accept=".json,application/json" onChange={importPool} className="hidden"/></label>
+        </div>
+      </div>
+      {status&&<div className="text-xs text-emerald-400">{status}</div>}
+
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div><h2 className="text-lg font-semibold text-slate-200">Aircraft Pool</h2><div className="flex gap-3 mt-1 text-xs">{Object.entries(counts).map(([src,n])=>{const s=SRC_LABELS[src]||{label:src,color:'text-slate-400 bg-slate-800'};return<span key={src} className={`px-2 py-0.5 rounded font-medium ${s.color}`}>{s.label}: {n}</span>;})} {!pool.length&&<span className="text-slate-500">Empty</span>}</div></div>
+        <div className="flex gap-2">
+          <button onClick={()=>{if(!sel.size)return;if(!confirm(`Delete ${sel.size}?`))return;onDelete([...sel]);setSel(new Set());}} disabled={!sel.size} className="px-3 py-1.5 bg-rose-700 hover:bg-rose-600 disabled:bg-slate-700 rounded text-sm text-white">Delete sel</button>
+          <button onClick={()=>{if(!confirm(`Clear all ${pool.length}?`))return;onDelete(pool.map(p=>p.id));setSel(new Set());}} disabled={!pool.length} className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 rounded text-sm text-slate-200">Clear all</button>
+          <button onClick={()=>{const items=filtered.filter(p=>sel.has(p.id));if(!items.length)return;onAddToScenario(items);setSel(new Set());}} disabled={!sel.size} className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 rounded text-sm text-white font-medium"><Icon name="plane"size={14}/>Add to Scenario ({sel.size})</button>
+        </div>
+      </div>
+      <div className="flex gap-2 flex-wrap">
+        <div className="relative"><div className="absolute left-2 top-2 text-slate-500"><Icon name="search"size={12}/></div><input value={fQ} onChange={e=>setFQ(e.target.value)} placeholder="Callsign" className={`${inp} pl-7 w-32`}/></div>
+        <input value={fDep} onChange={e=>setFDep(e.target.value.toUpperCase())} placeholder="DEP" className={`${inp} w-20`}/>
+        <input value={fArr} onChange={e=>setFArr(e.target.value.toUpperCase())} placeholder="ARR" className={`${inp} w-20`}/>
+        <select value={fSrc} onChange={e=>setFSrc(e.target.value)} className={inp}><option value="">All sources</option>{Object.keys(SRC_LABELS).map(s=><option key={s} value={s}>{SRC_LABELS[s].label}</option>)}</select>
+        <span className="text-xs text-slate-500 self-center">{filtered.length}/{pool.length}</span>
+        {(fQ||fDep||fArr||fSrc)&&<button onClick={()=>{setFQ('');setFDep('');setFArr('');setFSrc('');}} className="text-xs text-sky-400">Clear filters</button>}
+      </div>
+      <div className="bg-slate-900 rounded-lg overflow-hidden border border-slate-800">
+        <table className="w-full text-sm"><thead className="bg-slate-800 text-slate-400 text-xs uppercase"><tr><th className="p-3 w-8"><input type="checkbox" onChange={e=>{if(e.target.checked)setSel(new Set(filtered.map(p=>p.id)));else setSel(new Set());}} checked={sel.size===filtered.length&&filtered.length>0} className="accent-sky-500"/></th><th className="text-left p-3">Callsign</th><th className="text-left p-3">Type</th><th className="text-left p-3">DEP</th><th className="text-left p-3">ARR</th><th className="text-left p-3">FL</th><th className="text-left p-3">Route</th><th className="text-left p-3">Source</th><th className="text-left p-3">Added</th><th className="p-3"></th></tr></thead>
+          <tbody>{filtered.map(p=>{const sl=SRC_LABELS[p.source]||{label:p.source||'?',color:'text-slate-400 bg-slate-800'};return<tr key={p.id} onClick={()=>toggleSel(p.id)} className={`border-t border-slate-800 cursor-pointer hover:bg-slate-800/30 ${sel.has(p.id)?'bg-sky-950/20':''}`}><td className="p-3"><input type="checkbox" readOnly checked={sel.has(p.id)} className="accent-sky-500"/></td><td className="p-3 font-mono font-semibold text-slate-200">{p.callsign||<span className="text-slate-600 italic text-xs">no callsign</span>}</td><td className="p-3 font-mono text-slate-300">{p.type||'—'}</td><td className="p-3 font-mono text-slate-400">{p.origin||'—'}</td><td className="p-3 font-mono text-slate-400">{p.dest||'—'}</td><td className="p-3 font-mono text-slate-400">{p.cruiseFL?`FL${p.cruiseFL}`:'—'}</td><td className="p-3 text-slate-500 text-xs max-w-xs truncate font-mono">{(p.route||'').split(' ').slice(0,5).join(' ')}{(p.route||'').split(' ').length>5?'…':''}</td><td className="p-3"><span className={`px-1.5 py-0.5 rounded text-xs font-medium ${sl.color}`}>{sl.label}</span></td><td className="p-3 text-xs text-slate-500">{p.addedAt?new Date(p.addedAt).toLocaleTimeString():''}</td><td className="p-3" onClick={e=>e.stopPropagation()}><button onClick={()=>onDelete([p.id])} className="text-rose-400 hover:text-rose-300"><Icon name="trash"size={14}/></button></td></tr>;})}
+          {!filtered.length&&<tr><td colSpan="10" className="p-8 text-center text-slate-500">{pool.length?'No entries match':'Pool empty — import from Flight Plans or load a pool.json bundle'}</td></tr>}</tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function ScenarioAircraftPanel({scenario,onChange,waypoints,pendingAircraft,onClearPending}){
+  const[editing,setEditing]=useState(null);
+  useEffect(()=>{
+    if(!pendingAircraft)return;
+    if(Array.isArray(pendingAircraft)){const list=[...scenario.aircraft,...pendingAircraft].sort((a,b)=>(+a.start||0)-(+b.start||0));onChange({...scenario,aircraft:list});onClearPending();}
+    else{setEditing(pendingAircraft);onClearPending();}
+  },[pendingAircraft]);
+  const save=ac=>{const list=scenario.aircraft.filter(a=>a.id!==ac.id);list.push(ac);list.sort((a,b)=>(+a.start||0)-(+b.start||0));onChange({...scenario,aircraft:list});setEditing(null);};
+  const remove=id=>onChange({...scenario,aircraft:scenario.aircraft.filter(a=>a.id!==id)});
+  const dup=a=>{const c={...a,id:uid(),callsign:a.callsign+'_2',ruleId:null,groundMeta:null};onChange({...scenario,aircraft:[...scenario.aircraft,c]});};
+  const clearGen=()=>{if(!confirm('Remove rule-generated aircraft?'))return;onChange({...scenario,aircraft:scenario.aircraft.filter(a=>!a.ruleId)});};
+  const clearGround=()=>{if(!confirm('Remove ground-generated aircraft?'))return;onChange({...scenario,aircraft:scenario.aircraft.filter(a=>!a.groundMeta)});};
+  const genCount=scenario.aircraft.filter(a=>a.ruleId).length;
+  const groundCount=scenario.aircraft.filter(a=>a.groundMeta).length;
+  return(
+    <div className="p-6 space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h2 className="text-lg font-semibold text-slate-200">Scenario Aircraft <span className="text-slate-500 text-sm font-normal">({scenario.aircraft.length} · {genCount} rule · {groundCount} ground)</span></h2>
+        <div className="flex gap-2">{groundCount>0&&<button onClick={clearGround} className="px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded text-sm text-slate-200">Clear ground</button>}{genCount>0&&<button onClick={clearGen} className="px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded text-sm text-slate-200">Clear rule-generated</button>}<button onClick={()=>setEditing(emptyAc(false))} className="flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-500 rounded text-sm text-white"><Icon name="landing"/>Arrival</button><button onClick={()=>setEditing(emptyAc(true))} className="flex items-center gap-2 px-3 py-2 bg-amber-600 hover:bg-amber-500 rounded text-sm text-white"><Icon name="takeoff"/>Departure</button></div>
+      </div>
+      <div className="bg-slate-900 rounded-lg overflow-hidden"><table className="w-full text-sm"><thead className="bg-slate-800 text-slate-400 text-xs uppercase"><tr><th className="text-left p-3">Callsign</th><th className="text-left p-3">Type</th><th className="text-left p-3">Role</th><th className="text-left p-3">Route</th><th className="text-left p-3">Spawn</th><th className="text-right p-3">Start</th><th className="text-right p-3"></th></tr></thead>
+        <tbody>{scenario.aircraft.map(a=><tr key={a.id} className={`border-t border-slate-800 hover:bg-slate-800/30 ${a.ruleId||a.groundMeta?'opacity-90':''}`}><td className="p-3 font-mono font-semibold text-slate-200">{a.callsign||'—'}{a.ruleId&&<span className="text-sky-500 ml-1 text-xs" title="rule-generated">●</span>}{a.groundMeta&&<span className="text-amber-500 ml-1 text-xs" title={`${a.groundMeta.source}-generated`}>◆</span>}</td><td className="p-3 font-mono text-slate-300">{a.type||'—'}</td><td className="p-3">{a.isDeparture?<span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-900/40 text-amber-300 rounded text-xs"><Icon name="takeoff"size={12}/>DEP</span>:<span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-900/40 text-emerald-300 rounded text-xs"><Icon name="landing"size={12}/>ARR</span>}</td><td className="p-3 font-mono text-xs text-slate-400">{a.origin||'?'}→{a.dest||'?'}</td><td className="p-3 font-mono text-xs text-slate-400">{a.spawnWaypoint||`${(+a.lat).toFixed(3)},${(+a.lon).toFixed(3)}`}{(+a.preEntryNm||0)>0?` -${a.preEntryNm}nm`:''}</td><td className="p-3 text-right text-slate-400">{a.start!==''?`T+${a.start}`:'—'}</td><td className="p-3 text-right"><div className="flex gap-2 justify-end"><button onClick={()=>setEditing(a)} className="text-sky-400 hover:text-sky-300"><Icon name="edit"size={14}/></button><button onClick={()=>dup(a)} className="text-slate-400 hover:text-slate-200"><Icon name="copy"size={14}/></button><button onClick={()=>remove(a.id)} className="text-rose-400 hover:text-rose-300"><Icon name="trash"size={14}/></button></div></td></tr>)}
+        {!scenario.aircraft.length&&<tr><td colSpan="7" className="p-8 text-center text-slate-500">No aircraft — use Generators or add manually</td></tr>}</tbody>
+      </table></div>
+      {editing&&<AircraftEditor aircraft={editing} waypoints={waypoints} onSave={save} onCancel={()=>setEditing(null)}/>}
+    </div>
+  );
+}
+function AircraftEditor({aircraft,waypoints,onSave,onCancel}){
+  const[a,setA]=useState(aircraft);const[wptSearch,setWptSearch]=useState('');
+  const update=(f,v)=>setA(prev=>({...prev,[f]:v}));
+  const pickSpawn=w=>{setA(prev=>({...prev,lat:w.lat,lon:w.lon,spawnWaypoint:w.name}));setWptSearch('');};
+  const wptMatches=useMemo(()=>{if(!wptSearch.trim())return[];const f=wptSearch.trim().toUpperCase();return waypoints.filter(w=>w.name.startsWith(f)).slice(0,10);},[wptSearch,waypoints]);
+  const off=useMemo(()=>((+a.preEntryNm||0)>0&&a.spawnWaypoint)?preEntryOffset(a.spawnWaypoint,a.simRoute,+a.preEntryNm,waypoints,a.fpRoute):null,[a.preEntryNm,a.spawnWaypoint,a.simRoute,a.fpRoute,waypoints]);
+  const lb="block text-xs text-slate-400 mb-1";const ip="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-sm text-slate-200 font-mono focus:border-sky-500 focus:outline-none";
+  return(
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+      <div className="bg-slate-900 rounded-xl max-w-4xl w-full max-h-[90vh] overflow-auto border border-slate-700">
+        <div className="sticky top-0 bg-slate-900 border-b border-slate-700 p-4 flex items-center justify-between"><h3 className="text-lg font-semibold text-slate-200">{aircraft.callsign?`Edit ${aircraft.callsign}`:`New ${a.isDeparture?'Departure':'Arrival'}`}</h3><button onClick={onCancel} className="text-slate-400 hover:text-slate-200"><Icon name="x"size={20}/></button></div>
+        <div className="p-5 space-y-5">
+          <section><h4 className="text-xs uppercase text-slate-500 font-semibold mb-2">Identity</h4><div className="grid grid-cols-4 gap-3"><div><label className={lb}>Callsign</label><input className={ip} value={a.callsign} onChange={e=>update('callsign',e.target.value.toUpperCase())}/></div><div><label className={lb}>Type</label><input className={ip} value={a.type} onChange={e=>update('type',e.target.value.toUpperCase())} placeholder="A320"/></div><div><label className={lb}>Squawk</label><input className={ip} value={a.squawk} onChange={e=>update('squawk',e.target.value)}/></div><div><label className={lb}>Runway</label><input className={ip} value={a.runway} onChange={e=>update('runway',e.target.value.toUpperCase())}/></div></div></section>
+          <section><h4 className="text-xs uppercase text-slate-500 font-semibold mb-2">Flight Plan</h4><div className="grid grid-cols-3 gap-3 mb-3"><div><label className={lb}>Origin</label><input className={ip} value={a.origin} onChange={e=>update('origin',e.target.value.toUpperCase())}/></div><div><label className={lb}>Destination</label><input className={ip} value={a.dest} onChange={e=>update('dest',e.target.value.toUpperCase())}/></div><div><label className={lb}>Cruise Alt (ft)</label><input type="number" className={ip} value={a.cruiseAlt} onChange={e=>update('cruiseAlt',+e.target.value)}/></div></div><div><label className={lb}>FP Route</label><textarea className={`${ip} min-h-[60px]`} value={a.fpRoute} onChange={e=>update('fpRoute',e.target.value)}/></div></section>
+          <section><h4 className="text-xs uppercase text-slate-500 font-semibold mb-2">Spawn Position</h4><div className="mb-3"><label className={lb}>Waypoint {a.spawnWaypoint&&<span className="text-sky-400">· {a.spawnWaypoint}</span>}</label><div className="relative"><input value={wptSearch} onChange={e=>setWptSearch(e.target.value.toUpperCase())} placeholder="Type waypoint name..." className={ip}/>{wptMatches.length>0&&<div className="absolute top-full left-0 right-0 bg-slate-800 border border-slate-700 rounded mt-1 z-10 max-h-48 overflow-auto">{wptMatches.map(w=><button key={`${w.type}-${w.name}`} onClick={()=>pickSpawn(w)} className="w-full text-left px-3 py-1.5 hover:bg-slate-700 text-xs font-mono flex justify-between"><span className="text-slate-200">{w.name}</span><span className="text-slate-500">{w.lat.toFixed(4)}, {w.lon.toFixed(4)}</span></button>)}</div>}</div></div>
+          <div className="grid grid-cols-5 gap-3"><div><label className={lb}>Lat</label><input type="number" step="0.0000001" className={ip} value={a.lat} onChange={e=>update('lat',+e.target.value)}/></div><div><label className={lb}>Lon</label><input type="number" step="0.0000001" className={ip} value={a.lon} onChange={e=>update('lon',+e.target.value)}/></div><div><label className={lb}>Alt (ft)</label><input type="number" className={ip} value={a.alt} onChange={e=>update('alt',+e.target.value)}/></div><div><label className={lb}>GS</label><input type="number" className={ip} value={a.gs} onChange={e=>update('gs',+e.target.value)}/></div><div><label className={lb}>Start (min)</label><input type="number" step="0.1" className={ip} value={a.start} onChange={e=>update('start',e.target.value===''?'':+e.target.value)} placeholder="blank=T+0"/></div></div></section>
+          <section><div className="flex items-center justify-between mb-2"><h4 className="text-xs uppercase text-slate-500 font-semibold">Sim Route</h4>{a.spawnWaypoint&&<button onClick={()=>setA(prev=>({...prev,simRoute:trimRoute(a.simRoute,a.spawnWaypoint)}))} className="text-xs px-2 py-1 bg-sky-700 hover:bg-sky-600 rounded text-white">Trim from {a.spawnWaypoint}</button>}</div><textarea className={`${ip} min-h-[60px]`} value={a.simRoute} onChange={e=>update('simRoute',e.target.value)}/></section>
+          <section><h4 className="text-xs uppercase text-slate-500 font-semibold mb-2">Pre-entry Offset</h4>
+            <div className="space-y-2">
+              <div className="flex items-center gap-3"><label className="text-xs text-slate-400 w-24">Distance:</label><input type="range" min="0" max="50" step="1" className="flex-1" value={a.preEntryNm||0} onChange={e=>update('preEntryNm',+e.target.value)}/><span className="w-16 text-right text-sm font-mono text-sky-300">{a.preEntryNm||0} NM</span></div>
+              {off?<div className="text-xs font-mono text-sky-300 bg-sky-950/40 border border-sky-900 rounded p-2"><div className="text-slate-400 mb-1">Computed ({a.preEntryNm} NM before {a.spawnWaypoint}):</div>{off.lat.toFixed(5)}, {off.lon.toFixed(5)}</div>:(+a.preEntryNm||0)>0&&<div className="text-xs text-amber-400">⚠ Cannot compute — need upstream waypoint in FP/sim route</div>}
+            </div>
+          </section>
+          <section><h4 className="text-xs uppercase text-slate-500 font-semibold mb-2">Altitude Request</h4><div className="grid grid-cols-2 gap-3"><div><label className={lb}>At waypoint</label><input className={ip} value={a.reqAltWpt} onChange={e=>update('reqAltWpt',e.target.value.toUpperCase())}/></div><div><label className={lb}>Request altitude</label><input type="number" className={ip} value={a.reqAltVal} onChange={e=>update('reqAltVal',e.target.value===''?'':+e.target.value)}/></div></div></section>
+        </div>
+        <div className="sticky bottom-0 bg-slate-900 border-t border-slate-700 p-4 flex justify-end gap-2"><button onClick={onCancel} className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded text-sm text-slate-200">Cancel</button><button onClick={()=>onSave(a)} className="px-4 py-2 bg-sky-600 hover:bg-sky-500 rounded text-sm text-white font-medium">Save</button></div>
+      </div>
+    </div>
+  );
+}
+
+function GeneratorsTabPanel(props){
+  const[,setTick]=useState(0);
+  const[subTab,setSubTab]=useState('S1');
+  useEffect(()=>{const off=window.SB.onRegister(()=>setTick(t=>t+1));return off;},[]);
+  const order=['S1','S2','S3','C1'];
+  const labels={S1:'S1 Ground',S2:'S2 Tower',S3:'S3 Approach',C1:'C1 Enroute'};
+  const registry=window.SB._registry||[];
+  const byId=Object.fromEntries(registry.map(g=>[g.id,g]));
+  const extras=registry.map(g=>g.id).filter(id=>!order.includes(id));
+  const fullOrder=[...order,...extras];
+  const active=byId[subTab];
+  return(
+    <div className="flex flex-col h-full">
+      <div className="flex border-b border-slate-800 bg-slate-900/40 overflow-x-auto">
+        {fullOrder.map(id=>{
+          const g=byId[id];const lbl=g?.label||labels[id]||id;const loaded=!!g;
+          return<button key={id} onClick={()=>setSubTab(id)} className={`flex items-center gap-2 px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors ${subTab===id?'text-sky-400 border-b-2 border-sky-400 bg-slate-800/40':loaded?'text-slate-400 hover:text-slate-200 hover:bg-slate-800/30':'text-slate-700 hover:text-slate-600'}`}>{lbl}{!loaded&&<span className="text-xs italic">(not loaded)</span>}</button>;
+        })}
+      </div>
+      <div className="flex-1 overflow-auto">
+        {active?active.render(props):(
+          <div className="p-12 text-center text-slate-500">
+            <div className="text-slate-600 mb-2"><Icon name="zap" size={32} className="mx-auto"/></div>
+            <p className="mb-1">{labels[subTab]||subTab} plugin not loaded.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ExportPanel({scenario,waypoints}){
+  const[autoAssign,setAutoAssign]=useState(false);const[initPP,setInitPP]=useState('');
+  const output=useMemo(()=>generateSweatbox(scenario,waypoints,{initPseudoPilot:autoAssign?initPP:''}),[scenario,waypoints,autoAssign,initPP]);
+  const[copied,setCopied]=useState(false);
+  const copy=()=>{navigator.clipboard.writeText(output);setCopied(true);setTimeout(()=>setCopied(false),1500);};
+  const dl=()=>{const blob=new Blob([output],{type:'text/plain'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`${scenario.name.replace(/[^a-z0-9]+/gi,'_')}.txt`;a.click();URL.revokeObjectURL(url);};
+  return(
+    <div className="p-6 space-y-3 flex flex-col h-full">
+      <div className="flex items-center justify-between"><h2 className="text-lg font-semibold text-slate-200">Export</h2><div className="flex gap-2"><button onClick={copy} className="flex items-center gap-2 px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded text-sm text-slate-200"><Icon name="copy"size={14}/>{copied?'Copied':'Copy'}</button><button onClick={dl} className="flex items-center gap-2 px-3 py-2 bg-sky-600 hover:bg-sky-500 rounded text-sm text-white font-medium"><Icon name="download"size={14}/>Download</button></div></div>
+      <div className="bg-slate-900 border border-slate-800 rounded-lg p-4 space-y-3">
+        <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer"><input type="checkbox" checked={autoAssign} onChange={e=>setAutoAssign(e.target.checked)} className="accent-sky-500"/>Auto-assign initial pseudo pilot</label>
+        {autoAssign&&<div><label className="block text-xs text-slate-400 mb-1">Mentor callsign</label><input value={initPP} onChange={e=>setInitPP(e.target.value.toUpperCase())} placeholder="LFPG_APP" className="w-48 bg-slate-950 border border-slate-700 rounded px-3 py-1.5 text-sm text-slate-200 font-mono"/></div>}
+        {(scenario.holdings||[]).length>0&&<p className="text-xs text-sky-400"><Icon name="check"size={12}className="inline mr-1"/>{(scenario.holdings||[]).length} holding pattern{(scenario.holdings||[]).length!==1?'s':''} defined in Setup</p>}
+        {waypoints.length>0&&<p className="text-xs text-emerald-600"><Icon name="check"size={12}className="inline mr-1"/>Navdata loaded — pre-entry offsets computed at export</p>}
+      </div>
+      <pre className="flex-1 bg-slate-950 border border-slate-700 rounded-lg p-4 text-xs font-mono text-slate-300 overflow-auto whitespace-pre min-h-[400px]">{output}</pre>
+    </div>
+  );
+}
+
+function SavedPanel({scenario,onChange}){
+  const[list,setList]=useState([]);
+  const[name,setName]=useState(scenario.name);
+  const[status,setStatus]=useState('');
+  const[rulesText,setRulesText]=useState('');
+  const[rulesMode,setRulesMode]=useState('merge');
+
+  useEffect(()=>setName(scenario.name),[scenario.name]);
+  const refresh=()=>setList(storage.get(KEYS.list)||[]);
+  useEffect(refresh,[]);
+
+  const flash=m=>{setStatus(m);setTimeout(()=>setStatus(''),3000);};
+
+  const save=()=>{
+    if(!name.trim())return;
+    const l=storage.get(KEYS.list)||[];
+    storage.set(KEYS.list,Array.from(new Set([...l,name])));
+    storage.set(`sb:sc:${name}`,{...scenario,name});
+    flash(`Saved "${name}"`);refresh();
+  };
+  const load=n=>{
+    const s=storage.get(`sb:sc:${n}`);
+    if(s){onChange({...defaultScenario(),...s,rules:migrateRules(s.rules)});flash(`Loaded "${n}"`);}
+  };
+  const del=n=>{
+    const l=storage.get(KEYS.list)||[];
+    storage.set(KEYS.list,l.filter(x=>x!==n));
+    storage.del(`sb:sc:${n}`);refresh();
+  };
+
+  function exportScenario(){
+    const filename=`${(scenario.name||'scenario').replace(/[^a-z0-9]+/gi,'_')}.scenario.json`;
+    downloadJsonBundle(filename,{kind:'sweatbox-scenario',version:1,exportedAt:new Date().toISOString(),scenario});
+    flash(`Exported ${filename}`);
+  }
+  async function importScenario(e){
+    const file=e.target.files?.[0];if(!file)return;e.target.value='';
+    try{
+      const b=await readJsonFile(file);
+      if(b.kind!=='sweatbox-scenario')throw new Error('Not a scenario bundle');
+      if(!b.scenario||typeof b.scenario!=='object')throw new Error('Bundle missing .scenario');
+      if(!confirm(`Replace current scenario "${scenario.name}" with "${b.scenario.name||'(unnamed)'}"?`))return;
+      const next={...defaultScenario(),...b.scenario,rules:migrateRules(b.scenario.rules)};
+      onChange(next);flash(`Imported ${file.name}`);
+    }catch(err){flash('Import failed: '+(err.message||err));}
+  }
+
+  function extractRules(parsed){
+    if(Array.isArray(parsed))return parsed;
+    if(parsed&&parsed.kind==='sweatbox-rules'&&Array.isArray(parsed.rules))return parsed.rules;
+    if(parsed&&parsed.kind==='sweatbox-scenario'&&parsed.scenario&&Array.isArray(parsed.scenario.rules))return parsed.scenario.rules;
+    if(parsed&&Array.isArray(parsed.rules))return parsed.rules;
+    throw new Error('Could not find a rules array in the input');
+  }
+  function applyRules(incoming){
+    const normalised=incoming.map(r=>({...emptyRule(),...r,id:r.id||uid(),mode:r.mode||'S3',}));
+    if(rulesMode==='replace'){
+      const existing=(scenario.rules||[]).length;
+      if(!confirm(`Replace all ${existing} existing rule${existing!==1?'s':''} with ${normalised.length} imported rule${normalised.length!==1?'s':''}?`))return;
+      const keptAc=scenario.aircraft.filter(a=>!a.ruleId);
+      onChange({...scenario,rules:normalised,aircraft:keptAc});
+      flash(`Replaced rules: ${normalised.length} imported`);
+    }else{
+      const existingIds=new Set((scenario.rules||[]).map(r=>r.id));
+      const merged=[...(scenario.rules||[]).filter(r=>!normalised.some(n=>n.id===r.id)),...normalised,];
+      const overlap=normalised.filter(n=>existingIds.has(n.id)).length;
+      onChange({...scenario,rules:merged});
+      flash(`Merged ${normalised.length} rule${normalised.length!==1?'s':''}${overlap?` (${overlap} replaced by id)`:''}`);
+    }
+  }
+  function importRulesFromText(){
+    if(!rulesText.trim()){flash('Paste rules JSON first');return;}
+    try{const parsed=JSON.parse(rulesText);const rules=extractRules(parsed);if(!rules.length)throw new Error('Rules array is empty');applyRules(rules);setRulesText('');}
+    catch(err){flash('Parse failed: '+(err.message||err));}
+  }
+  async function importRulesFromFile(e){
+    const file=e.target.files?.[0];if(!file)return;e.target.value='';
+    try{const parsed=await readJsonFile(file);const rules=extractRules(parsed);if(!rules.length)throw new Error('Rules array is empty');applyRules(rules);}
+    catch(err){flash('Import failed: '+(err.message||err));}
+  }
+
+  return(
+    <div className="p-6 space-y-6 max-w-3xl">
+      <div className="space-y-3">
+        <h2 className="text-lg font-semibold text-slate-200">Save Current <span className="text-slate-500 text-sm font-normal">(browser storage)</span></h2>
+        <div className="flex gap-2">
+          <input value={name} onChange={e=>setName(e.target.value)} className="flex-1 bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200" placeholder="Scenario name"/>
+          <button onClick={save} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded text-sm text-white"><Icon name="save" size={14}/>Save</button>
+        </div>
+        {status&&<div className="text-xs text-emerald-400">{status}</div>}
+      </div>
+
+      <div className="space-y-3">
+        <h2 className="text-lg font-semibold text-slate-200">Saved Scenarios</h2>
+        <div className="space-y-2">
+          {list.map(n=>
+            <div key={n} className="flex items-center justify-between bg-slate-900 rounded p-3">
+              <span className="text-sm text-slate-200 font-mono">{n}</span>
+              <div className="flex gap-2">
+                <button onClick={()=>load(n)} className="px-3 py-1 text-xs bg-sky-700 hover:bg-sky-600 rounded text-white">Load</button>
+                <button onClick={()=>del(n)} className="text-rose-400 hover:text-rose-300 p-1"><Icon name="trash" size={14}/></button>
+              </div>
+            </div>
+          )}
+          {!list.length&&<div className="text-sm text-slate-500">No saved scenarios</div>}
+        </div>
+      </div>
+
+      <div className="space-y-3 border-t border-slate-800 pt-5">
+        <h2 className="text-lg font-semibold text-slate-200">Scenario bundle <span className="text-slate-500 text-sm font-normal">(.scenario.json)</span></h2>
+        <p className="text-xs text-slate-500">Export the entire current scenario as a portable JSON file.</p>
+        <div className="flex gap-2">
+          <button onClick={exportScenario} className="flex items-center gap-1.5 px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded text-sm text-slate-200"><Icon name="download" size={14}/>Export scenario</button>
+          <label className="flex items-center gap-1.5 px-3 py-2 bg-sky-700 hover:bg-sky-600 rounded text-sm text-white cursor-pointer">
+            <Icon name="upload" size={14}/>Import scenario
+            <input type="file" accept=".json,application/json" onChange={importScenario} className="hidden"/>
+          </label>
+        </div>
+      </div>
+
+      <div className="space-y-3 border-t border-slate-800 pt-5">
+        <h2 className="text-lg font-semibold text-slate-200">Import rules only</h2>
+        <p className="text-xs text-slate-500">Paste rules JSON or upload a file. Imported rules are not auto-applied — review in Generators tab and click Apply All when ready.</p>
+        <div className="flex items-center gap-4 text-sm bg-slate-950/60 border border-slate-800 rounded p-2.5">
+          <span className="text-xs text-slate-400 font-semibold uppercase">Mode</span>
+          <label className="flex items-center gap-1.5 cursor-pointer"><input type="radio" checked={rulesMode==='merge'} onChange={()=>setRulesMode('merge')} className="accent-sky-500"/><span className="text-slate-300">Merge</span></label>
+          <label className="flex items-center gap-1.5 cursor-pointer"><input type="radio" checked={rulesMode==='replace'} onChange={()=>setRulesMode('replace')} className="accent-sky-500"/><span className="text-slate-300">Replace all</span></label>
+        </div>
+        <textarea value={rulesText} onChange={e=>setRulesText(e.target.value)} placeholder='[{"name":"...","mode":"S3","spawnWaypoint":"ODILO", ... }]' className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-xs font-mono text-slate-300 focus:border-sky-500 focus:outline-none h-40"/>
+        <div className="flex gap-2">
+          <button onClick={importRulesFromText} disabled={!rulesText.trim()} className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-500 rounded text-sm text-white"><Icon name="upload" size={14}/>Import pasted rules</button>
+          <label className="flex items-center gap-1.5 px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded text-sm text-slate-200 cursor-pointer"><Icon name="folder" size={14}/>…or upload JSON file<input type="file" accept=".json,application/json" onChange={importRulesFromFile} className="hidden"/></label>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function App(){
+  const[tab,setTab]=useState('pool');
+  const[scenario,setScenario]=useState(defaultScenario());
+  const[pluginStatus,setPluginStatus]=useState(null);
+  const[autoBundleStatus,setAutoBundleStatus]=useState(null);
+  async function reloadPlugins(){
+    setPluginStatus('loading');
+    const r=await window.SB._loadPlugins();
+    setPluginStatus(r);
+    setTimeout(()=>setPluginStatus(null),4000);
+  }
+  const[waypoints,setWaypoints]=useState([]);const[airports,setAirports]=useState([]);
+  const[positions,setPositions]=useState([]);const[runways,setRunways]=useState([]);
+  const[stars,setStars]=useState([]);const[copx,setCopx]=useState([]);const[gates,setGates]=useState([]);
+  const[navMeta,setNavMeta]=useState({});const[loaded,setLoaded]=useState(false);
+  const[navAirac,setNavAirac]=useState('');const[poolAirac,setPoolAirac]=useState('');
+  const[rampAgent,setRampAgent]=useState({});
+  const[rampConfig,setRampConfig]=useState(null);
+  const[pendingAircraft,setPendingAircraft]=useState(null);
+  const[pool,setPool]=useState([]);
+  const[vatsimCache,setVatsimCache]=useState({pilots:[],icao:'',mode:'arr',fetchedAt:null});
+
+  // Initial load from localStorage
+  useEffect(()=>{
+    const wp=storage.get(KEYS.waypoints);if(wp)setWaypoints(wp);
+    const ap=storage.get(KEYS.airports);if(ap)setAirports(ap);
+    const po=storage.get(KEYS.positions);if(po)setPositions(po);
+    const rw=storage.get(KEYS.runways);if(rw)setRunways(rw);
+    const st=storage.get(KEYS.stars);if(st)setStars(st);
+    const cx=storage.get(KEYS.copx);if(cx)setCopx(cx);
+    const gt=storage.get(KEYS.gates);if(gt)setGates(gt);
+    const meta=storage.get(KEYS.navMeta);if(meta)setNavMeta(meta);
+    const cur=storage.get(KEYS.current);if(cur)setScenario({...defaultScenario(),...cur,rules:migrateRules(cur.rules)});
+    const pl=storage.get(KEYS.pool);if(pl)setPool(pl);
+    const na=storage.get(KEYS.navAirac);if(na)setNavAirac(na);
+    const pa=storage.get(KEYS.poolAirac);if(pa)setPoolAirac(pa);
+    const ra=storage.get(KEYS.rampAgent);if(ra)setRampAgent(ra);
+    const rc=storage.get(KEYS.rampConfig);if(rc){setRampConfig(rc);window.SB.rampConfig=rc;}
+    setLoaded(true);
+  },[]);
+
+  // Debounced scenario save
+  useEffect(()=>{if(!loaded)return;const t=setTimeout(()=>storage.set(KEYS.current,scenario),400);return()=>clearTimeout(t);},[scenario,loaded]);
+
+  // Persistent state mirrors
+  usePersist(pool,KEYS.pool,loaded);
+  usePersist(navAirac,KEYS.navAirac,loaded);
+  usePersist(poolAirac,KEYS.poolAirac,loaded);
+  usePersist(rampAgent,KEYS.rampAgent,loaded,v=>{window.SB.rampAgent=v;});
+  usePersist(rampConfig,KEYS.rampConfig,loaded,v=>{window.SB.rampConfig=v;});
+  useEffect(()=>{if(!loaded)return;window.SB.stars=stars;},[stars,loaded]);
+
+  // One-time auto-load of navdata.json / pool.json from disk if available
+  useEffect(()=>{
+    if(!loaded)return;
+    let cancelled=false;
+    (async()=>{
+      const results=[];
+      try{
+        const r=await fetch('navdata.json',{cache:'no-cache'});
+        if(r.ok){
+          const b=await r.json();
+          if(b.kind==='sweatbox-navdata'){
+            const existingTs=Math.max(navMeta?.sctAt||0,navMeta?.eseAt||0);
+            const bundleTs=b.exportedAt?new Date(b.exportedAt).getTime():0;
+            if(!existingTs||bundleTs>existingTs){applyNavBundle(b);results.push(`navdata${b.airac?` (AIRAC ${b.airac})`:''}`);}
+          }
+        }
+      }catch{}
+      try{
+        const r=await fetch('pool.json',{cache:'no-cache'});
+        if(r.ok){
+          const b=await r.json();
+          if(b.kind==='sweatbox-pool'){
+            const existingCount=pool.length;const bundleCount=(b.pool||[]).length;
+            if(!existingCount||bundleCount>existingCount){applyPoolBundle(b);results.push(`pool${b.airac?` (AIRAC ${b.airac})`:''}: ${bundleCount} entries`);}
+          }
+        }
+      }catch{}
+      if(!cancelled&&results.length){setAutoBundleStatus('Loaded from disk: '+results.join(' · '));setTimeout(()=>setAutoBundleStatus(null),5000);}
+    })();
+    return()=>{cancelled=true;};
+  },[loaded]);
+
+  function applyNavBundle(b){
+    const wp=b.waypoints||[];const ap=b.airports||[];const po=b.positions||[];
+    const rw=b.runways||[];const st=b.stars||[];const cx=b.copx||[];const gt=b.gates||[];
+    setWaypoints(wp);setAirports(ap);setPositions(po);setRunways(rw);
+    setStars(st);setCopx(cx);setGates(gt);
+    storage.set(KEYS.waypoints,wp);storage.set(KEYS.airports,ap);storage.set(KEYS.positions,po);
+    storage.set(KEYS.runways,rw);storage.set(KEYS.stars,st);storage.set(KEYS.copx,cx);storage.set(KEYS.gates,gt);
+    const meta=b.navMeta||{sctAt:Date.now(),eseAt:Date.now()};
+    setNavMeta(meta);storage.set(KEYS.navMeta,meta);
+    if(b.airac){setNavAirac(b.airac);storage.set(KEYS.navAirac,b.airac);}
+  }
+  function applyPoolBundle(b){
+    const items=(b.pool||[]).map(p=>({...p,id:p.id||uid()}));
+    setPool(items);storage.set(KEYS.pool,items);
+    if(b.airac){setPoolAirac(b.airac);storage.set(KEYS.poolAirac,b.airac);}
+  }
+
+  const handleParseSct=({waypoints:wp,airports:ap,runways:rw})=>{setWaypoints(wp);setAirports(ap);setRunways(rw);storage.set(KEYS.waypoints,wp);storage.set(KEYS.airports,ap);storage.set(KEYS.runways,rw);const meta={...navMeta,sctAt:Date.now()};setNavMeta(meta);storage.set(KEYS.navMeta,meta);};
+  const handleParseEse=({positions:po,stars:st,copx:cx,gates:gt})=>{setPositions(po);setStars(st||[]);setCopx(cx||[]);setGates(gt||[]);storage.set(KEYS.positions,po);storage.set(KEYS.stars,st||[]);storage.set(KEYS.copx,cx||[]);storage.set(KEYS.gates,gt||[]);const meta={...navMeta,eseAt:Date.now()};setNavMeta(meta);storage.set(KEYS.navMeta,meta);};
+  const resetSct=()=>{if(!confirm('Clear sector data?'))return;setWaypoints([]);setAirports([]);setRunways([]);storage.del(KEYS.waypoints);storage.del(KEYS.airports);storage.del(KEYS.runways);const meta={...navMeta,sctAt:null};setNavMeta(meta);storage.set(KEYS.navMeta,meta);};
+  const resetEse=()=>{if(!confirm('Clear ESE data?'))return;setPositions([]);setStars([]);setCopx([]);setGates([]);storage.del(KEYS.positions);storage.del(KEYS.stars);storage.del(KEYS.copx);storage.del(KEYS.gates);const meta={...navMeta,eseAt:null};setNavMeta(meta);storage.set(KEYS.navMeta,meta);};
+  const handleAddToPool=(items,source)=>setPool(prev=>addToPool(prev,items,source));
+  const handleDeleteFromPool=ids=>setPool(prev=>prev.filter(p=>!ids.includes(p.id)));
+  const handleAddPoolToScenario=entries=>{setPendingAircraft(entries.map(e=>poolToAc(e,false)));setTab('scenario');};
+  const handleLoadRampAgent=(parsed)=>{setRampAgent(prev=>({...prev,[parsed.icao]:parsed}));};
+  const handleLoadRampConfig=(parsed)=>{setRampConfig(parsed);};
+  const handleResetRampAgent=()=>{if(!confirm('Clear all RampAgent data?'))return;setRampAgent({});setRampConfig(null);storage.del(KEYS.rampAgent);storage.del(KEYS.rampConfig);};
+
+  const generatorProps={scenario,onChange:setScenario,waypoints,airports,runways,positions,pool,stars,copx,gates,rampAgent,rampConfig};
+
+  return(
+    <div className="min-h-screen bg-slate-950 text-slate-200 flex flex-col">
+      <header className="bg-slate-900 border-b border-slate-700 px-6 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-3"><div className="text-sky-400"><Icon name="plane"size={20}/></div><div><h1 className="text-sm font-semibold">Sweatbox Builder v6 · rc3</h1><p className="text-xs text-slate-500">{scenario.name} · {scenario.aircraft.length} ac · {pool.length} pool · {(scenario.rules||[]).length} rules · {(scenario.holdings||[]).length} hold · {gates.length} gates</p></div></div>
+        <div className="flex gap-2 items-center">
+          <button onClick={reloadPlugins} disabled={pluginStatus==='loading'} className="text-xs text-slate-400 hover:text-slate-200 disabled:opacity-50 px-3 py-1 border border-slate-700 rounded">{pluginStatus==='loading'?'Loading…':pluginStatus?`Reloaded · ${pluginStatus.loaded.length} ok`:'Reload plugins'}</button>
+          <button onClick={()=>{if(confirm('Discard scenario?'))setScenario(defaultScenario());}} className="text-xs text-slate-400 hover:text-slate-200 px-3 py-1 border border-slate-700 rounded">New</button>
+        </div>
+      </header>
+      <TabBar active={tab} onChange={setTab} poolCount={pool.length} scenarioCount={scenario.aircraft.length}/>
+      {autoBundleStatus&&<div className="bg-emerald-950/40 border-b border-emerald-900/40 px-6 py-2 text-xs text-emerald-300 flex items-center gap-2"><Icon name="check" size={12}/>{autoBundleStatus}</div>}
+      <main className="flex-1 overflow-auto">
+        {tab==='navdata'&&<NavdataPanel waypoints={waypoints} airports={airports} positions={positions} runways={runways} stars={stars} copx={copx} gates={gates} navMeta={navMeta} airac={navAirac} onSetAirac={setNavAirac} onParseSct={handleParseSct} onParseEse={handleParseEse} onResetSct={resetSct} onResetEse={resetEse} onImportBundle={applyNavBundle} rampAgent={rampAgent} rampConfig={rampConfig} onLoadRampAgent={handleLoadRampAgent} onLoadRampConfig={handleLoadRampConfig} onResetRampAgent={handleResetRampAgent}/>}
+        {tab==='setup'&&<SetupPanel scenario={scenario} onChange={setScenario} positions={positions} runways={runways} waypoints={waypoints}/>}
+        {tab==='plans'&&<FlightPlansPanel onAddToPool={handleAddToPool} vatsimCache={vatsimCache} setVatsimCache={setVatsimCache}/>}
+        {tab==='pool'&&<AircraftPoolPanel pool={pool} onDelete={handleDeleteFromPool} onAddToScenario={handleAddPoolToScenario} airac={poolAirac} onSetAirac={setPoolAirac} onImportPool={applyPoolBundle}/>}
+        {tab==='generators'&&<GeneratorsTabPanel {...generatorProps}/>}
+        {tab==='scenario'&&<ScenarioAircraftPanel scenario={scenario} onChange={setScenario} waypoints={waypoints} pendingAircraft={pendingAircraft} onClearPending={()=>setPendingAircraft(null)}/>}
+        {tab==='export'&&<ExportPanel scenario={scenario} waypoints={waypoints}/>}
+        {tab==='saved'&&<SavedPanel scenario={scenario} onChange={setScenario}/>}
+      </main>
+    </div>
+  );
+}
+
+Object.assign(window.SB,{
+  React,useState,useEffect,useMemo,
+  Icon,storage,KEYS,uid,
+  genCS,trimRoute,preEntryOffset,computeSpawnGs,
+  GS_BY_WTC,TYPE_CATS,HJ_TYPES,
+  ICAO_CS,REGION_PFX,LH_CS,
+  pickPool,expandCS,assignSquawk,
+  poolIcaosByRegion,pickIcao,
+  SRC_LABELS,
+  parseDMS,bearingBetween,destinationPoint,
+  emptyAc,emptyRule,generateFromRule,
+  iasToTas,machToTas,
+  GATE_DENYLIST,migrateRules,
+  parseRampAgent,parseRampAirport,parseRampConfig,detectRampFileKind,
+  aircraftFootprint,standFitsType,pickStand,wingspanToCode,
+  WTC_FALLBACK,
+  downloadJsonBundle,readJsonFile,readTextFile,
+  rampAgent:{},rampConfig:null,stars:[],
+});
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+
+window.SB._loadPlugins().then(r=>{
+  if(r.failed&&r.failed.length)console.warn('[SB] plugin failures:',r.failed);
+});
+</script>
+</body>
+</html>

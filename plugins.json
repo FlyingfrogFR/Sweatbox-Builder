@@ -1,0 +1,8 @@
+{
+  "plugins": [
+    "scenario-s1-ground.js",
+    "scenario-s2-tower.js",
+    "scenario-s3-approach.js",
+    "scenario-c1-enroute.js"
+  ]
+}
