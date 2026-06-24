@@ -15,12 +15,15 @@ module.exports = {
   rules: {
     "react/react-in-jsx-scope": "off",
     "react/prop-types": "off",
+    "react/no-unescaped-entities": "off",
     "@typescript-eslint/no-explicit-any": "off",
     "@typescript-eslint/no-unused-vars": "off",
     "@typescript-eslint/ban-ts-comment": "off",
     "no-empty": "off",
     "no-control-regex": "off",
+    "no-useless-escape": "off",
     "prefer-const": "off",
+    "@typescript-eslint/no-unused-expressions": "off",
   },
   ignorePatterns: ["dist/", "node_modules/", "src-tauri/", "reference/", "tests/fixtures/"],
 };

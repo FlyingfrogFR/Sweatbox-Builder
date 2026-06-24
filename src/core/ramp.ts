@@ -74,3 +74,62 @@ export function pickStand(
   });
   return candidates[0];
 }
+
+// ── RampAgent JSON parsing, copied VERBATIM from the rc3 shell ────────────────
+
+export function detectRampFileKind(json: any) {
+  if (!json || typeof json !== "object") return null;
+  if (json.AircraftWingspans && typeof json.AircraftWingspans === "object") return "config";
+  if (json.ICAO && json.Stands && typeof json.Stands === "object") return "airport";
+  return null;
+}
+
+export function parseRampAirport(json: any) {
+  const icao = String(json.ICAO || "").toUpperCase().trim();
+  if (!/^[A-Z]{4}$/.test(icao)) throw new Error(`Invalid or missing ICAO: "${json.ICAO}"`);
+  const stands: any[] = [];
+  for (const [label, s] of Object.entries<any>(json.Stands || {})) {
+    if (!s || typeof s !== "object") continue;
+    const coords = String(s.Coordinates || "")
+      .split(":")
+      .map((x) => parseFloat(x.trim()));
+    if (coords.length < 2 || !isFinite(coords[0]) || !isFinite(coords[1])) continue;
+    stands.push({
+      label: String(label),
+      lat: coords[0],
+      lon: coords[1],
+      code: s.Code ? String(s.Code).toUpperCase() : null,
+      wingspan: typeof s.Wingspan === "number" ? s.Wingspan : null,
+      use: s.Use ? String(s.Use).toUpperCase() : null,
+      priority: typeof s.Priority === "number" ? s.Priority : 5,
+      callsigns: Array.isArray(s.Callsigns) ? s.Callsigns.map((c: any) => String(c).toUpperCase()) : [],
+      block: Array.isArray(s.Block) ? s.Block.map(String) : [],
+      remark: s.Remark || null,
+    });
+  }
+  return { kind: "airport", icao, version: json.version || null, stands };
+}
+
+export function parseRampConfig(json: any) {
+  return {
+    kind: "config",
+    version: json.version || null,
+    aircraftWingspans: Object.fromEntries(
+      Object.entries<any>(json.AircraftWingspans || {})
+        .map(([k, v]) => [k.toUpperCase(), +v])
+        .filter(([, v]) => isFinite(v as number)),
+    ),
+    generalAviation: new Set((json.GeneralAviation || []).map((t: any) => t.toUpperCase())),
+    helicopters: new Set((json.Helicopters || []).map((t: any) => t.toUpperCase())),
+    cargoOperators: new Set((json.CargoOperator || []).map((c: any) => c.toUpperCase())),
+    military: new Set((json.Military || []).map((t: any) => t.toUpperCase())),
+    raw: json,
+  };
+}
+
+export function parseRampAgent(json: any) {
+  const kind = detectRampFileKind(json);
+  if (kind === "config") return parseRampConfig(json);
+  if (kind === "airport") return parseRampAirport(json);
+  throw new Error("Unrecognised RampAgent JSON (no AircraftWingspans, no ICAO+Stands)");
+}
