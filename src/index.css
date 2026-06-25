@@ -36,6 +36,8 @@
   --pu-fg: 167 139 250;
   --rd-fg: 224 106 122;
   --rd-mut: 106 74 79;
+  --arr: 232 116 110; /* Direction B: arrivals (red) */
+  --dep: 111 158 239; /* Direction B: departures (blue) */
   --cy-soft: 22 33 42;
   --cy-soft2: 12 33 41;
   --cy-row: 12 28 34;
@@ -88,6 +90,8 @@
   --pu-fg: 107 78 230;
   --rd-fg: 205 62 83;
   --rd-mut: 192 137 145;
+  --arr: 194 69 63; /* Direction B: arrivals (red), deepened for light */
+  --dep: 47 95 208; /* Direction B: departures (blue), deepened for light */
   --cy-soft: 225 243 247;
   --cy-soft2: 211 235 241;
   --cy-row: 221 242 247;

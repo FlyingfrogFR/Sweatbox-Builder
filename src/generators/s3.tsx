@@ -65,7 +65,7 @@ function RateCalc() {
   );
 }
 
-function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, onSave, onCancel }: any) {
+export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, onSave, onCancel }: any) {
   const [r, setR] = useState(rule);
   const [wptSearch, setWptSearch] = useState(rule.spawnWaypoint || "");
   const [showRoutePicker, setShowRoutePicker] = useState(false);

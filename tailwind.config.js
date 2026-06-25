@@ -39,6 +39,8 @@ const tokenColors = {
   "pu-fg": t("pu-fg"),
   "rd-fg": t("rd-fg"),
   "rd-mut": t("rd-mut"),
+  arr: t("arr"),
+  dep: t("dep"),
   // accent surfaces & borders
   "cy-soft": t("cy-soft"),
   "cy-soft2": t("cy-soft2"),
