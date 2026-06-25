@@ -1,5 +1,6 @@
-// ScenarioPanel.tsx — scenario aircraft list + the per-aircraft editor.
-// Ported VERBATIM from the rc3 shell (ScenarioAircraftPanel + AircraftEditor).
+// ScenarioPanel.tsx — scenario aircraft list (restyled to the design handoff:
+// filter pills, column grid, role badges, zebra rows) + the per-aircraft editor.
+// All behavior is unchanged from the rc3 port.
 import { useState, useEffect, useMemo } from "react";
 import { Icon } from "../ui/Icon";
 import { uid } from "../core/uid";
@@ -7,8 +8,23 @@ import { emptyAc } from "../core/model";
 import { trimRoute } from "../core/route";
 import { preEntryOffset } from "../core/geo";
 
+const COLS = "grid grid-cols-[150px_80px_70px_1fr_130px_70px_70px] items-center";
+
+function RoleBadge({ dep }: { dep: boolean }) {
+  return dep ? (
+    <span className="text-[10px] font-semibold text-am-fg bg-[rgb(224_169_59_/_0.1)] border border-[rgb(224_169_59_/_0.22)] rounded-[5px] px-[7px] py-0.5">
+      DEP
+    </span>
+  ) : (
+    <span className="text-[10px] font-semibold text-gn-fg bg-[rgb(62_207_142_/_0.1)] border border-[rgb(62_207_142_/_0.2)] rounded-[5px] px-[7px] py-0.5">
+      ARR
+    </span>
+  );
+}
+
 export function ScenarioPanel({ scenario, onChange, waypoints, pendingAircraft, onClearPending }: any) {
   const [editing, setEditing] = useState<any>(null);
+  const [filter, setFilter] = useState<"all" | "arr" | "dep">("all");
   useEffect(() => {
     if (!pendingAircraft) return;
     if (Array.isArray(pendingAircraft)) {
@@ -42,80 +58,120 @@ export function ScenarioPanel({ scenario, onChange, waypoints, pendingAircraft, 
   };
   const genCount = scenario.aircraft.filter((a: any) => a.ruleId).length;
   const groundCount = scenario.aircraft.filter((a: any) => a.groundMeta).length;
+  const arrCount = scenario.aircraft.filter((a: any) => !a.isDeparture).length;
+  const depCount = scenario.aircraft.filter((a: any) => a.isDeparture).length;
+  const rows = scenario.aircraft.filter((a: any) =>
+    filter === "all" ? true : filter === "arr" ? !a.isDeparture : a.isDeparture,
+  );
+
+  const pill = (key: "all" | "arr" | "dep", label: string) => (
+    <button
+      onClick={() => setFilter(key)}
+      className={`text-[11px] px-[11px] py-1 rounded-[14px] border ${
+        filter === key
+          ? "bg-cy-soft border-cy-bd text-cy-fg font-medium"
+          : "bg-inset border-bd2 text-tx5 hover:text-tx3"
+      }`}
+    >
+      {label}
+    </button>
+  );
+
   return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <h2 className="text-lg font-semibold text-slate-200">
-          Scenario Aircraft{" "}
-          <span className="text-slate-500 text-sm font-normal">({scenario.aircraft.length} · {genCount} rule · {groundCount} ground)</span>
-        </h2>
-        <div className="flex gap-2">
-          {groundCount > 0 && <button onClick={clearGround} className="px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded text-sm text-slate-200">Clear ground</button>}
-          {genCount > 0 && <button onClick={clearGen} className="px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded text-sm text-slate-200">Clear rule-generated</button>}
-          <button onClick={() => setEditing(emptyAc(false))} className="flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-500 rounded text-sm text-white">
-            <Icon name="landing" />Arrival
+    <div>
+      <div className="flex items-center justify-between px-[22px] pt-[18px] pb-[14px] flex-wrap gap-3">
+        <div className="flex items-center gap-3.5">
+          <span className="text-[14px] font-semibold text-tx1">Scenario Aircraft</span>
+          <div className="flex gap-1.5">
+            {pill("all", `All ${scenario.aircraft.length}`)}
+            {pill("arr", `Arr ${arrCount}`)}
+            {pill("dep", `Dep ${depCount}`)}
+          </div>
+          <span className="text-[11px] text-tx7">
+            {genCount} rule · {groundCount} ground
+          </span>
+        </div>
+        <div className="flex gap-2.5">
+          {groundCount > 0 && (
+            <button onClick={clearGround} className="text-[12px] text-tx3 bg-btn2 border border-bd4 hover:border-bdh rounded-[7px] px-3 py-2">
+              Clear ground
+            </button>
+          )}
+          {genCount > 0 && (
+            <button onClick={clearGen} className="text-[12px] text-tx3 bg-btn2 border border-bd4 hover:border-bdh rounded-[7px] px-3 py-2">
+              Clear rule-gen
+            </button>
+          )}
+          <button
+            onClick={() => setEditing(emptyAc(false))}
+            className="flex items-center gap-[7px] text-[12px] font-medium text-gn-fg bg-gn-bg border border-gn-bd hover:border-gn-bd-h rounded-[7px] px-[13px] py-2"
+          >
+            <Icon name="plus" size={13} />
+            Arrival
           </button>
-          <button onClick={() => setEditing(emptyAc(true))} className="flex items-center gap-2 px-3 py-2 bg-amber-600 hover:bg-amber-500 rounded text-sm text-white">
-            <Icon name="takeoff" />Departure
+          <button
+            onClick={() => setEditing(emptyAc(true))}
+            className="flex items-center gap-[7px] text-[12px] font-medium text-am-fg bg-am-bg border border-am-bd hover:border-am-bd-h rounded-[7px] px-[13px] py-2"
+          >
+            <Icon name="plus" size={13} />
+            Departure
           </button>
         </div>
       </div>
-      <div className="bg-slate-900 rounded-lg overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-800 text-slate-400 text-xs uppercase">
-            <tr>
-              <th className="text-left p-3">Callsign</th>
-              <th className="text-left p-3">Type</th>
-              <th className="text-left p-3">Role</th>
-              <th className="text-left p-3">Route</th>
-              <th className="text-left p-3">Spawn</th>
-              <th className="text-right p-3">Start</th>
-              <th className="text-right p-3"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {scenario.aircraft.map((a: any) => (
-              <tr key={a.id} className={`border-t border-slate-800 hover:bg-slate-800/30 ${a.ruleId || a.groundMeta ? "opacity-90" : ""}`}>
-                <td className="p-3 font-mono font-semibold text-slate-200">
-                  {a.callsign || "—"}
-                  {a.ruleId && <span className="text-sky-500 ml-1 text-xs" title="rule-generated">●</span>}
-                  {a.groundMeta && <span className="text-amber-500 ml-1 text-xs" title={`${a.groundMeta.source}-generated`}>◆</span>}
-                </td>
-                <td className="p-3 font-mono text-slate-300">{a.type || "—"}</td>
-                <td className="p-3">
-                  {a.isDeparture ? (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-900/40 text-amber-300 rounded text-xs">
-                      <Icon name="takeoff" size={12} />DEP
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-900/40 text-emerald-300 rounded text-xs">
-                      <Icon name="landing" size={12} />ARR
-                    </span>
-                  )}
-                </td>
-                <td className="p-3 font-mono text-xs text-slate-400">{a.origin || "?"}→{a.dest || "?"}</td>
-                <td className="p-3 font-mono text-xs text-slate-400">
-                  {a.spawnWaypoint || `${(+a.lat).toFixed(3)},${(+a.lon).toFixed(3)}`}
-                  {(+a.preEntryNm || 0) > 0 ? ` -${a.preEntryNm}nm` : ""}
-                </td>
-                <td className="p-3 text-right text-slate-400">{a.start !== "" ? `T+${a.start}` : "—"}</td>
-                <td className="p-3 text-right">
-                  <div className="flex gap-2 justify-end">
-                    <button onClick={() => setEditing(a)} className="text-sky-400 hover:text-sky-300"><Icon name="edit" size={14} /></button>
-                    <button onClick={() => dup(a)} className="text-slate-400 hover:text-slate-200"><Icon name="copy" size={14} /></button>
-                    <button onClick={() => remove(a.id)} className="text-rose-400 hover:text-rose-300"><Icon name="trash" size={14} /></button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {!scenario.aircraft.length && (
-              <tr>
-                <td colSpan={7} className="p-8 text-center text-slate-500">No aircraft — use Generators or add manually</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+
+      {/* header */}
+      <div className={`${COLS} px-[22px] py-[11px] text-[9.5px] tracking-[0.1em] text-tx7 font-semibold border-y border-bd2`}>
+        <span>CALLSIGN</span>
+        <span>TYPE</span>
+        <span>ROLE</span>
+        <span>ROUTE</span>
+        <span>SPAWN</span>
+        <span className="text-right">START</span>
+        <span />
       </div>
+
+      {/* rows */}
+      {rows.map((a: any, i: number) => (
+        <div
+          key={a.id}
+          className={`${COLS} px-[22px] py-[11px] border-b border-rowdiv font-mono text-[12.5px] ${i % 2 === 1 ? "bg-inset" : ""}`}
+        >
+          <span className="text-tx1 font-semibold truncate">
+            {a.callsign || "—"}
+            {a.ruleId && <span className="text-cy-fg text-[9px] ml-1" title="rule-generated">●</span>}
+            {a.groundMeta && <span className="text-am-fg text-[9px] ml-1" title="ground-generated">◆</span>}
+          </span>
+          <span className="text-tx3">{a.type || "—"}</span>
+          <span>
+            <RoleBadge dep={a.isDeparture} />
+          </span>
+          <span className="text-tx5 text-[11.5px] truncate">
+            {a.origin || "?"} → {a.dest || "?"}
+          </span>
+          <span className="text-tx3 text-[11.5px] truncate">
+            {a.spawnWaypoint || `${(+a.lat).toFixed(2)},${(+a.lon).toFixed(2)}`}
+            {(+a.preEntryNm || 0) > 0 ? ` -${a.preEntryNm}` : ""}
+          </span>
+          <span className="text-right text-tx3">{a.start !== "" ? `T+${a.start}` : "—"}</span>
+          <span className="flex gap-3 justify-end text-tx8">
+            <button onClick={() => setEditing(a)} className="hover:text-cy-fg" title="Edit">
+              <Icon name="edit" size={13} />
+            </button>
+            <button onClick={() => dup(a)} className="hover:text-tx2" title="Duplicate">
+              <Icon name="copy" size={13} />
+            </button>
+            <button onClick={() => remove(a.id)} className="hover:text-rd-fg" title="Delete">
+              <Icon name="trash" size={13} />
+            </button>
+          </span>
+        </div>
+      ))}
+      {!rows.length && (
+        <div className="px-[22px] py-12 text-center text-tx7 text-[13px]">
+          {scenario.aircraft.length ? "No aircraft match this filter" : "No aircraft — use Generators or add manually"}
+        </div>
+      )}
+
       {editing && <AircraftEditor aircraft={editing} waypoints={waypoints} onSave={save} onCancel={() => setEditing(null)} />}
     </div>
   );

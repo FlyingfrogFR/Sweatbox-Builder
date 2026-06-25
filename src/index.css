@@ -2,37 +2,161 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Ported verbatim from the rc3 shell's inline <style> block. */
-body {
-  margin: 0;
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  background: #020617;
+/* === Design tokens (channel form so Tailwind's <alpha-value> / opacity utilities
+   keep working, e.g. bg-panel/60). Dark is the default; [data-theme="light"]
+   overrides the same names. Ported from the design handoff. === */
+:root {
+  --bg: 11 14 17;
+  --panel: 14 19 24;
+  --rail: 15 20 25;
+  --inset: 12 16 20;
+  --thead: 16 21 26;
+  --btn2: 19 24 29;
+  --chip: 22 28 34;
+  --rowdiv: 20 25 30;
+  --logo: 12 20 24;
+  --bd1: 29 36 43;
+  --bd2: 26 33 39;
+  --bd3: 36 46 54;
+  --bd4: 42 51 59;
+  --bd5: 45 57 66;
+  --bdh: 58 69 78;
+  --tx1: 231 236 239;
+  --tx2: 205 214 220;
+  --tx3: 159 176 187;
+  --tx4: 147 161 171;
+  --tx5: 126 140 132;
+  --tx6: 107 120 132;
+  --tx7: 92 103 112;
+  --tx8: 74 85 94;
+  --tx9: 58 68 77;
+  --cy-fg: 92 207 224;
+  --gn-fg: 62 207 142;
+  --am-fg: 224 169 59;
+  --pu-fg: 167 139 250;
+  --rd-fg: 224 106 122;
+  --rd-mut: 106 74 79;
+  --cy-soft: 22 33 42;
+  --cy-soft2: 12 33 41;
+  --cy-row: 12 28 34;
+  --cy-bd: 42 107 120;
+  --gn-bg: 14 22 18;
+  --gn-bd: 31 64 48;
+  --gn-bd-h: 42 90 64;
+  --am-bg: 22 18 8;
+  --am-bd: 61 52 22;
+  --am-bd-h: 87 74 31;
+  --rd-bg: 22 16 15;
+  --rd-bd: 61 31 34;
+  --rd-bd-h: 90 42 47;
+  --dotbtn: 42 50 58;
+  --sb-thumb: 40 48 56;
+  --sb-thumb-h: 54 64 73;
+  --dot: 255 255 255;
+  --dot-a: 0.022;
+  --on-cyan: 6 34 42; /* on-accent text on filled cyan buttons */
+  --on-green: 14 22 18; /* on-accent text on filled green buttons */
+}
+:root[data-theme="light"] {
+  --bg: 232 236 241;
+  --panel: 255 255 255;
+  --rail: 243 245 248;
+  --inset: 247 249 252;
+  --thead: 238 242 246;
+  --btn2: 238 242 246;
+  --chip: 232 237 242;
+  --rowdiv: 234 237 241;
+  --logo: 231 246 249;
+  --bd1: 212 219 226;
+  --bd2: 225 230 235;
+  --bd3: 211 218 225;
+  --bd4: 205 213 220;
+  --bd5: 202 211 218;
+  --bdh: 166 177 186;
+  --tx1: 26 36 45;
+  --tx2: 47 58 69;
+  --tx3: 85 98 108;
+  --tx4: 90 103 114;
+  --tx5: 105 118 128;
+  --tx6: 113 128 138;
+  --tx7: 124 137 147;
+  --tx8: 151 162 171;
+  --tx9: 170 178 186;
+  --cy-fg: 10 133 160;
+  --gn-fg: 18 152 106;
+  --am-fg: 163 118 13;
+  --pu-fg: 107 78 230;
+  --rd-fg: 205 62 83;
+  --rd-mut: 192 137 145;
+  --cy-soft: 225 243 247;
+  --cy-soft2: 211 235 241;
+  --cy-row: 221 242 247;
+  --cy-bd: 133 204 217;
+  --gn-bg: 227 247 237;
+  --gn-bd: 182 227 207;
+  --gn-bd-h: 151 211 180;
+  --am-bg: 250 241 218;
+  --am-bd: 236 216 160;
+  --am-bd-h: 220 195 134;
+  --rd-bg: 251 236 238;
+  --rd-bd: 241 198 204;
+  --rd-bd-h: 228 169 177;
+  --dotbtn: 205 213 220;
+  --sb-thumb: 195 204 211;
+  --sb-thumb-h: 166 177 186;
+  --dot: 15 30 45;
+  --dot-a: 0.05;
 }
 
-/* --- Polish layer (additive; does not change any component markup) --- */
 html {
   color-scheme: dark;
 }
+:root[data-theme="light"] {
+  color-scheme: light;
+}
 body {
+  margin: 0;
+  height: 100%;
+  background: rgb(var(--bg));
+  color: rgb(var(--tx1));
+  font-family:
+    "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  /* subtle depth: a faint cool glow behind the top of the app */
-  background:
-    radial-gradient(1100px 520px at 50% -12%, #0b1424 0%, rgba(2, 6, 23, 0) 70%),
-    #020617;
-  background-attachment: fixed;
 }
+
+/* scrollbars follow the theme */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: rgb(var(--bg));
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--sb-thumb));
+  border-radius: 5px;
+  border: 2px solid rgb(var(--bg));
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--sb-thumb-h));
+}
+
+/* selection + placeholders + focus ring */
 ::selection {
-  background: #0ea5e9;
-  color: #fff;
+  background: #5ccfe0;
+  color: #06222a;
+}
+input::placeholder,
+textarea::placeholder {
+  color: rgb(var(--tx8));
 }
 :focus-visible {
-  outline: 2px solid #38bdf8;
+  outline: 2px solid rgb(var(--cy-fg));
   outline-offset: 1px;
   border-radius: 4px;
 }
-/* smooth interactive transitions for buttons / tabs */
 button,
 a,
 [role="button"] {
@@ -43,20 +167,14 @@ a,
     opacity 0.12s ease;
 }
 
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+/* faint dot-grid for content areas (theme-aware via --dot / --dot-a) */
+.dotgrid {
+  background-color: rgb(var(--bg));
+  background-image: radial-gradient(rgb(var(--dot) / var(--dot-a)) 1px, transparent 1px);
+  background-size: 24px 24px;
 }
-::-webkit-scrollbar-track {
-  background: #0f172a;
-}
-::-webkit-scrollbar-thumb {
-  background: #334155;
-  border-radius: 5px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #475569;
-}
+
+/* range inputs, token-ized */
 input[type="range"] {
   -webkit-appearance: none;
   appearance: none;
@@ -64,29 +182,29 @@ input[type="range"] {
 }
 input[type="range"]::-webkit-slider-runnable-track {
   height: 6px;
-  background: #1e293b;
+  background: rgb(var(--inset));
   border-radius: 3px;
-  border: 1px solid #334155;
+  border: 1px solid rgb(var(--bd3));
 }
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   height: 16px;
   width: 16px;
-  background: #0ea5e9;
+  background: rgb(var(--cy-fg));
   border-radius: 50%;
   margin-top: -6px;
-  border: 2px solid #0c4a6e;
+  border: 2px solid rgb(var(--cy-bd));
 }
 input[type="range"]::-moz-range-track {
   height: 6px;
-  background: #1e293b;
+  background: rgb(var(--inset));
   border-radius: 3px;
-  border: 1px solid #334155;
+  border: 1px solid rgb(var(--bd3));
 }
 input[type="range"]::-moz-range-thumb {
   height: 16px;
   width: 16px;
-  background: #0ea5e9;
+  background: rgb(var(--cy-fg));
   border-radius: 50%;
-  border: 2px solid #0c4a6e;
+  border: 2px solid rgb(var(--cy-bd));
 }

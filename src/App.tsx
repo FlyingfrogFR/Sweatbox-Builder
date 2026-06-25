@@ -1,17 +1,20 @@
-// App.tsx — top-level shell. Ported from the rc3 App component. State, the
-// localStorage keys, AIRAC handling, the tab structure and the auto-load of
-// navdata.json/pool.json are all preserved. The two window.SB mirrors the shell
-// used (stars, rampConfig) become setStars()/setRampConfig() so the ported
-// generateFromRule and aircraftFootprint see the same data.
+// App.tsx — top-level shell, redesigned to the handoff: titlebar (window dots,
+// centered filename, theme toggle) + left navigation rail + per-view context
+// strip + dot-grid content. All state, the localStorage keys, AIRAC handling,
+// tab routing and the navdata/pool auto-load are preserved from the rc3 port.
+// stars/rampConfig are mirrored into the core accessors generateFromRule/
+// aircraftFootprint read.
 import { useState, useEffect } from "react";
 import { Icon } from "./ui/Icon";
+import { ThemeToggle } from "./ui/ThemeToggle";
+import { useTheme } from "./state/theme";
 import { storage, KEYS, usePersist } from "./state/storage";
 import { defaultScenario, migrateRules } from "./core/model";
 import { addToPool, poolToAc } from "./core/pool";
 import { setStars } from "./core/stars";
 import { setRampConfig } from "./core/ramp";
 
-import { TabBar } from "./panels/TabBar";
+import { Sidebar } from "./panels/Sidebar";
 import { NavdataPanel } from "./panels/NavdataPanel";
 import { SetupPanel } from "./panels/SetupPanel";
 import { FlightPlansPanel } from "./panels/FlightPlansPanel";
@@ -24,8 +27,18 @@ import { SavedPanel } from "./panels/SavedPanel";
 // Registers S1/S2/S3/C1 (side-effect import of the static generator registry).
 import "./generators";
 
+function Stat({ label, value, last }: { label: string; value: number; last?: boolean }) {
+  return (
+    <div className={`text-center ${last ? "pl-4 pr-[18px]" : "px-4 border-r border-bd1"}`}>
+      <div className="text-[9px] tracking-[0.14em] text-tx7">{label}</div>
+      <div className="font-mono text-[15px] text-tx1 mt-0.5">{value}</div>
+    </div>
+  );
+}
+
 export default function App() {
-  const [tab, setTab] = useState("pool");
+  const { theme, toggle } = useTheme();
+  const [tab, setTab] = useState("scenario");
   const [scenario, setScenario] = useState<any>(defaultScenario());
   const [autoBundleStatus, setAutoBundleStatus] = useState<string | null>(null);
 
@@ -252,77 +265,112 @@ export default function App() {
 
   const generatorProps = { scenario, onChange: setScenario, waypoints, airports, runways, positions, pool, stars, copx, gates, rampAgent, rampConfig };
 
+  const titleName = `${(scenario.name || "scenario").replace(/[^a-z0-9]+/gi, "_")}.scn`;
+  const metaLine = `${scenario.ils.length} ILS · ${(scenario.controllers || []).length} ctrl · ${(scenario.holdings || []).length} hold`;
+
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-200 flex flex-col">
-      <header className="bg-slate-900/80 backdrop-blur border-b border-slate-800 px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="grid place-items-center w-9 h-9 rounded-lg bg-gradient-to-br from-sky-500 to-sky-700 text-white shadow-sm shadow-sky-900/50">
-            <Icon name="plane" size={18} />
+    <div className="h-screen flex flex-col bg-bg text-tx1 font-sans overflow-hidden">
+      {/* titlebar */}
+      <div className="h-[34px] flex-none flex items-center px-3.5 bg-panel border-b border-bd1 relative">
+        <div className="flex gap-[7px]">
+          <span className="w-[9px] h-[9px] rounded-full bg-dotbtn" />
+          <span className="w-[9px] h-[9px] rounded-full bg-dotbtn" />
+          <span className="w-[9px] h-[9px] rounded-full bg-dotbtn" />
+        </div>
+        <div className="absolute inset-x-0 text-center font-mono text-[11px] text-tx7 tracking-[0.04em] pointer-events-none">
+          {titleName} — Sweatbox Builder
+        </div>
+        <div className="absolute right-3 top-1/2 -translate-y-1/2">
+          <ThemeToggle theme={theme} onToggle={toggle} />
+        </div>
+      </div>
+
+      <div className="flex-1 flex min-h-0">
+        <Sidebar
+          active={tab}
+          onChange={setTab}
+          poolCount={pool.length}
+          scenarioCount={scenario.aircraft.length}
+          rulesCount={(scenario.rules || []).length}
+          navdataLoaded={waypoints.length > 0}
+          airac={navAirac}
+        />
+
+        <div className="flex-1 flex flex-col min-w-0">
+          {/* context strip */}
+          <div className="flex-none flex items-center justify-between px-[22px] py-[14px] border-b border-bd1 bg-panel">
+            <div className="min-w-0">
+              <div className="text-[16px] font-semibold text-tx1 tracking-[-0.01em] truncate">
+                {scenario.name || "Untitled scenario"}
+              </div>
+              <div className="font-mono text-[11px] text-tx7 mt-[3px]">{metaLine}</div>
+            </div>
+            <div className="flex items-center">
+              <Stat label="AC" value={scenario.aircraft.length} />
+              <Stat label="POOL" value={pool.length} />
+              <Stat label="RULES" value={(scenario.rules || []).length} />
+              <Stat label="GATES" value={gates.length} last />
+              <button
+                onClick={() => {
+                  if (confirm("Discard scenario?")) setScenario(defaultScenario());
+                }}
+                className="text-[12px] text-tx3 bg-transparent border border-bd4 hover:border-bdh hover:text-tx1 rounded-[7px] px-[13px] py-2"
+              >
+                New
+              </button>
+              <button
+                onClick={() => setTab("export")}
+                className="flex items-center gap-[7px] text-[12.5px] font-semibold text-on-cyan bg-[#5ccfe0] hover:bg-[#74d8e6] rounded-[7px] px-[15px] py-[9px] ml-2.5"
+              >
+                <Icon name="download" size={14} />
+                Generate .scn
+              </button>
+            </div>
           </div>
-          <div>
-            <h1 className="text-sm font-semibold tracking-tight flex items-center gap-2">
-              Sweatbox Builder
-              <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-sky-500/15 text-sky-300 border border-sky-500/20">
-                v6
-              </span>
-            </h1>
-            <p className="text-xs text-slate-500">
-              {scenario.name} · {scenario.aircraft.length} ac · {pool.length} pool · {(scenario.rules || []).length} rules ·{" "}
-              {(scenario.holdings || []).length} hold · {gates.length} gates
-            </p>
-          </div>
+
+          {autoBundleStatus && (
+            <div className="bg-gn-bg border-b border-gn-bd px-[22px] py-2 text-[11px] text-gn-fg flex items-center gap-2">
+              <Icon name="check" size={12} />
+              {autoBundleStatus}
+            </div>
+          )}
+
+          {/* content */}
+          <main className="flex-1 overflow-auto dotgrid">
+            {tab === "navdata" && (
+              <NavdataPanel
+                waypoints={waypoints}
+                airports={airports}
+                positions={positions}
+                runways={runways}
+                stars={stars}
+                copx={copx}
+                gates={gates}
+                navMeta={navMeta}
+                airac={navAirac}
+                onSetAirac={setNavAirac}
+                onParseSct={handleParseSct}
+                onParseEse={handleParseEse}
+                onResetSct={resetSct}
+                onResetEse={resetEse}
+                onImportBundle={applyNavBundle}
+                rampAgent={rampAgent}
+                rampConfig={rampConfig}
+                onLoadRampAgent={handleLoadRampAgent}
+                onLoadRampConfig={handleLoadRampConfig}
+                onResetRampAgent={handleResetRampAgent}
+              />
+            )}
+            {tab === "setup" && <SetupPanel scenario={scenario} onChange={setScenario} positions={positions} runways={runways} waypoints={waypoints} />}
+            {tab === "plans" && <FlightPlansPanel onAddToPool={handleAddToPool} vatsimCache={vatsimCache} setVatsimCache={setVatsimCache} />}
+            {tab === "pool" && <AircraftPoolPanel pool={pool} onDelete={handleDeleteFromPool} onAddToScenario={handleAddPoolToScenario} airac={poolAirac} onSetAirac={setPoolAirac} onImportPool={applyPoolBundle} />}
+            {tab === "generators" && <GeneratorsPanel {...generatorProps} />}
+            {tab === "scenario" && <ScenarioPanel scenario={scenario} onChange={setScenario} waypoints={waypoints} pendingAircraft={pendingAircraft} onClearPending={() => setPendingAircraft(null)} />}
+            {tab === "export" && <ExportPanel scenario={scenario} waypoints={waypoints} />}
+            {tab === "saved" && <SavedPanel scenario={scenario} onChange={setScenario} />}
+          </main>
         </div>
-        <div className="flex gap-2 items-center">
-          <button
-            onClick={() => {
-              if (confirm("Discard scenario?")) setScenario(defaultScenario());
-            }}
-            className="text-xs text-slate-300 hover:text-white px-3 py-1.5 border border-slate-700 hover:border-slate-600 hover:bg-slate-800 rounded-md transition-colors"
-          >
-            New scenario
-          </button>
-        </div>
-      </header>
-      <TabBar active={tab} onChange={setTab} poolCount={pool.length} scenarioCount={scenario.aircraft.length} />
-      {autoBundleStatus && (
-        <div className="bg-emerald-950/40 border-b border-emerald-900/40 px-6 py-2 text-xs text-emerald-300 flex items-center gap-2">
-          <Icon name="check" size={12} />
-          {autoBundleStatus}
-        </div>
-      )}
-      <main className="flex-1 overflow-auto">
-        {tab === "navdata" && (
-          <NavdataPanel
-            waypoints={waypoints}
-            airports={airports}
-            positions={positions}
-            runways={runways}
-            stars={stars}
-            copx={copx}
-            gates={gates}
-            navMeta={navMeta}
-            airac={navAirac}
-            onSetAirac={setNavAirac}
-            onParseSct={handleParseSct}
-            onParseEse={handleParseEse}
-            onResetSct={resetSct}
-            onResetEse={resetEse}
-            onImportBundle={applyNavBundle}
-            rampAgent={rampAgent}
-            rampConfig={rampConfig}
-            onLoadRampAgent={handleLoadRampAgent}
-            onLoadRampConfig={handleLoadRampConfig}
-            onResetRampAgent={handleResetRampAgent}
-          />
-        )}
-        {tab === "setup" && <SetupPanel scenario={scenario} onChange={setScenario} positions={positions} runways={runways} waypoints={waypoints} />}
-        {tab === "plans" && <FlightPlansPanel onAddToPool={handleAddToPool} vatsimCache={vatsimCache} setVatsimCache={setVatsimCache} />}
-        {tab === "pool" && <AircraftPoolPanel pool={pool} onDelete={handleDeleteFromPool} onAddToScenario={handleAddPoolToScenario} airac={poolAirac} onSetAirac={setPoolAirac} onImportPool={applyPoolBundle} />}
-        {tab === "generators" && <GeneratorsPanel {...generatorProps} />}
-        {tab === "scenario" && <ScenarioPanel scenario={scenario} onChange={setScenario} waypoints={waypoints} pendingAircraft={pendingAircraft} onClearPending={() => setPendingAircraft(null)} />}
-        {tab === "export" && <ExportPanel scenario={scenario} waypoints={waypoints} />}
-        {tab === "saved" && <SavedPanel scenario={scenario} onChange={setScenario} />}
-      </main>
+      </div>
     </div>
   );
 }
