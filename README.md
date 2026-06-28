@@ -18,7 +18,7 @@ no hand-editing scenario text, no fiddly EuroScope encoding.
 
 ## The gist
 
-If you mentor on VATSIM/IVAO, you know the drill: a good **sweatbox** session needs
+If you mentor on VATSIM, you know the drill: a good **sweatbox** session needs
 a scenario file full of AI traffic, and writing those `.scn` files by hand is a pain.
 Every aircraft wants a position, squawk, route, spawn heading, timing… all in
 EuroScope's exact format, and one typo and it won't load right.
@@ -37,7 +37,7 @@ It's a real desktop app — double-click and go. No browser, no setup server.
   - **S1 Ground** — single-airport ground scenarios with smart stand assignment (RampAgent / ESE gates), departures, arrivals and VFR
   - **S3 Approach** & **C1 Enroute** — rule-driven terminal/enroute traffic in a tidy workbench: a session timeline, your rule list, a live preview of what each rule produces, and an inline editor
   - **S2 Tower** — coming later (placeholder for now)
-- **Bring your own navdata** — drop in EuroScope `.sct` / `.ese` files (waypoints, runways, STARs, gates), plus optional VAC France RampAgent stand data for gate-fit-aware parking
+- **Bring your own navdata** — drop in EuroScope `.sct` / `.ese` files (waypoints, runways, STARs, gates), plus optional vaCC France RampAgent stand data for gate-fit-aware parking
 - **Pull real flight plans** — grab routes from **SimBrief** and **VATSIM live** right into an aircraft pool (works straight away — no CORS proxy to babysit)
 - **EuroScope-correct output** — the heading encoding, squawk modes (including `56XX` and Mode-S fallbacks), holdings, altitude requests, pre-entry offsets and ground-speed handling all match what EuroScope expects
 - **Native save** — writes your `.scn` and ruleset `.json` straight to disk, auto-named `ICAO_X.Y_CONFIGYY`
