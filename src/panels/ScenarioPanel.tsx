@@ -12,11 +12,11 @@ const COLS = "grid grid-cols-[150px_80px_70px_1fr_130px_70px_70px] items-center"
 
 function RoleBadge({ dep }: { dep: boolean }) {
   return dep ? (
-    <span className="text-[10px] font-semibold text-am-fg bg-[rgb(224_169_59_/_0.1)] border border-[rgb(224_169_59_/_0.22)] rounded-[5px] px-[7px] py-0.5">
+    <span className="text-[10px] font-semibold text-dep bg-[rgb(111_158_239_/_0.12)] border border-[rgb(111_158_239_/_0.24)] rounded-[5px] px-[7px] py-0.5">
       DEP
     </span>
   ) : (
-    <span className="text-[10px] font-semibold text-gn-fg bg-[rgb(62_207_142_/_0.1)] border border-[rgb(62_207_142_/_0.2)] rounded-[5px] px-[7px] py-0.5">
+    <span className="text-[10px] font-semibold text-arr bg-[rgb(232_116_110_/_0.12)] border border-[rgb(232_116_110_/_0.24)] rounded-[5px] px-[7px] py-0.5">
       ARR
     </span>
   );
@@ -104,14 +104,14 @@ export function ScenarioPanel({ scenario, onChange, waypoints, pendingAircraft, 
           )}
           <button
             onClick={() => setEditing(emptyAc(false))}
-            className="flex items-center gap-[7px] text-[12px] font-medium text-gn-fg bg-gn-bg border border-gn-bd hover:border-gn-bd-h rounded-[7px] px-[13px] py-2"
+            className="flex items-center gap-[7px] text-[12px] font-medium text-arr bg-[rgb(232_116_110_/_0.1)] border border-[rgb(232_116_110_/_0.28)] hover:border-[rgb(232_116_110_/_0.45)] rounded-[7px] px-[13px] py-2"
           >
             <Icon name="plus" size={13} />
             Arrival
           </button>
           <button
             onClick={() => setEditing(emptyAc(true))}
-            className="flex items-center gap-[7px] text-[12px] font-medium text-am-fg bg-am-bg border border-am-bd hover:border-am-bd-h rounded-[7px] px-[13px] py-2"
+            className="flex items-center gap-[7px] text-[12px] font-medium text-dep bg-[rgb(111_158_239_/_0.1)] border border-[rgb(111_158_239_/_0.28)] hover:border-[rgb(111_158_239_/_0.45)] rounded-[7px] px-[13px] py-2"
           >
             <Icon name="plus" size={13} />
             Departure

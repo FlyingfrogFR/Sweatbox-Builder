@@ -1113,9 +1113,9 @@ export function RulePanel({ mode, scenario, onChange, waypoints, pool, stars, co
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <span className="text-sm font-semibold text-slate-200">{r.name}</span>
                     {r.isDeparture ? (
-                      <span className="px-2 py-0.5 bg-amber-900/40 text-amber-300 rounded text-xs">DEP</span>
+                      <span className="px-2 py-0.5 bg-[rgb(111_158_239_/_0.13)] text-dep rounded text-xs">DEP</span>
                     ) : (
-                      <span className="px-2 py-0.5 bg-emerald-900/40 text-emerald-300 rounded text-xs">ARR</span>
+                      <span className="px-2 py-0.5 bg-[rgb(232_116_110_/_0.13)] text-arr rounded text-xs">ARR</span>
                     )}
                     {r.poolSource && <span className="px-2 py-0.5 bg-purple-900/40 text-purple-300 rounded text-xs">POOL</span>}
                     {rcTokens.length > 0 && (
