@@ -4,7 +4,7 @@
 // tab routing and the navdata/pool auto-load are preserved from the rc3 port.
 // stars/rampConfig are mirrored into the core accessors generateFromRule/
 // aircraftFootprint read.
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Icon } from "./ui/Icon";
 import { ThemeToggle } from "./ui/ThemeToggle";
 import { useTheme } from "./state/theme";
@@ -95,12 +95,35 @@ export default function App() {
     setLoaded(true);
   }, []);
 
-  // Debounced scenario save
+  // Debounced scenario save, with a flush on window hide/close — without it,
+  // edits made in the last 400ms before closing (e.g. a fresh "Apply all")
+  // were silently dropped.
+  const scenarioRef = useRef(scenario);
+  scenarioRef.current = scenario;
+  const loadedRef = useRef(false);
+  loadedRef.current = loaded;
+  const saveTimer = useRef<any>(null);
   useEffect(() => {
     if (!loaded) return;
-    const t = setTimeout(() => storage.set(KEYS.current, scenario), 400);
-    return () => clearTimeout(t);
+    saveTimer.current = setTimeout(() => storage.set(KEYS.current, scenario), 400);
+    return () => clearTimeout(saveTimer.current);
   }, [scenario, loaded]);
+  useEffect(() => {
+    const flush = () => {
+      if (!loadedRef.current) return;
+      clearTimeout(saveTimer.current);
+      storage.set(KEYS.current, scenarioRef.current);
+    };
+    const onVis = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, []);
 
   // Persistent state mirrors
   usePersist(pool, KEYS.pool, loaded);
@@ -182,19 +205,12 @@ export default function App() {
     const meta = b.navMeta || { sctAt: Date.now(), eseAt: Date.now() };
     setNavMeta(meta);
     storage.set(KEYS.navMeta, meta);
-    if (b.airac) {
-      setNavAirac(b.airac);
-      storage.set(KEYS.navAirac, b.airac);
-    }
+    if (b.airac) setNavAirac(b.airac); // persisted by usePersist
   }
   function applyPoolBundle(b: any) {
     const items = (b.pool || []).map((p: any) => ({ ...p, id: p.id || crypto.randomUUID?.() || String(Math.random()) }));
-    setPool(items);
-    storage.set(KEYS.pool, items);
-    if (b.airac) {
-      setPoolAirac(b.airac);
-      storage.set(KEYS.poolAirac, b.airac);
-    }
+    setPool(items); // persisted by usePersist — the extra storage.set here double-wrote the full pool blob
+    if (b.airac) setPoolAirac(b.airac);
   }
 
   const handleParseSct = ({ waypoints: wp, airports: ap, runways: rw }: any) => {
@@ -257,10 +273,11 @@ export default function App() {
   const handleLoadRampConfig = (parsed: any) => setRampConfigState(parsed);
   const handleResetRampAgent = () => {
     if (!confirm("Clear all RampAgent data?")) return;
+    // usePersist handles storage: {} is written back for rampAgent, and the
+    // null rampConfig deletes its key. (The old storage.del(rampAgent) here
+    // was a no-op — usePersist re-wrote the key right after.)
     setRampAgent({});
     setRampConfigState(null);
-    storage.del(KEYS.rampAgent);
-    storage.del(KEYS.rampConfig);
   };
 
   const generatorProps = { scenario, onChange: setScenario, waypoints, airports, runways, positions, pool, stars, copx, gates, rampAgent, rampConfig };

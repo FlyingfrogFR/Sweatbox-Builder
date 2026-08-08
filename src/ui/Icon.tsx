@@ -1,5 +1,5 @@
-// Icon.tsx — inline SVG icon set, copied VERBATIM from the rc3 shell.
-import React from "react";
+// Icon.tsx — inline SVG icon set from the rc3 shell (two never-referenced
+// cases, 'landing'/'takeoff', and the unused React import were dropped).
 
 export function Icon({
   name,
@@ -98,20 +98,6 @@ export function Icon({
       return (
         <svg {...p}>
           <path d="M17.8 19.2L16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z" />
-        </svg>
-      );
-    case "landing":
-      return (
-        <svg {...p}>
-          <path d="M2 22h20" />
-          <path d="M3.77 10.77l17.31 4.64a2 2 0 0 0 2.45-1.41l.25-.96L12 9 7 5.5 5.45 6.91a2 2 0 0 0-.88.3L3 8l.77 2.77z" />
-        </svg>
-      );
-    case "takeoff":
-      return (
-        <svg {...p}>
-          <path d="M2 22h20" />
-          <path d="M6.36 17.4L4 17l-2-4 1.1-.55a2 2 0 0 1 1.8 0l.17.1a2 2 0 0 0 1.8 0L8 12 7 9l2 1 2-1 8 3 .73.27a2 2 0 0 1 1.27 1.73L21 14l-8.5-.5L10 17h1.5l1 2H9L7.5 17l-1.14.4z" />
         </svg>
       );
     case "file":

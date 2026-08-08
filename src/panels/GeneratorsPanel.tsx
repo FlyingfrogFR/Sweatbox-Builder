@@ -6,6 +6,7 @@ import { Icon } from "../ui/Icon";
 import { getGenerators, onRegister } from "../generators";
 import { generateFromRule } from "../core/generateFromRule";
 import { RuleWorkbench } from "../generators/RuleWorkbench";
+import { sortByStart } from "../state/aircraft";
 
 const ORDER = ["S1", "S2", "S3", "C1"];
 const LABELS: Record<string, string> = { S1: "S1 Ground", S2: "S2 Tower", S3: "S3 Approach", C1: "C1 Enroute" };
@@ -39,7 +40,7 @@ export function GeneratorsPanel(props: any) {
       }
       ac = [...ac, ...gen];
     }
-    onChange({ ...scenario, aircraft: ac.sort((a: any, b: any) => (+a.start || 0) - (+b.start || 0)) });
+    onChange({ ...scenario, aircraft: sortByStart(ac) });
   };
 
   const subtitle = isRuleMode

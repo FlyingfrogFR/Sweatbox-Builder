@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { Icon } from "../ui/Icon";
 import { AIRPORTS, resolveStandSource, defaultGroundConfig, buildGroundAircraft } from "../core/ground";
 import { registerGenerator } from "./registry";
+import { sortByStart } from "../state/aircraft";
 
 function GroundPanel({ scenario, onChange, gates, pool, rampAgent, rampConfig }: any) {
   const cfg = scenario.groundConfig || defaultGroundConfig();
@@ -39,7 +40,7 @@ function GroundPanel({ scenario, onChange, gates, pool, rampAgent, rampConfig }:
       return;
     }
     const others = scenario.aircraft.filter((a: any) => !a.groundMeta);
-    const merged = [...others, ...aircraft].sort((a: any, b: any) => (+a.start || 0) - (+b.start || 0));
+    const merged = sortByStart([...others, ...aircraft]);
     onChange({ ...scenario, aircraft: merged });
     if (warnings.length) alert(`Generated ${aircraft.length} aircraft.\n\n` + warnings.join("\n"));
   }
@@ -100,7 +101,7 @@ function GroundPanel({ scenario, onChange, gates, pool, rampAgent, rampConfig }:
         <label className={lb}>Generation mode</label>
         <div className="flex gap-2">
           <button onClick={() => setCfg({ mode: "S1" })} className={`flex items-center gap-2 px-4 py-2 rounded text-sm font-medium ${cfg.mode !== "S2" ? "bg-sky-700 text-white" : "bg-slate-800 text-slate-400 hover:text-slate-200"}`}>
-            <Icon name="home" size={14} />S1 — Ground only
+            S1 — Ground only
           </button>
           <button onClick={() => setCfg({ mode: "S2" })} className={`flex items-center gap-2 px-4 py-2 rounded text-sm font-medium ${cfg.mode === "S2" ? "bg-amber-700 text-white" : "bg-slate-800 text-slate-400 hover:text-slate-200"}`}>
             <Icon name="radio" size={14} />S2 — Tower flow

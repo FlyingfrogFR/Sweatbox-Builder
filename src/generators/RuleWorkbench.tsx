@@ -2,7 +2,7 @@
 // the rule-based generators (S3/C1). Session-overview timeline + rule list +
 // inline detail pane with a produced-aircraft preview. The full rule editor
 // (all ~30 fields) stays reachable via "Edit all fields".
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useDeferredValue } from "react";
 import { Icon } from "../ui/Icon";
 import { emptyRule } from "../core/model";
 import { uid } from "../core/uid";
@@ -102,13 +102,21 @@ export function RuleWorkbench({ mode, scenario, onChange, waypoints, pool, stars
     setEditingFull(null);
   };
 
-  // Produced-aircraft preview for the (draft of the) selected rule.
+  // Produced-aircraft preview for the (draft of the) selected rule. Deferred
+  // so each keystroke in the detail inputs doesn't synchronously re-run
+  // generateFromRule (linear navdata scan + pool filtering) — the preview
+  // catches up a frame later with identical results.
+  const deferredDraft = useDeferredValue(draft);
   const preview = useMemo(
-    () => (draft ? produce(draft, waypoints, pool) : { aircraft: [], error: null }),
-    [draft, waypoints, pool],
+    () => (deferredDraft ? produce(deferredDraft, waypoints, pool) : { aircraft: [], error: null }),
+    [deferredDraft, waypoints, pool],
   );
 
   // Session overview: produce every saved rule of this mode, split by direction.
+  // Keyed on the full rule content — any saved field can change the produced
+  // aircraft (direction, scheduling mode, pool filters, …), so a partial key
+  // left the timeline and per-rule counts stale after some edits.
+  const rulesKey = JSON.stringify(rules);
   const session = useMemo(() => {
     const arr: number[] = [];
     const dep: number[] = [];
@@ -121,7 +129,7 @@ export function RuleWorkbench({ mode, scenario, onChange, waypoints, pool, stars
       for (const a of aircraft) (a.isDeparture ? dep : arr).push(+a.start || 0);
     }
     return { arr, dep, maxT: maxT || 45, counts, total: arr.length + dep.length };
-  }, [rules.map((r: any) => r.id + ":" + r.rate + ":" + r.duration + ":" + r.startOffset + ":" + r.spawnWaypoint).join("|"), waypoints, pool]);
+  }, [rulesKey, waypoints, pool]);
 
   const ticks = [0, 0.3333, 0.6666, 1].map((f) => Math.round(session.maxT * f));
 
