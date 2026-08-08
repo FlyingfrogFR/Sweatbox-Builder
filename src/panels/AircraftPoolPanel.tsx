@@ -1,8 +1,36 @@
 // AircraftPoolPanel.tsx — the Pool tab. Ported VERBATIM from the rc3 shell.
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback, memo } from "react";
 import { Icon } from "../ui/Icon";
 import { SRC_LABELS } from "../core/pool";
 import { downloadJsonBundle, readJsonFile } from "../io/bundles";
+
+// Memoized row: selection toggles only re-render the rows whose `selected`
+// flag changed; derived strings are precomputed in the panel.
+const PoolRow = memo(function PoolRow({ p, selected, routePreview, addedStr, onToggle, onDeleteOne }: any) {
+  const sl = SRC_LABELS[p.source] || { label: p.source || "?", color: "text-slate-400 bg-slate-800" };
+  return (
+    <tr onClick={() => onToggle(p.id)} className={`border-t border-slate-800 cursor-pointer hover:bg-slate-800/30 ${selected ? "bg-sky-950/20" : ""}`}>
+      <td className="p-3">
+        <input type="checkbox" readOnly checked={selected} className="accent-sky-500" />
+      </td>
+      <td className="p-3 font-mono font-semibold text-slate-200">{p.callsign || <span className="text-slate-600 italic text-xs">no callsign</span>}</td>
+      <td className="p-3 font-mono text-slate-300">{p.type || "—"}</td>
+      <td className="p-3 font-mono text-slate-400">{p.origin || "—"}</td>
+      <td className="p-3 font-mono text-slate-400">{p.dest || "—"}</td>
+      <td className="p-3 font-mono text-slate-400">{p.cruiseFL ? `FL${p.cruiseFL}` : "—"}</td>
+      <td className="p-3 text-slate-500 text-xs max-w-xs truncate font-mono">{routePreview}</td>
+      <td className="p-3">
+        <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${sl.color}`}>{sl.label}</span>
+      </td>
+      <td className="p-3 text-xs text-slate-500">{addedStr}</td>
+      <td className="p-3" onClick={(e) => e.stopPropagation()}>
+        <button onClick={() => onDeleteOne(p.id)} className="text-rose-400 hover:text-rose-300">
+          <Icon name="trash" size={14} />
+        </button>
+      </td>
+    </tr>
+  );
+});
 
 export function AircraftPoolPanel({ pool, onDelete, onAddToScenario, airac, onSetAirac, onImportPool }: any) {
   const [fQ, setFQ] = useState("");
@@ -24,13 +52,27 @@ export function AircraftPoolPanel({ pool, onDelete, onAddToScenario, airac, onSe
       }),
     [pool, fQ, fDep, fArr, fSrc],
   );
-  const toggleSel = (id: string) => {
+  const toggleSel = useCallback((id: string) => {
     setSel((prev) => {
       const n = new Set(prev);
       n.has(id) ? n.delete(id) : n.add(id);
       return n;
     });
-  };
+  }, []);
+  const deleteOne = useCallback((id: string) => onDelete([id]), [onDelete]);
+  // Per-row derived strings, computed once per pool identity instead of on
+  // every selection re-render.
+  const derived = useMemo(() => {
+    const m = new Map<string, { routePreview: string; addedStr: string }>();
+    for (const p of pool) {
+      const toks = (p.route || "").split(" ");
+      m.set(p.id, {
+        routePreview: toks.slice(0, 5).join(" ") + (toks.length > 5 ? "…" : ""),
+        addedStr: p.addedAt ? new Date(p.addedAt).toLocaleTimeString() : "",
+      });
+    }
+    return m;
+  }, [pool]);
   const counts = useMemo(() => pool.reduce((a: any, p: any) => { a[p.source] = (a[p.source] || 0) + 1; return a; }, {}), [pool]);
   const inp = "bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-xs text-slate-200 font-mono";
   const flash = (m: string) => {
@@ -144,32 +186,8 @@ export function AircraftPoolPanel({ pool, onDelete, onAddToScenario, airac, onSe
           </thead>
           <tbody>
             {filtered.map((p: any) => {
-              const sl = SRC_LABELS[p.source] || { label: p.source || "?", color: "text-slate-400 bg-slate-800" };
-              return (
-                <tr key={p.id} onClick={() => toggleSel(p.id)} className={`border-t border-slate-800 cursor-pointer hover:bg-slate-800/30 ${sel.has(p.id) ? "bg-sky-950/20" : ""}`}>
-                  <td className="p-3">
-                    <input type="checkbox" readOnly checked={sel.has(p.id)} className="accent-sky-500" />
-                  </td>
-                  <td className="p-3 font-mono font-semibold text-slate-200">{p.callsign || <span className="text-slate-600 italic text-xs">no callsign</span>}</td>
-                  <td className="p-3 font-mono text-slate-300">{p.type || "—"}</td>
-                  <td className="p-3 font-mono text-slate-400">{p.origin || "—"}</td>
-                  <td className="p-3 font-mono text-slate-400">{p.dest || "—"}</td>
-                  <td className="p-3 font-mono text-slate-400">{p.cruiseFL ? `FL${p.cruiseFL}` : "—"}</td>
-                  <td className="p-3 text-slate-500 text-xs max-w-xs truncate font-mono">
-                    {(p.route || "").split(" ").slice(0, 5).join(" ")}
-                    {(p.route || "").split(" ").length > 5 ? "…" : ""}
-                  </td>
-                  <td className="p-3">
-                    <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${sl.color}`}>{sl.label}</span>
-                  </td>
-                  <td className="p-3 text-xs text-slate-500">{p.addedAt ? new Date(p.addedAt).toLocaleTimeString() : ""}</td>
-                  <td className="p-3" onClick={(e) => e.stopPropagation()}>
-                    <button onClick={() => onDelete([p.id])} className="text-rose-400 hover:text-rose-300">
-                      <Icon name="trash" size={14} />
-                    </button>
-                  </td>
-                </tr>
-              );
+              const d = derived.get(p.id) || { routePreview: "", addedStr: "" };
+              return <PoolRow key={p.id} p={p} selected={sel.has(p.id)} routePreview={d.routePreview} addedStr={d.addedStr} onToggle={toggleSel} onDeleteOne={deleteOne} />;
             })}
             {!filtered.length && (
               <tr>

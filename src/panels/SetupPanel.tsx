@@ -2,7 +2,10 @@
 // Ported VERBATIM from the rc3 shell.
 import { useState, useEffect, useMemo } from "react";
 import { Icon } from "../ui/Icon";
+import { uid } from "../core/uid";
 
+// New ILS/holding/controller rows get a uid so React keys survive deletes;
+// legacy rows without one keep falling back to their index.
 export function SetupPanel({ scenario, onChange, positions, runways, waypoints }: any) {
   const set = (f: string, v: any) => onChange({ ...scenario, [f]: v });
   const setIls = (i: number, f: string, v: any) => {
@@ -16,7 +19,7 @@ export function SetupPanel({ scenario, onChange, positions, runways, waypoints }
     a[i] = { ...a[i], [f]: v };
     onChange({ ...scenario, controllers: a });
   };
-  const addCtrl = () => onChange({ ...scenario, controllers: [...scenario.controllers, { callsign: "", freq: "" }] });
+  const addCtrl = () => onChange({ ...scenario, controllers: [...scenario.controllers, { callsign: "", freq: "", id: uid() }] });
   const delCtrl = (i: number) => onChange({ ...scenario, controllers: scenario.controllers.filter((_: any, j: number) => j !== i) });
 
   const holdings = scenario.holdings || [];
@@ -25,7 +28,7 @@ export function SetupPanel({ scenario, onChange, positions, runways, waypoints }
     a[i] = { ...a[i], [f]: v };
     onChange({ ...scenario, holdings: a });
   };
-  const addHold = () => onChange({ ...scenario, holdings: [...holdings, { fix: "", inboundCourse: 0, turn: "R" }] });
+  const addHold = () => onChange({ ...scenario, holdings: [...holdings, { fix: "", inboundCourse: 0, turn: "R", id: uid() }] });
   const delHold = (i: number) => onChange({ ...scenario, holdings: holdings.filter((_: any, j: number) => j !== i) });
 
   const [ilsApt, setIlsApt] = useState("");
@@ -66,12 +69,25 @@ export function SetupPanel({ scenario, onChange, positions, runways, waypoints }
       la2 = rwy.lat1;
       lo2 = rwy.lon1;
     }
-    onChange({ ...scenario, ils: [...scenario.ils, { name: ilsName.trim(), lat1: la1, lon1: lo1, lat2: la2, lon2: lo2 }] });
+    onChange({ ...scenario, ils: [...scenario.ils, { name: ilsName.trim(), lat1: la1, lon1: lo1, lat2: la2, lon2: lo2, id: uid() }] });
     setIlsRwy("");
     setIlsName("");
   }
 
   const ip = "w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-sm text-slate-200 font-mono";
+
+  // Uppercase name set so the holding-fix check is a lookup, not a scan.
+  const wptNames = useMemo(() => new Set((waypoints || []).map((w: any) => (w.name || "").toUpperCase())), [waypoints]);
+  // Position <option> list is identical for every controller row — build once.
+  const positionOptions = useMemo(
+    () =>
+      positions.map((p: any) => (
+        <option key={p.callsign + p.freq} value={`${p.callsign}|${p.freq}`}>
+          {p.callsign} · {p.freq}
+        </option>
+      )),
+    [positions],
+  );
 
   return (
     <div className="p-6 space-y-6 max-w-5xl">
@@ -89,7 +105,7 @@ export function SetupPanel({ scenario, onChange, positions, runways, waypoints }
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-200">ILS Lines</h2>
-          <button onClick={() => onChange({ ...scenario, ils: [...scenario.ils, { name: "", lat1: 0, lon1: 0, lat2: 0, lon2: 0 }] })} className="flex items-center gap-1 px-3 py-1 text-xs bg-slate-700 hover:bg-slate-600 rounded text-slate-200">
+          <button onClick={() => onChange({ ...scenario, ils: [...scenario.ils, { name: "", lat1: 0, lon1: 0, lat2: 0, lon2: 0, id: uid() }] })} className="flex items-center gap-1 px-3 py-1 text-xs bg-slate-700 hover:bg-slate-600 rounded text-slate-200">
             <Icon name="plus" size={14} />
             Add blank
           </button>
@@ -127,7 +143,7 @@ export function SetupPanel({ scenario, onChange, positions, runways, waypoints }
         )}
         <div className="space-y-2">
           {scenario.ils.map((ils: any, i: number) => (
-            <div key={i} className="grid grid-cols-12 gap-2 items-center bg-slate-900 p-2 rounded">
+            <div key={ils.id ?? i} className="grid grid-cols-12 gap-2 items-center bg-slate-900 p-2 rounded">
               <input value={ils.name} onChange={(e) => setIls(i, "name", e.target.value)} placeholder="26L" className="col-span-2 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 font-mono" />
               <input type="number" step="0.0000001" value={ils.lat1} onChange={(e) => setIls(i, "lat1", e.target.value)} className="col-span-2 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 font-mono" />
               <input type="number" step="0.0000001" value={ils.lon1} onChange={(e) => setIls(i, "lon1", e.target.value)} className="col-span-2 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 font-mono" />
@@ -167,9 +183,9 @@ export function SetupPanel({ scenario, onChange, positions, runways, waypoints }
         <div className="space-y-2">
           {holdings.map((h: any, i: number) => {
             const preview = h.fix ? `HOLDING:${h.fix}:${h.inboundCourse || 0}:${h.turn === "L" ? -1 : 1}` : "—";
-            const fixExists = h.fix && (waypoints || []).some((w: any) => w.name === h.fix.toUpperCase());
+            const fixExists = h.fix && wptNames.has(h.fix.toUpperCase());
             return (
-              <div key={i} className="grid grid-cols-12 gap-2 items-center bg-slate-900 p-2 rounded">
+              <div key={h.id ?? i} className="grid grid-cols-12 gap-2 items-center bg-slate-900 p-2 rounded">
                 <input
                   value={h.fix || ""}
                   onChange={(e) => setHold(i, "fix", e.target.value.toUpperCase())}
@@ -207,14 +223,14 @@ export function SetupPanel({ scenario, onChange, positions, runways, waypoints }
         </div>
         <div className="space-y-2">
           {scenario.controllers.map((c: any, i: number) => (
-            <div key={i} className="grid grid-cols-12 gap-2 items-center bg-slate-900 p-2 rounded">
+            <div key={c.id ?? i} className="grid grid-cols-12 gap-2 items-center bg-slate-900 p-2 rounded">
               {positions.length > 0 ? (
                 <select
                   value={c.callsign && c.freq ? `${c.callsign}|${c.freq}` : ""}
                   onChange={(e) => {
                     if (!e.target.value) {
                       const a = [...scenario.controllers];
-                      a[i] = { callsign: "", freq: "" };
+                      a[i] = { ...a[i], callsign: "", freq: "" };
                       onChange({ ...scenario, controllers: a });
                       return;
                     }
@@ -222,17 +238,13 @@ export function SetupPanel({ scenario, onChange, positions, runways, waypoints }
                     const p = positions.find((x: any) => x.callsign === cs && x.freq === fr);
                     if (!p) return;
                     const a = [...scenario.controllers];
-                    a[i] = { callsign: p.callsign, freq: p.freq };
+                    a[i] = { ...a[i], callsign: p.callsign, freq: p.freq };
                     onChange({ ...scenario, controllers: a });
                   }}
                   className="col-span-5 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-sm text-slate-200 font-mono"
                 >
                   <option value="">— pick —</option>
-                  {positions.map((p: any) => (
-                    <option key={p.callsign + p.freq} value={`${p.callsign}|${p.freq}`}>
-                      {p.callsign} · {p.freq}
-                    </option>
-                  ))}
+                  {positionOptions}
                 </select>
               ) : (
                 <input value={c.callsign} onChange={(e) => setCtrl(i, "callsign", e.target.value)} placeholder="LFPG_TWR" className="col-span-5 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-sm text-slate-200 font-mono" />

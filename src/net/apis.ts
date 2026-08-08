@@ -1,6 +1,6 @@
 // apis.ts — SimBrief / VATSIM (and any FlightPlanDatabase) calls.
-// Copied VERBATIM from the rc3 shell EXCEPT that fetch() is replaced with
-// httpFetch() (net/http.ts), which uses the Tauri HTTP plugin on desktop —
+// Ported from the rc3 shell; fetch() is replaced with httpFetch()
+// (net/http.ts), which uses the Tauri HTTP plugin on desktop —
 // native requests that bypass CORS in dev and prod, so no proxy is needed.
 
 import { httpFetch } from "./http";
@@ -31,7 +31,6 @@ export function parseSimbriefOFP(d: any) {
     cruiseFL,
     route,
     squawk: d.atc?.sqwk || "2000",
-    alternate: d.alternate?.icao_code || "",
   };
 }
 
@@ -58,8 +57,6 @@ export function filterVatsimPilots(data: any, icao: string, mode: string) {
       arr: p.flight_plan?.arrival || "",
       route: p.flight_plan?.route || "",
       squawk: p.flight_plan?.assigned_transponder || p.transponder || "2000",
-      alt: p.altitude || 0,
-      gs: p.groundspeed || 0,
       isPrefiled: !p.latitude,
       cruiseFL: Math.round(parseInt(p.flight_plan?.altitude || 0) / 100) || 0,
     }));

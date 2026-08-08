@@ -1,4 +1,6 @@
-// sct.ts — EuroScope sector (.sct) parser, copied VERBATIM from the rc3 shell.
+// sct.ts — EuroScope sector (.sct) parser, ported from the rc3 shell. Same
+// output; lines in sections whose results are discarded (GEO, SID, …) are
+// skipped before the per-line DMS parse instead of after.
 import { parseDMS } from "../core/geo";
 
 export function parseSectorFile(text: string) {
@@ -36,6 +38,9 @@ export function parseSectorFile(text: string) {
       });
       continue;
     }
+    // Only these sections feed the output — skip everything else before the
+    // (per-line) DMS regex and split run.
+    if (!["AIRPORT", "FIXES", "VOR", "NDB"].includes(section)) continue;
     const coord = parseDMS(line);
     if (!coord) continue;
     const name = line.split(/\s+/)[0].toUpperCase();
@@ -45,7 +50,7 @@ export function parseSectorFile(text: string) {
     seen.add(key);
     const entry = { name, ...coord, type: section };
     if (section === "AIRPORT") airports.push(entry);
-    else if (["FIXES", "VOR", "NDB"].includes(section)) waypoints.push(entry);
+    else waypoints.push(entry);
   }
   return { waypoints, airports, runways };
 }

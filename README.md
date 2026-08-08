@@ -105,7 +105,7 @@ around for an optional web build.
 reference/   The original single-file prototype (kept as the regression "oracle")
 src/
   core/      Generation logic, ported VERBATIM (generateSweatbox, generateFromRule, ground, geo, …)
-  generators/ ES-module plugin registry + S1/S2/S3/C1 generators
+  generators/ ES-module plugin registry + S1/S2 generators, S3 rule editor + Workbench (S3/C1)
   panels/    Tab panels + App shell (sidebar, titlebar, context strip)
   parsers/   .sct / .ese parsers
   net/ io/ state/ ui/   HTTP + APIs, file save/bundles, localStorage, icons
@@ -117,8 +117,9 @@ docs/        Screenshots
 ### Add a generator
 Generators are plain ES modules registered with `registerGenerator({ id, label, render })`.
 Make `src/generators/mygen.tsx`, call `registerGenerator(...)`, add `import "./mygen";`
-to `src/generators/index.ts`, and it shows up in the Generators tab. (`src/generators/s3.tsx`
-is the full reference.)
+to `src/generators/index.ts`, and it shows up in the Generators tab. (`src/generators/s1.tsx`
+is the full reference; the rule-based S3/C1 modes are rendered by the shared
+Workbench and bypass the registry.)
 
 ### Why the output is trustworthy
 The generation code was ported **verbatim** from the original prototype, which lives in

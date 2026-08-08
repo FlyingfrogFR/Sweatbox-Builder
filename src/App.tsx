@@ -58,6 +58,7 @@ export default function App() {
   const [pendingAircraft, setPendingAircraft] = useState<any>(null);
   const [pool, setPool] = useState<any[]>([]);
   const [vatsimCache, setVatsimCache] = useState<any>({ pilots: [], icao: "", mode: "arr", fetchedAt: null });
+  const [simbriefCache, setSimbriefCache] = useState<any>({ ofp: null });
 
   // Initial load from localStorage
   useEffect(() => {
@@ -379,7 +380,7 @@ export default function App() {
               />
             )}
             {tab === "setup" && <SetupPanel scenario={scenario} onChange={setScenario} positions={positions} runways={runways} waypoints={waypoints} />}
-            {tab === "plans" && <FlightPlansPanel onAddToPool={handleAddToPool} vatsimCache={vatsimCache} setVatsimCache={setVatsimCache} />}
+            {tab === "plans" && <FlightPlansPanel onAddToPool={handleAddToPool} vatsimCache={vatsimCache} setVatsimCache={setVatsimCache} simbriefCache={simbriefCache} setSimbriefCache={setSimbriefCache} />}
             {tab === "pool" && <AircraftPoolPanel pool={pool} onDelete={handleDeleteFromPool} onAddToScenario={handleAddPoolToScenario} airac={poolAirac} onSetAirac={setPoolAirac} onImportPool={applyPoolBundle} />}
             {tab === "generators" && <GeneratorsPanel {...generatorProps} />}
             {tab === "scenario" && <ScenarioPanel scenario={scenario} onChange={setScenario} waypoints={waypoints} pendingAircraft={pendingAircraft} onClearPending={() => setPendingAircraft(null)} />}

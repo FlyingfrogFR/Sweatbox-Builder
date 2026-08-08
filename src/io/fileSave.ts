@@ -13,9 +13,10 @@
 // allow-listed in src-tauri/capabilities/default.json ($HOME and the common
 // export folders).
 //
-// Web (fallback): the original browser blob download.
+// Web (fallback): the original browser blob download (io/bundles.ts).
 
 import { isTauri } from "../env";
+import { blobDownload } from "./bundles";
 
 export type ExportKind = "scenario" | "ruleset";
 
@@ -34,16 +35,6 @@ export function buildExportName(t: NameTokens, kind: ExportKind): string {
   const configNum = String(t.configNum ?? "").trim();
   const base = `${icao}_${version}_${config}${configNum}`;
   return kind === "ruleset" ? `${base}_RULESET.json` : `${base}.scn`;
-}
-
-function blobDownload(filename: string, contents: string, mime: string): void {
-  const blob = new Blob([contents], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
 }
 
 export interface SaveResult {
