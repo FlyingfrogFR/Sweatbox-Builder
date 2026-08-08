@@ -45,6 +45,7 @@ export const KEYS = {
   poolAirac: "sb:poolairac",
   rampAgent: "sb:rampagent",
   rampConfig: "sb:rampconfig",
+  exportPrefs: "sb:export",
 };
 
 // Persist a value to localStorage and (optionally) mirror to a side effect.

@@ -2,30 +2,48 @@
 // ICAO_X.Y_CONFIGYY naming convention (tokens entered here, with a live filename
 // preview, per "ask at save time"). Also exports the ruleset .json with the
 // matching ..._RULESET.json name. Falls back to a browser download in the web build.
-import { useState, useMemo } from "react";
+// Export settings (auto-assign pseudo pilot + naming tokens) persist in
+// localStorage so they survive tab switches and app restarts.
+import { useState, useMemo, useEffect, useDeferredValue } from "react";
 import { Icon } from "../ui/Icon";
 import { generateSweatbox } from "../core/generateSweatbox";
 import { buildExportName, saveTextFile } from "../io/fileSave";
+import { storage, KEYS } from "../state/storage";
 import { isTauri } from "../env";
 
 export function ExportPanel({ scenario, waypoints }: any) {
-  const [autoAssign, setAutoAssign] = useState(false);
-  const [initPP, setInitPP] = useState("");
+  const prefs = useMemo(() => storage.get(KEYS.exportPrefs) || {}, []);
+  const [autoAssign, setAutoAssign] = useState(!!prefs.autoAssign);
+  // Pseudo-pilot picked either from the Setup controller list or typed freely.
+  // Both values are kept so switching source doesn't lose the other one.
+  const [ppMode, setPpMode] = useState(prefs.ppMode === "custom" ? "custom" : "list");
+  const [ppList, setPpList] = useState(prefs.ppList || "");
+  const [ppCustom, setPpCustom] = useState(prefs.ppCustom || "");
+  const initPP = ppMode === "list" ? ppList : ppCustom;
+  const controllers = (scenario.controllers || []).filter((c: any) => c.callsign);
+  // Deferred so typing a mentor callsign doesn't re-run the full .scn
+  // generation (O(aircraft × waypoints)) synchronously on every keystroke;
+  // the preview converges within a frame and Copy/Save read the settled value.
+  const deferredPP = useDeferredValue(initPP);
   const output = useMemo(
-    () => generateSweatbox(scenario, waypoints, { initPseudoPilot: autoAssign ? initPP : "" }),
-    [scenario, waypoints, autoAssign, initPP],
+    () => generateSweatbox(scenario, waypoints, { initPseudoPilot: autoAssign ? deferredPP : "" }),
+    [scenario, waypoints, autoAssign, deferredPP],
   );
   const [copied, setCopied] = useState(false);
   const [status, setStatus] = useState("");
 
-  // Naming-convention tokens — collected at save time. ICAO seeded from the
-  // first 4 letters of the scenario name if it looks like an ICAO.
+  // Naming-convention tokens — collected at save time. ICAO from saved prefs,
+  // else seeded from the first 4 letters of the scenario name if it looks like an ICAO.
   const seededIcao = (scenario.name || "").trim().slice(0, 4).toUpperCase();
-  const [icao, setIcao] = useState(/^[A-Z]{4}$/.test(seededIcao) ? seededIcao : "");
-  const [version, setVersion] = useState("");
-  const [config, setConfig] = useState("");
-  const [configNum, setConfigNum] = useState("");
+  const [icao, setIcao] = useState(prefs.icao || (/^[A-Z]{4}$/.test(seededIcao) ? seededIcao : ""));
+  const [version, setVersion] = useState(prefs.version || "");
+  const [config, setConfig] = useState(prefs.config || "");
+  const [configNum, setConfigNum] = useState(prefs.configNum || "");
   const tokens = { icao, version, config, configNum };
+
+  useEffect(() => {
+    storage.set(KEYS.exportPrefs, { autoAssign, ppMode, ppList, ppCustom, icao, version, config, configNum });
+  }, [autoAssign, ppMode, ppList, ppCustom, icao, version, config, configNum]);
   const scnName = useMemo(() => buildExportName(tokens, "scenario"), [icao, version, config, configNum]);
   const rulesetName = useMemo(() => buildExportName(tokens, "ruleset"), [icao, version, config, configNum]);
 
@@ -117,9 +135,50 @@ export function ExportPanel({ scenario, waypoints }: any) {
           Auto-assign initial pseudo pilot
         </label>
         {autoAssign && (
-          <div>
-            <label className="block text-xs text-slate-400 mb-1">Mentor callsign</label>
-            <input value={initPP} onChange={(e) => setInitPP(e.target.value.toUpperCase())} placeholder="LFPG_APP" className="w-48 bg-slate-950 border border-slate-700 rounded px-3 py-1.5 text-sm text-slate-200 font-mono" />
+          <div className="space-y-2">
+            <div className="inline-flex gap-[3px] bg-slate-950 border border-slate-700 rounded-md p-[3px]">
+              <button
+                onClick={() => setPpMode("list")}
+                className={`text-xs px-2.5 py-1 rounded ${ppMode === "list" ? "bg-slate-700 text-slate-100 font-medium" : "text-slate-400 hover:text-slate-200"}`}
+              >
+                Setup controller
+              </button>
+              <button
+                onClick={() => setPpMode("custom")}
+                className={`text-xs px-2.5 py-1 rounded ${ppMode === "custom" ? "bg-slate-700 text-slate-100 font-medium" : "text-slate-400 hover:text-slate-200"}`}
+              >
+                Mentor callsign
+              </button>
+            </div>
+            {ppMode === "list" ? (
+              controllers.length ? (
+                <select
+                  value={ppList}
+                  onChange={(e) => setPpList(e.target.value)}
+                  className="block w-64 bg-slate-950 border border-slate-700 rounded px-3 py-1.5 text-sm text-slate-200 font-mono focus:border-sky-500 focus:outline-none"
+                >
+                  <option value="">— pick a controller —</option>
+                  {controllers.map((c: any) => (
+                    <option key={c.callsign} value={c.callsign}>
+                      {c.callsign}
+                      {c.freq ? ` · ${c.freq}` : ""}
+                    </option>
+                  ))}
+                  {ppList && !controllers.some((c: any) => c.callsign === ppList) && (
+                    <option value={ppList}>{ppList} · no longer in Setup</option>
+                  )}
+                </select>
+              ) : (
+                <p className="text-xs text-slate-500">No controllers defined in Setup — add them there, or switch to Mentor callsign.</p>
+              )
+            ) : (
+              <input
+                value={ppCustom}
+                onChange={(e) => setPpCustom(e.target.value.toUpperCase())}
+                placeholder="LFPG_APP"
+                className="block w-48 bg-slate-950 border border-slate-700 rounded px-3 py-1.5 text-sm text-slate-200 font-mono focus:border-sky-500 focus:outline-none"
+              />
+            )}
           </div>
         )}
         {(scenario.holdings || []).length > 0 && (
