@@ -121,27 +121,27 @@ export const TrafficBoard = forwardRef<HTMLDivElement, any>(function TrafficBoar
           <div className="h-full min-h-[220px] flex items-center justify-center gap-[18px] p-6 flex-wrap">
             <button
               className="dk-ghost cursor-pointer hover:border-cy-fg/60 transition-colors"
-              onClick={() => onOpenTray("traffic", "rules")}
+              onClick={() => onOpenTray("build", "rules")}
             >
               <b>Import your syllabus ruleset</b>
               Load your training ruleset, then pull RUN RULES.
               <span className="block mt-2.5 text-[15px] text-cy-fg">↓</span>
-              <span className="dk-kref">TRAFFIC → RULES</span>
+              <span className="dk-kref">BUILD TFC → RULESET</span>
             </button>
             <button
               className="dk-ghost cursor-pointer hover:border-cy-fg/60 transition-colors"
-              onClick={() => onOpenTray("traffic", "live")}
+              onClick={() => onOpenTray("pool")}
             >
               <b>Fetch real traffic</b>
               Pull a SimBrief OFP or live VATSIM pilots into the pool.
               <span className="block mt-2.5 text-[15px] text-cy-fg">↓</span>
-              <span className="dk-kref">TRAFFIC → LIVE & POOL</span>
+              <span className="dk-kref">FPLN POOL</span>
             </button>
             <button className="dk-ghost cursor-pointer hover:border-cy-fg/60 transition-colors" onClick={onAddAc}>
               <b>Add one by hand</b>
               Drop a blank aircraft and type its plan.
               <span className="block mt-2.5 text-[15px] text-cy-fg">↓</span>
-              <span className="dk-kref">TRAFFIC → + BY HAND</span>
+              <span className="dk-kref">BUILD TFC → MANUAL</span>
             </button>
           </div>
         ) : (

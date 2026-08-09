@@ -1,17 +1,12 @@
-// TrafficTray.tsx — dock button 2 of 3. Every way of putting traffic on the
-// board lives here, in three sub-sections plus one direct action:
-//   RULES        — the workbench (import-first), with the RUN RULES lever
-//   LIVE & POOL  — SimBrief + VATSIM fetchers feeding the pool, pool → board
-//   GROUND       — S1 ramp traffic
-//   + BY HAND    — drops one blank aircraft and opens its editor
-// Hosted panels keep their legacy styling — accepted for this milestone.
+// BuildTray.tsx — the BUILD TFC dock button: generated traffic. Two ways to
+// build — RULESET (the workbench, import-first) or MANUAL (one aircraft at a
+// time) — plus GROUND TFC as a deliberately different-looking (amber) section:
+// it spawns parked/taxiing ramp traffic rather than airborne flows.
 import { useState, useEffect, useRef } from "react";
 import { Tray } from "../Tray";
 import { DeckKey, Latch, pulse } from "../ui";
 import { Icon } from "../../ui/Icon";
 import { RuleWorkbench } from "../../generators/RuleWorkbench";
-import { SimBriefSection, VatsimSection } from "../../panels/FlightPlansPanel";
-import { AircraftPoolPanel } from "../../panels/AircraftPoolPanel";
 import { getGenerators } from "../../generators";
 import { emptyRule } from "../../core/model";
 import { readJsonFile, downloadJsonBundle } from "../../io/bundles";
@@ -20,7 +15,7 @@ import { extractRules, normalizeRules } from "../../state/rulesImport";
 type Mode = "S3" | "C1";
 const MODE_LABEL: Record<Mode, string> = { S3: "S3 · APPROACH", C1: "C1 · ENROUTE" };
 
-export function TrafficTray(props: any) {
+export function BuildTray(props: any) {
   const {
     open,
     close,
@@ -43,23 +38,13 @@ export function TrafficTray(props: any) {
     onAddAc,
     onRunRules,
     estRuleAc,
-    simbriefCache,
-    setSimbriefCache,
-    vatsimCache,
-    setVatsimCache,
-    onAddToPool,
-    onDeleteFromPool,
-    poolAirac,
-    onSetPoolAirac,
-    onImportPool,
-    onAddToBoard,
     onGroundGenerated,
   } = props;
 
   const allRules = scenario.rules || [];
   const ruleCount = allRules.length;
 
-  // ---------- RULES section state ----------
+  // ---------- RULESET section state ----------
   const [mode, setMode] = useState<Mode>(rating === "C1" ? "C1" : "S3");
   useEffect(() => {
     if (rating === "S3" || rating === "C1") setMode(rating);
@@ -82,7 +67,7 @@ export function TrafficTray(props: any) {
     (m: any) => m !== mode,
   ) as string[];
 
-  // Board → tray focus: land on the RULES section in the focused rule's mode.
+  // Board → tray focus: land on RULESET in the focused rule's mode.
   useEffect(() => {
     if (!open || !focusRuleId) return;
     const r = allRules.find((x: any) => x.id === focusRuleId);
@@ -93,7 +78,7 @@ export function TrafficTray(props: any) {
     clearFocus();
   }, [open, focusRuleId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ---------- ruleset import (merge/replace, ported from SavedPanel.applyRules) ----------
+  // ---------- ruleset import (merge/replace) ----------
   const applyRules = (incoming: any[]) => {
     const normalised = normalizeRules(incoming);
     const n = normalised.length;
@@ -160,9 +145,8 @@ export function TrafficTray(props: any) {
   const runLabel =
     ruleCount === 0 ? "RUN RULES" : `RUN RULES · ${ruleCount} → ${runAnim !== null ? runAnim : estRuleAc}`;
 
-  // ---------- GROUND section (registered S1 panel) ----------
+  // ---------- GROUND TFC section (registered S1 panel) ----------
   const s1 = getGenerators().find((g) => g.id === "S1");
-  // Auto-close on generation: baseline the ground-aircraft count while open.
   const groundBase = useRef(0);
   const groundCount = (scenario.aircraft || []).filter((a: any) => a.groundMeta).length;
   useEffect(() => {
@@ -179,24 +163,25 @@ export function TrafficTray(props: any) {
   return (
     <Tray
       open={open}
-      title="TRAFFIC"
+      title="BUILD TFC"
       onDone={close}
       headExtra={
         <span className="flex items-center gap-1.5 ml-1.5">
-          <Latch on={section === "rules"} onClick={() => setSection("rules")} title="Rule-generated traffic">
-            RULES {ruleCount > 0 && <b className="font-mono">{ruleCount}</b>}
+          <Latch on={section === "rules"} onClick={() => setSection("rules")} title="Rule-generated flows (import a ruleset or build rules)">
+            RULESET {ruleCount > 0 && <b className="font-mono">{ruleCount}</b>}
           </Latch>
-          <Latch on={section === "live"} onClick={() => setSection("live")} title="SimBrief / VATSIM fetchers + the pool">
-            LIVE & POOL {(pool || []).length > 0 && <b className="font-mono">{(pool || []).length}</b>}
-          </Latch>
-          <Latch on={section === "ground"} onClick={() => setSection("ground")} title="S1 ramp traffic">
-            GROUND
+          <Latch on={section === "manual"} onClick={() => setSection("manual")} title="Add aircraft one by one">
+            MANUAL
           </Latch>
           <span className="w-px self-stretch bg-bd1 mx-1" />
-          <DeckKey size="sm" onClick={onAddAc} title="Drop one blank aircraft and type its plan">
-            <Icon name="plus" size={13} />
-            BY HAND
-          </DeckKey>
+          <Latch
+            on={section === "ground"}
+            onClick={() => setSection("ground")}
+            className="dk-amber"
+            title="Parked / taxiing ramp traffic — a different beast from airborne flows"
+          >
+            GROUND TFC
+          </Latch>
         </span>
       }
       footer={
@@ -238,7 +223,7 @@ export function TrafficTray(props: any) {
       <div className="h-full min-h-0 flex flex-col">
         <input ref={fileRef} type="file" accept=".json,application/json" className="hidden" onChange={onFile} />
 
-        {/* ================= RULES ================= */}
+        {/* ================= RULESET ================= */}
         {section === "rules" &&
           (!allRules.length ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-6 p-8">
@@ -290,37 +275,36 @@ export function TrafficTray(props: any) {
             </>
           ))}
 
-        {/* ================= LIVE & POOL ================= */}
-        {section === "live" && (
-          <div className="flex-1 min-h-0 overflow-y-auto">
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-x-6 border-b border-bd1">
-              <div className="min-w-0">
-                <SimBriefSection onAddToPool={onAddToPool} cache={simbriefCache} setCache={setSimbriefCache} />
-              </div>
-              <div className="min-w-0">
-                <VatsimSection onAddToPool={onAddToPool} cache={vatsimCache} setCache={setVatsimCache} />
-              </div>
+        {/* ================= MANUAL ================= */}
+        {section === "manual" && (
+          <div className="flex-1 flex flex-col items-center justify-center gap-5 p-8">
+            <DeckKey size="lever" variant="primary" onClick={onAddAc}>
+              <Icon name="plus" size={15} />
+              ADD AIRCRAFT
+            </DeckKey>
+            <div className="text-[11.5px] text-tx6 text-center max-w-[380px]">
+              Drops one blank aircraft on the board and opens its editor — callsign, type, route, spawn fix,
+              start time. Repeat as needed; rows land on the board instantly.
             </div>
-            <AircraftPoolPanel
-              pool={pool}
-              onDelete={onDeleteFromPool}
-              onAddToScenario={onAddToBoard}
-              airac={poolAirac}
-              onSetAirac={onSetPoolAirac}
-              onImportPool={onImportPool}
-            />
           </div>
         )}
 
-        {/* ================= GROUND ================= */}
-        {section === "ground" &&
-          (s1 ? (
-            <div className="flex-1 min-h-0 overflow-y-auto">
-              {s1.render({ scenario, onChange, gates, pool, rampAgent, rampConfig })}
+        {/* ================= GROUND TFC ================= */}
+        {section === "ground" && (
+          <>
+            <div className="flex-none flex items-center gap-2 px-4 py-2 border-b border-am-bd bg-am-bg text-[11px] text-am-fg">
+              <Icon name="alert" size={13} />
+              Ground traffic — parked / taxiing ramp aircraft (S1), not airborne flows. Rows land with a GND chip.
             </div>
-          ) : (
-            <div className="p-10 text-center text-tx6">S1 ground generator not loaded.</div>
-          ))}
+            {s1 ? (
+              <div className="flex-1 min-h-0 overflow-y-auto">
+                {s1.render({ scenario, onChange, gates, pool, rampAgent, rampConfig })}
+              </div>
+            ) : (
+              <div className="p-10 text-center text-tx6">S1 ground generator not loaded.</div>
+            )}
+          </>
+        )}
       </div>
     </Tray>
   );

@@ -42,6 +42,19 @@ export function SetupTray(props: any) {
     >
       {section === "scenario" ? (
         <>
+          {!navLoaded && (
+            /* navdata is the real prerequisite — route the user there first */
+            <div className="flex items-center gap-2.5 px-6 py-2.5 border-b border-am-bd bg-am-bg text-[11.5px] text-am-fg">
+              <span className="font-semibold">No navdata loaded</span>
+              <span className="text-am-fg/80">— runway pickers, holdings and pre-entry offsets need your .sct/.ese first.</span>
+              <button
+                onClick={() => setSection("navdata")}
+                className="ml-auto text-[10.5px] font-bold tracking-[0.06em] border border-am-fg/60 rounded-md px-2.5 py-1 hover:bg-am-fg/10"
+              >
+                LOAD NAVDATA →
+              </button>
+            </div>
+          )}
           {/* SetupPanel carries its own p-6, so this row pads itself to line up. */}
           <div className="px-6 pt-6">
             <div className="flex items-center gap-2 flex-wrap">

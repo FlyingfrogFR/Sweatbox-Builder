@@ -26,6 +26,7 @@ const ip =
 export function CommandDock({
   navLoaded,
   acCount,
+  poolCount,
   tokens,
   setTokens,
   tokensSet,
@@ -85,8 +86,8 @@ export function CommandDock({
   // ---------- export (never-dead) ----------
   const doExport = async () => {
     if (acCount === 0) {
-      toast("No aircraft yet — press TRAFFIC to feed the board", "warn");
-      onOpenTray("traffic");
+      toast("No aircraft yet — press BUILD TFC or FPLN POOL to feed the board", "warn");
+      onOpenTray("build");
       return;
     }
     if (!tokensSet) {
@@ -127,12 +128,20 @@ export function CommandDock({
       <Cluster label="2 · TRAFFIC">
         <DeckKey
           size="lever"
-          badge={acCount}
-          breathe={breathe === "traffic"}
-          onClick={() => onOpenTray("traffic")}
-          title="Rules · live traffic & pool · ground · by hand"
+          badge={poolCount}
+          onClick={() => onOpenTray("pool")}
+          title="Real flight plans — SimBrief / VATSIM fetchers + the staging pool"
         >
-          TRAFFIC
+          FPLN POOL
+        </DeckKey>
+        <DeckKey
+          size="lever"
+          badge={acCount}
+          breathe={breathe === "build"}
+          onClick={() => onOpenTray("build")}
+          title="Generate traffic — ruleset · manual · ground"
+        >
+          BUILD TFC
         </DeckKey>
       </Cluster>
       <Divider />
@@ -220,9 +229,16 @@ export function CommandDock({
           </div>
           {/* pseudo-pilot */}
           <div className="border-t border-bd1 pt-2.5 flex flex-col gap-2">
+            <div className="text-[9.5px] font-bold tracking-[0.1em] text-tx8 select-none">
+              MENTOR AS PSEUDO-PILOT
+            </div>
             <div className="flex items-center gap-1.5 flex-wrap">
-              <Latch on={autoPP} onClick={() => setAutoPP(!autoPP)} title="Auto-assign initial pseudo pilot">
-                AUTO-PP
+              <Latch
+                on={autoPP}
+                onClick={() => setAutoPP(!autoPP)}
+                title="Writes INITIALPSEUDOPILOT so the mentor's client controls every aircraft from session start"
+              >
+                {autoPP ? "ON" : "OFF"}
               </Latch>
               {autoPP && (
                 <div className="flex gap-1 ml-1">
@@ -235,6 +251,11 @@ export function CommandDock({
                 </div>
               )}
             </div>
+            {!autoPP && (
+              <p className="text-[10px] text-tx7">
+                When ON, every aircraft starts under the mentor's control (INITIALPSEUDOPILOT in the .scn).
+              </p>
+            )}
             {autoPP &&
               (ppMode === "list" ? (
                 (controllers || []).length || staleList ? (

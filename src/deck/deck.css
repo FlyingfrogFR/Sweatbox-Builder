@@ -182,6 +182,19 @@
   background: rgb(var(--cy-fg));
   box-shadow: 0 0 6px rgb(var(--cy-fg) / 0.8);
 }
+/* amber-toned latch — used where a section must read as "different kind of
+   thing" (e.g. GROUND TFC among the build modes) */
+.dk-latch.dk-amber.dk-on {
+  border-color: rgb(var(--am-fg) / 0.6);
+  color: rgb(var(--am-fg));
+}
+.dk-latch.dk-amber.dk-on .dk-led {
+  background: rgb(var(--am-fg));
+  box-shadow: 0 0 6px rgb(var(--am-fg) / 0.8);
+}
+.dk-latch.dk-amber:hover {
+  border-color: rgb(var(--am-fg) / 0.5);
+}
 
 /* ---------- result pulses ---------- */
 .dk-pulse-ok {

@@ -27,13 +27,14 @@ import { AircraftDrawer } from "./AircraftDrawer";
 import { RewindStrip } from "./RewindStrip";
 import { Toasts, useToasts } from "./Toasts";
 import { SetupTray } from "./trays/SetupTray";
-import { TrafficTray } from "./trays/TrafficTray";
+import { FplnPoolTray } from "./trays/FplnPoolTray";
+import { BuildTray } from "./trays/BuildTray";
 
 // Registers S1/S2 into the plugin registry (side-effect import kept for the
 // GROUND tray, which renders the registered S1 panel).
 import "../generators";
 
-export type TrayId = "setup" | "traffic" | null;
+export type TrayId = "setup" | "pool" | "build" | null;
 
 export default function DeckApp() {
   const { theme, toggle } = useTheme();
@@ -66,7 +67,7 @@ export default function DeckApp() {
   // ---------- deck UI state ----------
   const [tray, setTray] = useState<TrayId>(null);
   const [setupSection, setSetupSection] = useState<"scenario" | "navdata">("scenario");
-  const [trafficSection, setTrafficSection] = useState<"rules" | "live" | "ground">("rules");
+  const [buildSection, setBuildSection] = useState<"rules" | "manual" | "ground">("rules");
   const [editingAc, setEditingAc] = useState<any>(null); // aircraft object open in the drawer
   const [rewindOpen, setRewindOpen] = useState(false);
   const [boardFilter, setBoardFilter] = useState<"all" | "arr" | "dep">("all");
@@ -327,7 +328,7 @@ export default function DeckApp() {
   const runRules = () => {
     const rules = scenario.rules || [];
     if (!rules.length) {
-      openTray("traffic", "rules");
+      openTray("build", "rules");
       return;
     }
     snapshot("before RUN RULES");
@@ -434,7 +435,7 @@ export default function DeckApp() {
     ? "setup"
     : !acCount
       ? rating === "S1"
-        ? "traffic"
+        ? "build"
         : "none" // ghost cards carry the guidance
       : !tokensSet
         ? "plate"
@@ -445,13 +446,18 @@ export default function DeckApp() {
   const openTray = (id: TrayId, section?: string) => {
     setEditingAc(null);
     setRewindOpen(false);
-    if (id === "setup" && (section === "scenario" || section === "navdata")) setSetupSection(section);
-    if (id === "traffic" && (section === "rules" || section === "live" || section === "ground")) setTrafficSection(section);
+    if (id === "setup") {
+      // Navdata is the real prerequisite: SETUP lands there until it's loaded,
+      // then skips straight to the scenario frame.
+      if (section === "scenario" || section === "navdata") setSetupSection(section);
+      else setSetupSection(navLoaded ? "scenario" : "navdata");
+    }
+    if (id === "build" && (section === "rules" || section === "manual" || section === "ground")) setBuildSection(section);
     setTray((cur) => (cur === id ? cur : id));
   };
   const openRuleFromBoard = (ruleId: string) => {
     setRulesFocusId(ruleId);
-    openTray("traffic", "rules");
+    openTray("build", "rules");
   };
 
   // ---------- keyboard ----------
@@ -585,17 +591,9 @@ export default function DeckApp() {
             onLoadRampConfig={setRampConfigState}
             onResetRampAgent={() => { setRampAgent({}); setRampConfigState(null); }}
           />
-          <TrafficTray
-            open={tray === "traffic"}
-            section={trafficSection}
-            setSection={setTrafficSection}
+          <FplnPoolTray
+            open={tray === "pool"}
             {...trayProps}
-            focusRuleId={rulesFocusId}
-            clearFocus={() => setRulesFocusId(null)}
-            rating={rating}
-            onAddAc={() => { setTray(null); setEditingAc("new"); }}
-            onRunRules={runRules}
-            estRuleAc={(scenario.rules || []).reduce((s: number, r: any) => s + (Math.floor((+r.duration || 0) / Math.max(1, 60 / (+r.rate || 1))) + 1 || 0), 0)}
             simbriefCache={simbriefCache}
             setSimbriefCache={setSimbriefCache}
             vatsimCache={vatsimCache}
@@ -606,6 +604,18 @@ export default function DeckApp() {
             onSetPoolAirac={setPoolAirac}
             onImportPool={applyPoolBundle}
             onAddToBoard={(entries: any[]) => { const acs = entries.map((e) => poolToAc(e, false)); const list = sortByStart([...scenario.aircraft, ...acs]); setScenario({ ...scenario, aircraft: list }); setFlashIds(new Set(acs.map((a) => a.id))); setTray(null); toast(`${acs.length} aircraft → board`, "ok"); }}
+          />
+          <BuildTray
+            open={tray === "build"}
+            section={buildSection}
+            setSection={setBuildSection}
+            {...trayProps}
+            focusRuleId={rulesFocusId}
+            clearFocus={() => setRulesFocusId(null)}
+            rating={rating}
+            onAddAc={() => { setTray(null); setEditingAc("new"); }}
+            onRunRules={runRules}
+            estRuleAc={(scenario.rules || []).reduce((s: number, r: any) => s + (Math.floor((+r.duration || 0) / Math.max(1, 60 / (+r.rate || 1))) + 1 || 0), 0)}
             onGroundGenerated={(count: number) => { setTray(null); toast(`${count} ground aircraft spawned`, "ok"); }}
           />
         </div>
@@ -629,6 +639,7 @@ export default function DeckApp() {
       <CommandDock
         navLoaded={navLoaded}
         acCount={acCount}
+        poolCount={pool.length}
         tokens={tokens}
         setTokens={setTokens}
         tokensSet={tokensSet}
