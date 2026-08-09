@@ -60,6 +60,7 @@ export function emptyRule() {
     simRouteTemplate: "",
     rate: 8,
     duration: 30,
+    timingMode: "regular", // "regular" = evenly spaced · "random" = same count, random times, >=2 min apart
     startOffset: 0,
     runway: "",
     originPool: "EHAM,EGLL,EDDF,LEMD,LIRF",

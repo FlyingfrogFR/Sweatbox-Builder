@@ -23,6 +23,35 @@ function homeApt(rule: any) {
   return rule.homeIcao === undefined ? "LFPG" : String(rule.homeIcao).trim().toUpperCase();
 }
 
+// Spawn schedule for a rule. Default ("regular", or field absent) keeps the
+// original evenly-spaced times — and makes NO rng() calls, so legacy rules and
+// the golden fixtures generate byte-identically. timingMode "random" keeps the
+// SAME aircraft count but draws the spawn times randomly across the window,
+// never closer than MIN_RANDOM_GAP_MIN from the same fix: sorted uniforms over
+// the slack the gaps leave, floors re-added, then a cumulative pass so the
+// 2-minute guarantee survives the 0.1-min start rounding.
+const MIN_RANDOM_GAP_MIN = 2;
+function buildSchedule(rule: any, count: number, intMin: number): number[] {
+  const t0 = +rule.startOffset || 0;
+  if (rule.timingMode !== "random") {
+    const t = [];
+    for (let i = 0; i < count; i++) t.push(t0 + i * intMin);
+    return t;
+  }
+  const gap = MIN_RANDOM_GAP_MIN;
+  const slack = Math.max(0, (+rule.duration || 0) - gap * (count - 1));
+  const u: number[] = [];
+  for (let i = 0; i < count; i++) u.push(rng() * slack);
+  u.sort((a, b) => a - b);
+  const t: number[] = [];
+  for (let i = 0; i < count; i++) {
+    let v = Math.round((t0 + u[i] + i * gap) * 10) / 10;
+    if (i > 0 && v < t[i - 1] + gap) v = Math.round((t[i - 1] + gap) * 10) / 10;
+    t.push(v);
+  }
+  return t;
+}
+
 export function generateFromRule(
   rule: any,
   waypoints: any[],
@@ -108,10 +137,11 @@ export function generateFromRule(
     if (!matches.length)
       return { aircraft: [], error: `No pool aircraft match DEP="${dDep || "any"}" ARR="${dArr || "any"}"` };
     const count = Math.max(1, Math.floor(rule.duration / intMin) + 1);
+    const schedule = buildSchedule(rule, count, intMin);
     const out = [];
     for (let i = 0; i < Math.min(count, matches.length); i++) {
       const tmpl = matches[i];
-      const startMin = rule.startOffset + i * intMin;
+      const startMin = schedule[i];
       const fpR = tmpl.route || pickFP();
       const typ = tmpl.type || pickPool(rule.typePool, i);
       let cs = tmpl.callsign;
@@ -150,13 +180,14 @@ export function generateFromRule(
   }
 
   const count = Math.max(1, Math.floor(rule.duration / intMin) + 1);
+  const schedule = buildSchedule(rule, count, intMin);
   const useRand = rule.randomCallsign !== false;
   const regICAO = rule.isDeparture
     ? (rule.destPool || "").split(",")[0].trim()
     : (rule.originPool || "").split(",")[0].trim();
   const out = [];
   for (let i = 0; i < count; i++) {
-    const startMin = rule.startOffset + i * intMin;
+    const startMin = schedule[i];
     const seq = (rule.seq || 1) + i;
     let cs;
     if (useRand) {

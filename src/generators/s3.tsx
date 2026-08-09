@@ -745,10 +745,26 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
                 <input type="number" className={ip} value={r.seq} onChange={(e) => update("seq", +e.target.value)} min="1" />
               </div>
             </div>
+            <div className="flex items-center gap-2 mt-2 flex-wrap">
+              <label className="text-xs font-semibold uppercase text-slate-400">Spawn timing</label>
+              <button
+                onClick={() => update("timingMode", "regular")}
+                className={`px-3 py-1.5 rounded text-xs font-medium ${r.timingMode !== "random" ? "bg-sky-700 text-white" : "bg-slate-800 text-slate-400 hover:text-slate-200"}`}
+              >
+                Regular intervals
+              </button>
+              <button
+                onClick={() => update("timingMode", "random")}
+                className={`px-3 py-1.5 rounded text-xs font-medium ${r.timingMode === "random" ? "bg-sky-700 text-white" : "bg-slate-800 text-slate-400 hover:text-slate-200"}`}
+              >
+                Random times (≥ 2 min apart)
+              </button>
+            </div>
             <div className="mt-2 text-xs text-slate-400 bg-slate-950/60 rounded p-2 font-mono">
-              ≈{r.poolSource ? Math.min(count, poolMatches.length || count) : count} aircraft · {(intMin * 60).toFixed(0)}s apart · T+:{" "}
-              {sampleTimes.join(", ")}
-              {count > sampleTimes.length ? "…" : ""}
+              ≈{r.poolSource ? Math.min(count, poolMatches.length || count) : count} aircraft ·{" "}
+              {r.timingMode === "random"
+                ? "random spawn times across the window, min 2 min apart (re-rolled every generation)"
+                : `${(intMin * 60).toFixed(0)}s apart · T+: ${sampleTimes.join(", ")}${count > sampleTimes.length ? "…" : ""}`}
             </div>
           </section>
 

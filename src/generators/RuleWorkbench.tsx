@@ -312,6 +312,29 @@ export function RuleWorkbench({ mode, scenario, onChange, waypoints, pool, stars
                   <input type="number" className={ip} value={draft.duration} onChange={(e) => set("duration", +e.target.value)} />
                 </div>
                 <div>
+                  <label className={lb}>TIMING</label>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => set("timingMode", "regular")}
+                      title="Evenly spaced across the window"
+                      className={`flex-1 text-[10.5px] font-semibold px-2 py-2 rounded-md border ${
+                        draft.timingMode !== "random" ? "bg-cy-soft border-cy-bd text-cy-fg" : "bg-inset border-bd3 text-tx5 hover:text-tx3"
+                      }`}
+                    >
+                      REGULAR
+                    </button>
+                    <button
+                      onClick={() => set("timingMode", "random")}
+                      title="Same aircraft count, random spawn times — never under 2 min apart"
+                      className={`flex-1 text-[10.5px] font-semibold px-2 py-2 rounded-md border ${
+                        draft.timingMode === "random" ? "bg-cy-soft border-cy-bd text-cy-fg" : "bg-inset border-bd3 text-tx5 hover:text-tx3"
+                      }`}
+                    >
+                      RANDOM ≥2′
+                    </button>
+                  </div>
+                </div>
+                <div>
                   <label className={lb}>SEPARATION (NM)</label>
                   <input type="number" className={ip} value={draft.nmSeparation} onChange={(e) => set("nmSeparation", +e.target.value)} />
                 </div>
