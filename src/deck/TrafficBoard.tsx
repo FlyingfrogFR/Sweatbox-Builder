@@ -7,7 +7,7 @@ import { forwardRef, useMemo, useState } from "react";
 import { Icon } from "../ui/Icon";
 import { uid } from "../core/uid";
 import { sortByStart } from "../state/aircraft";
-import { Latch, HoldKey } from "./ui";
+import { Latch, HoldKey, DeckKey } from "./ui";
 import { SessionTimeline } from "./SessionTimeline";
 
 const COLS = "grid grid-cols-[96px_46px_52px_minmax(0,1fr)_104px_54px_112px_92px] gap-x-2.5 items-center";
@@ -31,7 +31,7 @@ const ACT =
   "w-6 h-6 rounded-md grid place-items-center text-tx6 hover:bg-bd2 hover:text-tx1 active:translate-y-px";
 
 export const TrafficBoard = forwardRef<HTMLDivElement, any>(function TrafficBoard(
-  { scenario, onChange, filter, setFilter, flashIds, onEdit, onOpenRule, onOpenTray, onSnapshot, toast },
+  { scenario, onChange, filter, setFilter, flashIds, onEdit, onOpenRule, onOpenTray, onSnapshot, onRewind, onAddAc, toast },
   ref,
 ) {
   const aircraft: any[] = scenario.aircraft || [];
@@ -107,6 +107,9 @@ export const TrafficBoard = forwardRef<HTMLDivElement, any>(function TrafficBoar
             CLEAR GND <span className="dk-badge">{gndCount}</span>
           </HoldKey>
         )}
+        <DeckKey size="sm" onClick={onRewind} title="Snapshots — rewind the board">
+          REWIND
+        </DeckKey>
       </div>
 
       {/* ===== session timeline (hidden when the board is empty) ===== */}
@@ -118,28 +121,28 @@ export const TrafficBoard = forwardRef<HTMLDivElement, any>(function TrafficBoar
           <div className="h-full min-h-[220px] flex items-center justify-center gap-[18px] p-6 flex-wrap">
             <button
               className="dk-ghost cursor-pointer hover:border-cy-fg/60 transition-colors"
-              onClick={() => onOpenTray("rules")}
+              onClick={() => onOpenTray("traffic", "rules")}
             >
               <b>Import your syllabus ruleset</b>
               Load your training ruleset, then pull RUN RULES.
               <span className="block mt-2.5 text-[15px] text-cy-fg">↓</span>
-              <span className="dk-kref">RULES tray</span>
+              <span className="dk-kref">TRAFFIC → RULES</span>
             </button>
             <button
               className="dk-ghost cursor-pointer hover:border-cy-fg/60 transition-colors"
-              onClick={() => onOpenTray("pool")}
+              onClick={() => onOpenTray("traffic", "live")}
             >
               <b>Fetch real traffic</b>
               Pull a SimBrief OFP or live VATSIM pilots into the pool.
               <span className="block mt-2.5 text-[15px] text-cy-fg">↓</span>
-              <span className="dk-kref">SIMBRIEF · VATSIM → POOL</span>
+              <span className="dk-kref">TRAFFIC → LIVE & POOL</span>
             </button>
-            <div className="dk-ghost">
+            <button className="dk-ghost cursor-pointer hover:border-cy-fg/60 transition-colors" onClick={onAddAc}>
               <b>Add one by hand</b>
               Drop a blank aircraft and type its plan.
               <span className="block mt-2.5 text-[15px] text-cy-fg">↓</span>
-              <span className="dk-kref">ADD AC on the dock</span>
-            </div>
+              <span className="dk-kref">TRAFFIC → + BY HAND</span>
+            </button>
           </div>
         ) : (
           <>

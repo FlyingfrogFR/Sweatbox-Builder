@@ -15,9 +15,21 @@ const fmtN = (n: number) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 
 export function OutputPane({ output, navLoaded, shipped }: { output: string; navLoaded: boolean; shipped: { t: string } | null }) {
   const [showAll, setShowAll] = useState(false);
+  const [copied, setCopied] = useState(false);
   const prevRef = useRef("");
   const tickerRef = useRef<HTMLSpanElement>(null);
   const stampRef = useRef<HTMLDivElement>(null);
+  const copyTimer = useRef<any>(null);
+  useEffect(() => () => clearTimeout(copyTimer.current), []);
+  const doCopy = () => {
+    try {
+      navigator.clipboard.writeText(output);
+    } catch {}
+    setCopied(true);
+    pulse(document.getElementById("dk-copy"), "dk-pulse-ok");
+    clearTimeout(copyTimer.current);
+    copyTimer.current = setTimeout(() => setCopied(false), 1200);
+  };
 
   // One pass over the lines: diff against the previous output (common prefix /
   // suffix), wrap changed lines in span.dk-chg and comment lines in dim spans,
@@ -91,6 +103,9 @@ export function OutputPane({ output, navLoaded, shipped }: { output: string; nav
         <span ref={tickerRef} className="ml-auto font-mono text-[10.5px] text-tx6 whitespace-nowrap">
           {fmtN(lineCount)} LINES
         </span>
+        <DeckKey size="sm" id="dk-copy" onClick={doCopy} title="Copy the .scn text to the clipboard">
+          {copied ? "COPIED ✓" : "COPY"}
+        </DeckKey>
       </div>
 
       {/* ===== .scn body ===== */}

@@ -1,12 +1,11 @@
-// CommandDock.tsx — the FLIGHTDECK bottom bar. Every deck verb is a physical
-// keycap grouped into four silkscreened clusters (GROUND TRUTH · INTAKE ·
-// BUILD · SHIP) separated by hairline dividers. The filename PLATE opens a
-// popover holding the ICAO_X.Y_CONFIGYY naming tokens and the pseudo-pilot
-// settings (same semantics as the classic ExportPanel); EXPORT is a
-// never-dead lever that either ships the .scn or tells you exactly what to
-// fix. Styling rides on deck.css (dk-*) + the index.css token system.
+// CommandDock.tsx — the FLIGHTDECK bottom bar, radically simple: three
+// numbered buttons that ARE the workflow — 1 SETUP · 2 TRAFFIC · 3 EXPORT.
+// Everything else lives inside those trays as sub-sections. The filename
+// PLATE (attached to EXPORT) opens a popover with the ICAO_X.Y_CONFIGYY
+// naming tokens and the pseudo-pilot settings; EXPORT is a never-dead lever
+// that either ships the .scn or takes you to what's missing.
 import { useState, useRef, useEffect, useCallback } from "react";
-import { DeckKey, Latch, Cluster, pulse } from "./ui";
+import { DeckKey, Latch, Cluster } from "./ui";
 
 const Divider = () => <div className="w-px self-stretch bg-bd1 my-0.5" />;
 
@@ -26,10 +25,7 @@ const ip =
 
 export function CommandDock({
   navLoaded,
-  poolCount,
-  ruleCount,
   acCount,
-  estRuleAc,
   tokens,
   setTokens,
   tokensSet,
@@ -43,40 +39,19 @@ export function CommandDock({
   setPpList,
   ppCustom,
   setPpCustom,
-  output,
   lastExport,
   breathe,
-  rating,
   onOpenTray,
-  onAddAc,
-  onRunRules,
-  onRewind,
   onExport,
   toast,
 }: any) {
   const [popOpen, setPopOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
-  // While non-null, the RUN RULES label shows this animated count instead of
-  // the static estimate (mockup's 0→N roll over ~300ms).
-  const [runAnim, setRunAnim] = useState<number | null>(null);
 
   const popRef = useRef<HTMLDivElement>(null);
   const plateRef = useRef<HTMLButtonElement>(null);
   const icaoRef = useRef<HTMLInputElement>(null);
-  const rafRef = useRef(0);
-  const runTimer = useRef<any>(null);
-  const copyTimer = useRef<any>(null);
   const sweepTimer = useRef<any>(null);
-
-  useEffect(
-    () => () => {
-      cancelAnimationFrame(rafRef.current);
-      clearTimeout(runTimer.current);
-      clearTimeout(copyTimer.current);
-      clearTimeout(sweepTimer.current);
-    },
-    [],
-  );
+  useEffect(() => () => clearTimeout(sweepTimer.current), []);
 
   // ---------- plate popover ----------
   const openPlate = useCallback((focusIcao: boolean) => {
@@ -107,37 +82,11 @@ export function CommandDock({
     };
   }, [popOpen]);
 
-  // ---------- key actions ----------
-  const doCopy = () => {
-    try {
-      navigator.clipboard.writeText(output);
-    } catch {}
-    setCopied(true);
-    pulse(document.getElementById("dk-copy"), "dk-pulse-ok");
-    clearTimeout(copyTimer.current);
-    copyTimer.current = setTimeout(() => setCopied(false), 1200);
-  };
-
-  const doRunRules = () => {
-    const n = onRunRules();
-    if (typeof n !== "number") return; // no rules — the tray was opened instead
-    pulse(document.getElementById("dk-runrules"), "dk-pulse-ok");
-    cancelAnimationFrame(rafRef.current);
-    clearTimeout(runTimer.current);
-    const t0 = performance.now();
-    const step = () => {
-      const p = Math.min(1, (performance.now() - t0) / 300);
-      setRunAnim(Math.round(n * p));
-      if (p < 1) rafRef.current = requestAnimationFrame(step);
-      else runTimer.current = setTimeout(() => setRunAnim(null), 700);
-    };
-    rafRef.current = requestAnimationFrame(step);
-  };
-
+  // ---------- export (never-dead) ----------
   const doExport = async () => {
     if (acCount === 0) {
-      toast("No aircraft yet — feed the board first", "warn");
-      pulse(document.getElementById("dk-export"), "dk-pulse-err");
+      toast("No aircraft yet — press TRAFFIC to feed the board", "warn");
+      onOpenTray("traffic");
       return;
     }
     if (!tokensSet) {
@@ -157,68 +106,38 @@ export function CommandDock({
     }
   };
 
-  const runLabel =
-    ruleCount === 0
-      ? "NO RULES — DEFINE ONE ▸"
-      : `RUN RULES · ${ruleCount} → ${runAnim !== null ? runAnim : estRuleAc}`;
-
   const exportReady = acCount > 0 && tokensSet;
   const staleList = ppList && !(controllers || []).some((c: any) => c.callsign === ppList);
 
   return (
-    <div className="relative z-[60] flex-none min-h-[76px] flex items-center gap-3.5 px-3.5 py-2.5 bg-panel border-t border-bd1">
-      {/* ===== GROUND TRUTH ===== */}
-      <Cluster label="GROUND TRUTH">
-        <DeckKey led={navLoaded} breathe={breathe === "navdata"} onClick={() => onOpenTray("navdata")} title="Navdata — SCT / ESE / ramp">
-          NAVDATA
-        </DeckKey>
-        <DeckKey onClick={() => onOpenTray("setup")} title="Scenario setup — ILS, controllers, holdings">
+    <div className="relative z-[60] flex-none min-h-[76px] flex items-center gap-4 px-4 py-2.5 bg-panel border-t border-bd1">
+      <Cluster label="1 · PREPARE">
+        <DeckKey
+          size="lever"
+          led={navLoaded}
+          breathe={breathe === "setup"}
+          onClick={() => onOpenTray("setup")}
+          title="Scenario frame + navdata"
+        >
           SETUP
         </DeckKey>
       </Cluster>
       <Divider />
 
-      {/* ===== INTAKE ===== */}
-      <Cluster label="INTAKE">
-        <DeckKey onClick={() => onOpenTray("simbrief")} title="Pull a SimBrief OFP">SIMBRIEF</DeckKey>
-        <DeckKey onClick={() => onOpenTray("vatsim")} title="Snapshot live VATSIM traffic">VATSIM</DeckKey>
-        <DeckKey badge={poolCount} onClick={() => onOpenTray("pool")} title="Aircraft pool">
-          POOL
-        </DeckKey>
-      </Cluster>
-      <Divider />
-
-      {/* ===== BUILD ===== */}
-      <Cluster label="BUILD">
-        <DeckKey onClick={onAddAc} title="Add one aircraft manually">ADD AC</DeckKey>
+      <Cluster label="2 · TRAFFIC">
         <DeckKey
-          breathe={breathe === "ground"}
-          onClick={() => onOpenTray("ground")}
-          title={rating === "S1" ? "Spawn ground traffic (S1)" : "Spawn ground traffic"}
-        >
-          GROUND
-        </DeckKey>
-        <DeckKey badge={ruleCount} onClick={() => onOpenTray("rules")} title="Traffic rules">
-          RULES
-        </DeckKey>
-        <DeckKey
-          id="dk-runrules"
           size="lever"
-          variant={ruleCount === 0 ? "fix" : "default"}
-          onClick={doRunRules}
-          title="Regenerate all rule traffic (Ctrl+R)"
+          badge={acCount}
+          breathe={breathe === "traffic"}
+          onClick={() => onOpenTray("traffic")}
+          title="Rules · live traffic & pool · ground · by hand"
         >
-          {runLabel}
+          TRAFFIC
         </DeckKey>
       </Cluster>
       <Divider />
 
-      {/* ===== SHIP ===== */}
-      <Cluster label="SHIP" className="ml-auto">
-        <DeckKey onClick={onRewind} title="Snapshots — rewind the board">REWIND</DeckKey>
-        <DeckKey id="dk-copy" onClick={doCopy} title="Copy the .scn text to the clipboard">
-          {copied ? "COPIED ✓" : "COPY .SCN"}
-        </DeckKey>
+      <Cluster label="3 · SHIP" className="ml-auto">
         <button
           ref={plateRef}
           onClick={() => (popOpen ? setPopOpen(false) : openPlate(false))}
@@ -245,7 +164,7 @@ export function CommandDock({
         </DeckKey>
       </Cluster>
 
-      {/* ===== last-export tab (mockup #lastExport) ===== */}
+      {/* ===== last-export tab ===== */}
       {lastExport && (
         <div className="absolute right-4 top-0 -translate-y-full z-[59] font-mono text-[9px] text-tx7 bg-panel border border-bd1 border-b-0 rounded-t-[7px] px-[9px] py-0.5 pointer-events-none select-none">
           ↳ {lastExport.path} · {lastExport.t}
@@ -256,7 +175,7 @@ export function CommandDock({
       {popOpen && (
         <div
           ref={popRef}
-          className="absolute bottom-[calc(100%+8px)] right-[150px] z-[120] w-[340px] bg-panel border border-bd3 rounded-xl shadow-[0_14px_38px_rgb(0_0_0/0.4)] p-3.5"
+          className="absolute bottom-[calc(100%+8px)] right-4 z-[120] w-[340px] bg-panel border border-bd3 rounded-xl shadow-[0_14px_38px_rgb(0_0_0/0.4)] p-3.5"
         >
           {/* live filename preview */}
           <div className="font-mono text-[12px] font-bold text-tx1 bg-inset border border-bd1 rounded-[7px] px-2.5 py-[7px] mb-3 text-center">
