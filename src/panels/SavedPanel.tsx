@@ -75,7 +75,15 @@ export function SavedPanel({ scenario, onChange }: any) {
     throw new Error("Could not find a rules array in the input");
   }
   function applyRules(incoming: any[]) {
-    const normalised = incoming.map((r) => ({ ...emptyRule(), ...r, id: r.id || uid(), mode: r.mode || "S3" }));
+    const normalised = incoming.map((r) => {
+      const n = { ...emptyRule(), ...r, id: r.id || uid(), mode: r.mode || "S3" };
+      // Legacy rules predate homeIcao and relied on the old hardcoded LFPG —
+      // make that explicit (and editable) instead of silently blanking it.
+      if (r.homeIcao === undefined) n.homeIcao = "LFPG";
+      // Spawning closer than 1 NM to the entry fix creates a heading problem.
+      if ((+n.preEntryNm || 0) < 1) n.preEntryNm = 1;
+      return n;
+    });
     if (rulesMode === "replace") {
       const existing = (scenario.rules || []).length;
       if (!confirm(`Replace all ${existing} existing rule${existing !== 1 ? "s" : ""} with ${normalised.length} imported rule${normalised.length !== 1 ? "s" : ""}?`)) return;

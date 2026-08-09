@@ -283,7 +283,7 @@ function AircraftEditor({ aircraft, waypoints, onSave, onCancel }: any) {
             <div className="space-y-2">
               <div className="flex items-center gap-3">
                 <label className="text-xs text-slate-400 w-24">Distance:</label>
-                <input type="range" min="0" max="50" step="1" className="flex-1" value={a.preEntryNm || 0} onChange={(e) => update("preEntryNm", +e.target.value)} />
+                <input type="range" min="1" max="50" step="1" className="flex-1" value={a.preEntryNm || 1} onChange={(e) => update("preEntryNm", +e.target.value)} />
                 <span className="w-16 text-right text-sm font-mono text-sky-300">{a.preEntryNm || 0} NM</span>
               </div>
               {off ? (
