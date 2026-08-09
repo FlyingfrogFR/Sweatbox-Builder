@@ -7,6 +7,7 @@ import { uid } from "../core/uid";
 import { emptyAc } from "../core/model";
 import { trimRoute } from "../core/route";
 import { preEntryOffset } from "../core/geo";
+import { sortByStart } from "../state/aircraft";
 
 const COLS = "grid grid-cols-[150px_80px_70px_1fr_130px_70px_70px] items-center";
 
@@ -28,7 +29,7 @@ export function ScenarioPanel({ scenario, onChange, waypoints, pendingAircraft, 
   useEffect(() => {
     if (!pendingAircraft) return;
     if (Array.isArray(pendingAircraft)) {
-      const list = [...scenario.aircraft, ...pendingAircraft].sort((a: any, b: any) => (+a.start || 0) - (+b.start || 0));
+      const list = sortByStart([...scenario.aircraft, ...pendingAircraft]);
       onChange({ ...scenario, aircraft: list });
       onClearPending();
     } else {
@@ -39,7 +40,7 @@ export function ScenarioPanel({ scenario, onChange, waypoints, pendingAircraft, 
   const save = (ac: any) => {
     const list = scenario.aircraft.filter((a: any) => a.id !== ac.id);
     list.push(ac);
-    list.sort((a: any, b: any) => (+a.start || 0) - (+b.start || 0));
+    sortByStart(list);
     onChange({ ...scenario, aircraft: list });
     setEditing(null);
   };

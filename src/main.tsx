@@ -2,13 +2,16 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 
 // IBM Plex, bundled locally so the desktop app renders correctly offline.
-import "@fontsource/ibm-plex-sans/400.css";
-import "@fontsource/ibm-plex-sans/500.css";
-import "@fontsource/ibm-plex-sans/600.css";
-import "@fontsource/ibm-plex-sans/700.css";
-import "@fontsource/ibm-plex-mono/400.css";
-import "@fontsource/ibm-plex-mono/500.css";
-import "@fontsource/ibm-plex-mono/600.css";
+// Latin subset only — the app renders ASCII aviation data (ICAO codes,
+// callsigns, routes); the full-subset imports shipped ~1.1 MB of unused
+// cyrillic/greek/vietnamese font files in the installer.
+import "@fontsource/ibm-plex-sans/latin-400.css";
+import "@fontsource/ibm-plex-sans/latin-500.css";
+import "@fontsource/ibm-plex-sans/latin-600.css";
+import "@fontsource/ibm-plex-sans/latin-700.css";
+import "@fontsource/ibm-plex-mono/latin-400.css";
+import "@fontsource/ibm-plex-mono/latin-500.css";
+import "@fontsource/ibm-plex-mono/latin-600.css";
 
 import App from "./App";
 import "./index.css";
