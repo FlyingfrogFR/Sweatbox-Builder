@@ -16,6 +16,13 @@ import { uid } from "./uid";
 import { getStars } from "./stars";
 import { rng } from "./rng";
 
+// Home airport of the scenario: origin of departures / destination of
+// arrivals. Rules created before the field existed carry no homeIcao and keep
+// the original hardcoded LFPG so legacy rulesets generate byte-identically.
+function homeApt(rule: any) {
+  return rule.homeIcao === undefined ? "LFPG" : String(rule.homeIcao).trim().toUpperCase();
+}
+
 export function generateFromRule(
   rule: any,
   waypoints: any[],
@@ -173,8 +180,8 @@ export function generateFromRule(
       callsign: cs,
       squawk: assignSquawk(rule, type),
       type,
-      origin: rule.isDeparture ? "LFPG" : pickPool(rule.originPool, i),
-      dest: rule.isDeparture ? pickPool(rule.destPool, i) : "LFPG",
+      origin: rule.isDeparture ? homeApt(rule) : pickPool(rule.originPool, i),
+      dest: rule.isDeparture ? pickPool(rule.destPool, i) : homeApt(rule),
       cruiseAlt: +rule.cruiseAlt || 35000,
       lat: wp.lat,
       lon: wp.lon,

@@ -541,6 +541,20 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
                 </div>
 
                 <div>
+                  <label className={lb}>Home airport (ICAO)</label>
+                  <input
+                    className={ip}
+                    value={r.homeIcao ?? ""}
+                    onChange={(e) => update("homeIcao", e.target.value.toUpperCase())}
+                    placeholder={r.isDeparture ? "departures depart from…" : "arrivals land at…"}
+                    maxLength={4}
+                  />
+                  {!(r.homeIcao ?? "").trim() && r.homeIcao !== undefined && (
+                    <div className="text-[11px] text-amber-400 mt-1">Required — {r.isDeparture ? "origin" : "destination"} of every generated aircraft</div>
+                  )}
+                </div>
+
+                <div>
                   <label className={lb}>{r.isDeparture ? "Destination" : "Origin"} Pool</label>
                   <div className="flex gap-2">
                     <input
@@ -753,7 +767,7 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
                 <label className={lb}>
                   Pre-entry offset: <span className="text-sky-300 font-mono">{r.preEntryNm || 0} NM</span>
                 </label>
-                <input type="range" min="0" max="50" step="1" className="w-full mt-1" value={r.preEntryNm || 0} onChange={(e) => update("preEntryNm", +e.target.value)} />
+                <input type="range" min="1" max="50" step="1" className="w-full mt-1" value={r.preEntryNm || 1} onChange={(e) => update("preEntryNm", +e.target.value)} />
               </div>
             </div>
             <div className="bg-slate-950/60 border border-slate-800 rounded p-3 space-y-3">

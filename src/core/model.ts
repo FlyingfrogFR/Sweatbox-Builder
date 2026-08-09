@@ -4,19 +4,12 @@ import { uid } from "./uid";
 
 export function defaultScenario() {
   return {
-    name: "LFPG QFU Ouest",
+    // Blank canvas — no hard-tuned airport. ILS lines, controllers and the
+    // name are the user's to fill (Setup seeds ILS from loaded runways).
+    name: "",
     airportAlt: 0.0,
-    ils: [
-      { name: "26L", lat1: 48.9949188, lon1: 2.6024601, lat2: 48.9929434, lon2: 2.5657057 },
-      { name: "27R", lat1: 49.026638, lon1: 2.5617251, lat2: 49.0247256, lon2: 2.5248595 },
-      { name: "27PB", lat1: 48.9650377, lon1: 2.4455994, lat2: 48.9636585, lon2: 2.4204486 },
-      { name: "25PO", lat1: 48.7277643, lon1: 2.4040114, lat2: 48.7192115, lon2: 2.3577571 },
-    ],
-    controllers: [
-      { callsign: "LFPO_APP", freq: "123.875" },
-      { callsign: "LFPG_F_APP", freq: "126.430" },
-      { callsign: "LFPG_TWR", freq: "119.250" },
-    ],
+    ils: [],
+    controllers: [],
     aircraft: [],
     rules: [],
     holdings: [],
@@ -39,7 +32,7 @@ export function emptyAc(dep = false) {
     gs: dep ? 3012 : 420,
     runway: dep ? "27L" : "27R",
     spawnWaypoint: "",
-    preEntryNm: 0,
+    preEntryNm: 1,
     fpRoute: "",
     simRoute: "",
     start: "",
@@ -70,7 +63,8 @@ export function emptyRule() {
     startOffset: 0,
     runway: "",
     originPool: "EHAM,EGLL,EDDF,LEMD,LIRF",
-    destPool: "LFPG",
+    homeIcao: "", // the scenario's home airport (origin of departures / dest of arrivals); legacy rules without the field keep the old hardcoded LFPG
+    destPool: "",
     typePool: "A320,A321,B738,A20N,E190",
     typeCategories: [],
     callsignPattern: "AFR###",

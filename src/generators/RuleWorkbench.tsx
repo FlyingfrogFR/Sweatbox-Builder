@@ -290,6 +290,16 @@ export function RuleWorkbench({ mode, scenario, onChange, waypoints, pool, stars
                   <input className={ip} value={draft.spawnWaypoint} onChange={(e) => set("spawnWaypoint", e.target.value.toUpperCase())} />
                 </div>
                 <div>
+                  <label className={lb}>HOME ICAO</label>
+                  <input
+                    className={ip}
+                    value={draft.homeIcao ?? ""}
+                    onChange={(e) => set("homeIcao", e.target.value.toUpperCase())}
+                    placeholder={draft.isDeparture ? "departs from" : "lands at"}
+                    maxLength={4}
+                  />
+                </div>
+                <div>
                   <label className={lb}>RUNWAY</label>
                   <input className={ip} value={draft.rwyInUse} onChange={(e) => set("rwyInUse", e.target.value.toUpperCase())} />
                 </div>
