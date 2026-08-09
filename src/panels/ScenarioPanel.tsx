@@ -191,10 +191,28 @@ function AircraftEditor({ aircraft, waypoints, onSave, onCancel }: any) {
     const f = wptSearch.trim().toUpperCase();
     return waypoints.filter((w: any) => w.name.startsWith(f)).slice(0, 10);
   }, [wptSearch, waypoints]);
-  const off = useMemo(
-    () => ((+a.preEntryNm || 0) > 0 && a.spawnWaypoint ? preEntryOffset(a.spawnWaypoint, a.simRoute, +a.preEntryNm, waypoints, a.fpRoute) : null),
-    [a.preEntryNm, a.spawnWaypoint, a.simRoute, a.fpRoute, waypoints],
-  );
+  // name -> waypoint map for the offset PREVIEW only (first occurrence wins,
+  // matching Array.find); what gets saved into the aircraft is untouched.
+  const wptByName = useMemo(() => {
+    const m = new Map<string, any>();
+    for (const w of waypoints) if (!m.has(w.name)) m.set(w.name, w);
+    return m;
+  }, [waypoints]);
+  const off = useMemo(() => {
+    if (!((+a.preEntryNm || 0) > 0 && a.spawnWaypoint)) return null;
+    // Resolve just the names the offset math can touch (spawn + route tokens,
+    // tokenized like preEntryOffset) so slider ticks skip full-list scans.
+    const names = new Set<string>([a.spawnWaypoint]);
+    for (const route of [a.simRoute, a.fpRoute])
+      for (const t of String(route || "").trim().split(/\s+/))
+        if (t) names.add(t.split("/")[0].toUpperCase());
+    const subset: any[] = [];
+    for (const n of names) {
+      const w = wptByName.get(n);
+      if (w && !subset.includes(w)) subset.push(w);
+    }
+    return preEntryOffset(a.spawnWaypoint, a.simRoute, +a.preEntryNm, subset, a.fpRoute);
+  }, [a.preEntryNm, a.spawnWaypoint, a.simRoute, a.fpRoute, wptByName]);
   const lb = "block text-xs text-slate-400 mb-1";
   const ip = "w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-sm text-slate-200 font-mono focus:border-sky-500 focus:outline-none";
   return (

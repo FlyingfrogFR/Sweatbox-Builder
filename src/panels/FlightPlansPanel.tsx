@@ -6,7 +6,7 @@ import { Icon } from "../ui/Icon";
 import { storage, KEYS } from "../state/storage";
 import { fetchSimbrief, parseSimbriefOFP, fetchVatsimData, filterVatsimPilots } from "../net/apis";
 
-export function FlightPlansPanel({ onAddToPool, vatsimCache, setVatsimCache }: any) {
+export function FlightPlansPanel({ onAddToPool, vatsimCache, setVatsimCache, simbriefCache, setSimbriefCache }: any) {
   const [src, setSrc] = useState("simbrief");
   const btn = (id: string, label: string, icon: string) => (
     <button
@@ -26,17 +26,17 @@ export function FlightPlansPanel({ onAddToPool, vatsimCache, setVatsimCache }: a
       <p className="text-xs text-slate-500">
         All imports go to the <strong className="text-slate-300">Aircraft Pool</strong> tab.
       </p>
-      {src === "simbrief" && <SimBriefSection onAddToPool={onAddToPool} />}
+      {src === "simbrief" && <SimBriefSection onAddToPool={onAddToPool} cache={simbriefCache} setCache={setSimbriefCache} />}
       {src === "vatsim" && <VatsimSection onAddToPool={onAddToPool} cache={vatsimCache} setCache={setVatsimCache} />}
     </div>
   );
 }
 
-function SimBriefSection({ onAddToPool }: any) {
+function SimBriefSection({ onAddToPool, cache, setCache }: any) {
   const [username, setUsername] = useState(() => storage.get(KEYS.sbUser) || "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [ofp, setOfp] = useState<any>(null);
+  const ofp = cache.ofp; // lifted to App (session-only), like vatsimCache
   async function fetch_() {
     if (!username.trim()) {
       setError("Enter username or pilot ID");
@@ -44,12 +44,12 @@ function SimBriefSection({ onAddToPool }: any) {
     }
     setError("");
     setLoading(true);
-    setOfp(null);
+    setCache({ ofp: null });
     storage.set(KEYS.sbUser, username.trim());
     try {
       const data = await fetchSimbrief(username);
       if (data.fetch?.status === "Error" || data.error) throw new Error(data.fetch?.message || "SimBrief error");
-      setOfp(parseSimbriefOFP(data));
+      setCache({ ofp: parseSimbriefOFP(data) });
     } catch (e: any) {
       const m = String(e.message || e);
       if (m.includes("Failed to fetch") || m.includes("CORS")) setError("Network error fetching SimBrief.");

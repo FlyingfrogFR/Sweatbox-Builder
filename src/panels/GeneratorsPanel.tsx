@@ -1,9 +1,9 @@
 // GeneratorsPanel.tsx — "Generators · Direction B" shell: header with the
 // S1/S2/S3/C1 segmented control + Apply all, then either the rule Workbench
 // (master/detail, for S3/C1) or the generator's own panel (S1 ground, S2 stub).
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Icon } from "../ui/Icon";
-import { getGenerators, onRegister } from "../generators";
+import { getGenerators } from "../generators";
 import { generateFromRule } from "../core/generateFromRule";
 import { RuleWorkbench } from "../generators/RuleWorkbench";
 import { sortByStart } from "../state/aircraft";
@@ -14,9 +14,7 @@ const RULE_MODES = new Set(["S3", "C1"]);
 
 export function GeneratorsPanel(props: any) {
   const { scenario, onChange, waypoints, pool } = props;
-  const [, setTick] = useState(0);
   const [subTab, setSubTab] = useState("S3");
-  useEffect(() => onRegister(() => setTick((t) => t + 1)), []);
 
   const registry = getGenerators();
   const byId = Object.fromEntries(registry.map((g) => [g.id, g]));

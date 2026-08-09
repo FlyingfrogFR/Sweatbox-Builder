@@ -1,22 +1,20 @@
-// s3.tsx — S3 Approach generator. Ported from scenario-s3-approach.js with its
-// behavior unchanged; the only difference is helpers are imported from src/core
-// and src/ui instead of being pulled off window.SB. Exposes RulePanel so the C1
-// module can mount the same UI with mode="C1" (see c1.tsx).
+// s3.tsx — the full ~30-field RuleEditor for the rule-based generators (S3/C1).
+// Ported from scenario-s3-approach.js with its behavior unchanged; the only
+// difference is helpers are imported from src/core and src/ui instead of being
+// pulled off window.SB. RuleWorkbench (the Generators S3/C1 master/detail UI)
+// mounts RuleEditor via "Edit all fields".
 //
 // generateFromRule reads STARs via getStars() (App mirrors its stars state there,
 // exactly as the rc3 shell mirrored to window.SB.stars), so the excludeNonRouting
 // behavior is identical.
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { Icon } from "../ui/Icon";
 import { genCS, poolIcaosByRegion } from "../core/callsign";
 import { trimRoute } from "../core/route";
 import { computeSpawnGs, machToTas, iasToTas } from "../core/speed";
 import { GS_BY_WTC, TYPE_CATS } from "../core/tables";
 import { SRC_LABELS } from "../core/pool";
-import { emptyRule } from "../core/model";
-import { generateFromRule } from "../core/generateFromRule";
-import { registerGenerator } from "./registry";
 
 // Shared helper: parse a comma-separated, whitespace-tolerant token list.
 const parseTokenList = (val: string) =>
@@ -33,37 +31,6 @@ const routeMatchesTokens = (route: string, tokens: string[]) => {
   const rTokens = (route || "").toUpperCase().split(/\s+/).map((t) => t.split("/")[0]);
   return tokens.some((tok) => rTokens.includes(tok));
 };
-
-function RateCalc() {
-  const [rate, setRate] = useState(10);
-  const [dur, setDur] = useState(30);
-  const interval = 3600 / Math.max(rate, 0.1);
-  const count = Math.max(1, Math.floor((dur * 60) / interval) + 1);
-  return (
-    <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-3 flex items-center gap-4 flex-wrap text-xs">
-      <span className="font-semibold text-slate-400 uppercase">Rate Calc</span>
-      <input
-        type="number"
-        value={rate}
-        onChange={(e) => setRate(+e.target.value)}
-        min="1"
-        max="60"
-        className="w-14 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-sm text-slate-200 font-mono"
-      />
-      <span className="text-slate-400">/hr ×</span>
-      <input
-        type="number"
-        value={dur}
-        onChange={(e) => setDur(+e.target.value)}
-        min="1"
-        className="w-14 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-sm text-slate-200 font-mono"
-      />
-      <span className="text-slate-400">min =</span>
-      <span className="text-sky-400 font-mono text-sm">{count} aircraft</span>
-      <span className="text-slate-300 font-mono"> · {interval.toFixed(0)}s</span>
-    </div>
-  );
-}
 
 export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, onSave, onCancel }: any) {
   const [r, setR] = useState(rule);
@@ -610,7 +577,6 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
           {!r.isDeparture && (
             <section>
               <h4 className="text-xs uppercase text-slate-500 font-semibold mb-2 flex items-center gap-2">
-                <Icon name="star" size={12} />
                 STAR & Entry Configuration{" "}
                 <span className="text-slate-600 font-normal normal-case">(from ESE [SIDSSTARS] + [COPX])</span>
               </h4>
@@ -1010,189 +976,3 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
     </div>
   );
 }
-
-// The reusable per-mode rule list panel. Renders only rules whose .mode matches
-// the `mode` prop. Exposed for the C1 module to reuse.
-export function RulePanel({ mode, scenario, onChange, waypoints, pool, stars, copx }: any) {
-  const [editing, setEditing] = useState<any>(null);
-  const allRules = scenario.rules || [];
-  const rules = allRules.filter((r: any) => r.mode === mode);
-
-  const save = (r: any) => {
-    const rWithMode = { ...r, mode: r.mode || mode };
-    const arr = allRules.filter((x: any) => x.id !== rWithMode.id).concat(rWithMode);
-    onChange({ ...scenario, rules: arr });
-    setEditing(null);
-  };
-  const remove = (id: string) => {
-    if (!confirm("Remove rule and its generated aircraft?")) return;
-    onChange({
-      ...scenario,
-      rules: allRules.filter((r: any) => r.id !== id),
-      aircraft: scenario.aircraft.filter((a: any) => a.ruleId !== id),
-    });
-  };
-  const applyRule = (r: any) => {
-    const others = scenario.aircraft.filter((a: any) => a.ruleId !== r.id);
-    const used = new Set<string>(others.map((a: any) => a.callsign).filter(Boolean));
-    const { aircraft, error } = generateFromRule(r, waypoints, used, pool);
-    if (error) {
-      alert(error);
-      return;
-    }
-    onChange({ ...scenario, aircraft: [...others, ...aircraft].sort((a: any, b: any) => (+a.start || 0) - (+b.start || 0)) });
-  };
-  const applyAll = () => {
-    const myIds = new Set(rules.map((r: any) => r.id));
-    let ac = scenario.aircraft.filter((a: any) => !a.ruleId || !myIds.has(a.ruleId));
-    const used = new Set<string>(ac.map((a: any) => a.callsign).filter(Boolean));
-    for (const r of rules) {
-      const { aircraft: gen, error } = generateFromRule(r, waypoints, used, pool);
-      if (error) {
-        alert(`${r.name}: ${error}`);
-        continue;
-      }
-      ac = [...ac, ...gen];
-    }
-    onChange({ ...scenario, aircraft: ac.sort((a: any, b: any) => (+a.start || 0) - (+b.start || 0)) });
-  };
-  const newRule = () => setEditing({ ...emptyRule(), mode });
-
-  return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-slate-200">
-          {mode} Rules <span className="text-slate-500 text-sm font-normal">({rules.length} of {allRules.length} total)</span>
-        </h2>
-        <div className="flex gap-2">
-          {rules.length > 0 && (
-            <button onClick={applyAll} className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 rounded text-sm text-white font-medium flex items-center gap-1">
-              <Icon name="zap" size={14} />
-              Apply All ({mode})
-            </button>
-          )}
-          <button onClick={newRule} className="flex items-center gap-2 px-3 py-2 bg-sky-600 hover:bg-sky-500 rounded text-sm text-white">
-            <Icon name="plus" />
-            New {mode} Rule
-          </button>
-        </div>
-      </div>
-      <RateCalc />
-      <div className="space-y-3">
-        {rules.map((r: any) => {
-          const intMin = 60 / Math.max(r.rate, 0.1);
-          const count = Math.max(1, Math.floor(r.duration / intMin) + 1);
-          const poolMatches = r.poolSource
-            ? pool.filter((p: any) => {
-                const d = (r.poolDep || "").trim().toUpperCase();
-                const a = (r.poolArr || "").trim().toUpperCase();
-                const dList = d.split(",").map((s: string) => s.trim()).filter(Boolean);
-                const aList = a.split(",").map((s: string) => s.trim()).filter(Boolean);
-                const rcList = parseTokenList(r.routeContains);
-                if (dList.length && !dList.includes(p.origin)) return false;
-                if (aList.length && !aList.includes(p.dest)) return false;
-                if (!routeMatchesTokens(p.route, rcList)) return false;
-                return true;
-              }).length
-            : null;
-          const multiRoute = (r.fpRouteTemplates || []).length > 1;
-          const activeCats = (r.typeCategories || []).join("+");
-          const speedLabel =
-            r.gsMode === "fixed"
-              ? r.speedType === "mach"
-                ? `M${(r.assignedSpeed || 0.78).toFixed(2)}`
-                : `${r.assignedSpeed || 280}kt IAS`
-              : r.gsMode === "natural"
-                ? "natural"
-                : "by WTC";
-          const rcTokens = parseTokenList(r.routeContains);
-          return (
-            <div key={r.id} className="bg-slate-900 rounded-lg p-4">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1 flex-wrap">
-                    <span className="text-sm font-semibold text-slate-200">{r.name}</span>
-                    {r.isDeparture ? (
-                      <span className="px-2 py-0.5 bg-[rgb(111_158_239_/_0.13)] text-dep rounded text-xs">DEP</span>
-                    ) : (
-                      <span className="px-2 py-0.5 bg-[rgb(232_116_110_/_0.13)] text-arr rounded text-xs">ARR</span>
-                    )}
-                    {r.poolSource && <span className="px-2 py-0.5 bg-purple-900/40 text-purple-300 rounded text-xs">POOL</span>}
-                    {rcTokens.length > 0 && (
-                      <span className="px-2 py-0.5 bg-orange-900/40 text-orange-300 rounded text-xs" title={`FP route must include: ${rcTokens.join(", ")}`}>
-                        RT {rcTokens[0]}
-                        {rcTokens.length > 1 ? ` +${rcTokens.length - 1}` : ""}
-                      </span>
-                    )}
-                    {activeCats && !r.poolSource && <span className="px-2 py-0.5 bg-sky-900/40 text-sky-300 rounded text-xs">WTC {activeCats}</span>}
-                    {r.heavy && !r.poolSource && !activeCats && <span className="px-2 py-0.5 bg-rose-900/40 text-rose-300 rounded text-xs">HEAVY</span>}
-                    {multiRoute && <span className="px-2 py-0.5 bg-purple-900/30 text-purple-300 rounded text-xs">{r.fpRouteTemplates.length} routes</span>}
-                    {(r.rwyInUse || r.runway) && <span className="px-2 py-0.5 bg-slate-700 text-slate-300 rounded text-xs">RWY {r.rwyInUse || r.runway}</span>}
-                    {r.squawkMode === "random" && <span className="px-2 py-0.5 bg-slate-700 text-slate-300 rounded text-xs">SQK rnd</span>}
-                    <span className="px-2 py-0.5 bg-slate-700 text-slate-300 rounded text-xs">{speedLabel}</span>
-                  </div>
-                  <div className="text-xs text-slate-400 font-mono space-x-3">
-                    <span>{r.spawnWaypoint || "(no wpt)"}</span>
-                    <span>·</span>
-                    <span>{r.rate}/hr</span>
-                    <span>·</span>
-                    <span>{r.duration}min</span>
-                    <span>·</span>
-                    <span>T+{r.startOffset}</span>
-                    {(r.preEntryNm || 0) > 0 && (
-                      <>
-                        <span>·</span>
-                        <span>-{r.preEntryNm}NM</span>
-                      </>
-                    )}
-                  </div>
-                  {r.poolSource ? (
-                    <div className="text-xs text-slate-500 mt-1">{poolMatches !== null ? `${poolMatches} pool matches` : ""}</div>
-                  ) : (
-                    <div className="text-xs text-slate-500 mt-1">
-                      ≈{count} aircraft · {Math.round(intMin * 60)}s interval
-                    </div>
-                  )}
-                </div>
-                <div className="flex gap-1">
-                  <button onClick={() => applyRule(r)} className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 rounded text-xs text-white font-medium">
-                    Apply
-                  </button>
-                  <button onClick={() => setEditing(r)} className="text-sky-400 hover:text-sky-300 p-1.5">
-                    <Icon name="edit" size={14} />
-                  </button>
-                  <button onClick={() => remove(r.id)} className="text-rose-400 hover:text-rose-300 p-1.5">
-                    <Icon name="trash" size={14} />
-                  </button>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-        {!rules.length && (
-          <div className="bg-slate-900 rounded-lg p-8 text-center text-slate-500 text-sm">
-            No {mode} rules yet. Click "New {mode} Rule" to get started.
-          </div>
-        )}
-      </div>
-      {editing && (
-        <RuleEditor
-          rule={editing}
-          waypoints={waypoints}
-          pool={pool}
-          stars={stars}
-          copx={copx}
-          scenarioIls={scenario.ils}
-          onSave={save}
-          onCancel={() => setEditing(null)}
-        />
-      )}
-    </div>
-  );
-}
-
-registerGenerator({
-  id: "S3",
-  label: "S3 Approach",
-  render: (props: any) => <RulePanel mode="S3" {...props} />,
-});
