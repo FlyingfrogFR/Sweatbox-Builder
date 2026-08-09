@@ -1,10 +1,15 @@
 // FplnPoolTray.tsx — the FPLN POOL dock button: real flight plans in, staged
-// in the pool, then onto the board. SimBrief + VATSIM fetchers sit above the
-// pool table so fetch → pool → board happens on one page. Hosted panels keep
-// their legacy styling — accepted for this milestone.
+// in the pool, then onto the board. The fetchers are SUB-SECTIONS (top
+// latches), not inline blocks — a 50-departure fetch would make one long
+// page unreadable. Land on POOL when it has entries, else on SIMBRIEF.
+// Hosted panels keep their legacy styling — accepted for this milestone.
+import { useState, useEffect } from "react";
 import { Tray } from "../Tray";
+import { Latch } from "../ui";
 import { SimBriefSection, VatsimSection } from "../../panels/FlightPlansPanel";
 import { AircraftPoolPanel } from "../../panels/AircraftPoolPanel";
+
+type Section = "simbrief" | "vatsim" | "pool";
 
 export function FplnPoolTray(props: any) {
   const {
@@ -23,33 +28,48 @@ export function FplnPoolTray(props: any) {
     onAddToBoard,
   } = props;
 
+  const [section, setSection] = useState<Section>("pool");
+  // On open, land where the work is: the pool if it's stocked, else a fetcher.
+  useEffect(() => {
+    if (open) setSection((pool || []).length ? "pool" : "simbrief");
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <Tray
       open={open}
       title="FPLN POOL"
       onDone={close}
       headExtra={
-        <span className="text-[10px] text-tx7 ml-1.5">
-          real flight plans — fetch, stage, send to the board
+        <span className="flex items-center gap-1.5 ml-1.5">
+          <Latch on={section === "simbrief"} onClick={() => setSection("simbrief")} title="Fetch a SimBrief OFP into the pool">
+            SIMBRIEF
+          </Latch>
+          <Latch on={section === "vatsim"} onClick={() => setSection("vatsim")} title="Snapshot live VATSIM traffic into the pool">
+            VATSIM
+          </Latch>
+          <span className="w-px self-stretch bg-bd1 mx-1" />
+          <Latch on={section === "pool"} onClick={() => setSection("pool")} title="The staged flight plans — send them to the board">
+            POOL {(pool || []).length > 0 && <b className="font-mono">{(pool || []).length}</b>}
+          </Latch>
         </span>
       }
     >
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-x-6 border-b border-bd1">
-        <div className="min-w-0">
-          <SimBriefSection onAddToPool={onAddToPool} cache={simbriefCache} setCache={setSimbriefCache} />
-        </div>
-        <div className="min-w-0">
-          <VatsimSection onAddToPool={onAddToPool} cache={vatsimCache} setCache={setVatsimCache} />
-        </div>
-      </div>
-      <AircraftPoolPanel
-        pool={pool}
-        onDelete={onDeleteFromPool}
-        onAddToScenario={onAddToBoard}
-        airac={poolAirac}
-        onSetAirac={onSetPoolAirac}
-        onImportPool={onImportPool}
-      />
+      {section === "simbrief" && (
+        <SimBriefSection onAddToPool={onAddToPool} cache={simbriefCache} setCache={setSimbriefCache} />
+      )}
+      {section === "vatsim" && (
+        <VatsimSection onAddToPool={onAddToPool} cache={vatsimCache} setCache={setVatsimCache} />
+      )}
+      {section === "pool" && (
+        <AircraftPoolPanel
+          pool={pool}
+          onDelete={onDeleteFromPool}
+          onAddToScenario={onAddToBoard}
+          airac={poolAirac}
+          onSetAirac={onSetPoolAirac}
+          onImportPool={onImportPool}
+        />
+      )}
     </Tray>
   );
 }

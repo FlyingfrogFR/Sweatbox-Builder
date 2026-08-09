@@ -43,6 +43,12 @@ export function BuildTray(props: any) {
 
   const allRules = scenario.rules || [];
   const ruleCount = allRules.length;
+  // Remember the airborne sub-section so flipping AIRBORNE/GROUND returns
+  // to where the user was (RULESET or MANUAL).
+  const [airMode, setAirMode] = useState<"rules" | "manual">("rules");
+  useEffect(() => {
+    if (section === "rules" || section === "manual") setAirMode(section);
+  }, [section]);
 
   // ---------- RULESET section state ----------
   const [mode, setMode] = useState<Mode>(rating === "C1" ? "C1" : "S3");
@@ -167,21 +173,32 @@ export function BuildTray(props: any) {
       onDone={close}
       headExtra={
         <span className="flex items-center gap-1.5 ml-1.5">
-          <Latch on={section === "rules"} onClick={() => setSection("rules")} title="Rule-generated flows (import a ruleset or build rules)">
-            RULESET {ruleCount > 0 && <b className="font-mono">{ruleCount}</b>}
+          <Latch
+            on={section !== "ground"}
+            onClick={() => setSection(airMode)}
+            title="Airborne traffic — rule-generated flows or one-by-one"
+          >
+            AIRBORNE
           </Latch>
-          <Latch on={section === "manual"} onClick={() => setSection("manual")} title="Add aircraft one by one">
-            MANUAL
-          </Latch>
-          <span className="w-px self-stretch bg-bd1 mx-1" />
           <Latch
             on={section === "ground"}
             onClick={() => setSection("ground")}
             className="dk-amber"
             title="Parked / taxiing ramp traffic — a different beast from airborne flows"
           >
-            GROUND TFC
+            GROUND
           </Latch>
+          {section !== "ground" && (
+            <>
+              <span className="text-tx8 text-[11px] select-none px-0.5">›</span>
+              <Latch on={section === "rules"} onClick={() => setSection("rules")} title="Import a syllabus ruleset or build rules">
+                RULESET {ruleCount > 0 && <b className="font-mono">{ruleCount}</b>}
+              </Latch>
+              <Latch on={section === "manual"} onClick={() => setSection("manual")} title="Add aircraft one by one">
+                MANUAL
+              </Latch>
+            </>
+          )}
         </span>
       }
       footer={
