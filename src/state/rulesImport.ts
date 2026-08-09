@@ -23,5 +23,13 @@ export function extractRules(parsed: any): any[] {
 // over a fresh emptyRule() (so missing fields get defaults), keep or mint an
 // id, and default the generator mode to "S3".
 export function normalizeRules(incoming: any[]): any[] {
-  return (incoming || []).map((r: any) => ({ ...emptyRule(), ...r, id: r.id || uid(), mode: r.mode || "S3" }));
+  return (incoming || []).map((r: any) => {
+    const n = { ...emptyRule(), ...r, id: r.id || uid(), mode: r.mode || "S3" };
+    // Legacy rules predate homeIcao and relied on the old hardcoded LFPG —
+    // make that explicit (and editable) instead of silently blanking it.
+    if (r.homeIcao === undefined) n.homeIcao = "LFPG";
+    // Spawning closer than 1 NM to the entry fix creates a heading problem.
+    if ((+n.preEntryNm || 0) < 1) n.preEntryNm = 1;
+    return n;
+  });
 }

@@ -265,14 +265,14 @@ export function AircraftDrawer({ aircraft, waypoints, onSave, onCancel, onDelete
         <div className="flex items-center gap-2.5">
           <input
             type="range"
-            min="0"
+            min="1"
             max="50"
             step="1"
             className="flex-1"
-            value={a.preEntryNm || 0}
+            value={a.preEntryNm || 1}
             onChange={(e) => update("preEntryNm", +e.target.value)}
           />
-          <span className="w-14 text-right font-mono text-[12.5px] text-cy-fg">{a.preEntryNm || 0} NM</span>
+          <span className="w-14 text-right font-mono text-[12.5px] text-cy-fg">{a.preEntryNm || 1} NM</span>
         </div>
         {off ? (
           <div className="font-mono text-[11px] text-cy-fg bg-inset border border-cy-bd/50 rounded-md px-2.5 py-1.5">
