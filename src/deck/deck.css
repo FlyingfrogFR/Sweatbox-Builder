@@ -1,0 +1,592 @@
+/* deck.css — FLIGHTDECK button physics + deck chrome, built on the existing
+   token system in index.css (all colors via rgb(var(--token))). Classes are
+   dk-prefixed so legacy panel styles hosted inside trays can't collide. */
+
+/* ---------- keycap ---------- */
+.dk-key {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 9px;
+  background: rgb(var(--btn2));
+  border: 1px solid rgb(var(--bd4));
+  box-shadow:
+    0 3px 0 rgb(var(--bd5)),
+    0 4px 8px rgb(0 0 0 / 0.25);
+  color: rgb(var(--tx2));
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  user-select: none;
+  cursor: pointer;
+  transition:
+    transform 0.13s ease,
+    box-shadow 0.13s ease,
+    background 0.13s ease,
+    border-color 0.13s ease;
+}
+.dk-key:hover {
+  transform: translateY(-1px);
+  border-color: rgb(var(--bdh));
+}
+.dk-key:active {
+  transform: translateY(3px);
+  box-shadow:
+    0 0 0 rgb(var(--bd5)),
+    0 1px 2px rgb(0 0 0 / 0.2);
+  background: rgb(var(--inset));
+  transition-duration: 0.07s;
+}
+.dk-key:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+.dk-key.dk-sm {
+  height: 32px;
+  padding: 0 10px;
+  font-size: 10.5px;
+  border-radius: 7px;
+  box-shadow:
+    0 2px 0 rgb(var(--bd5)),
+    0 3px 6px rgb(0 0 0 / 0.2);
+}
+.dk-key.dk-sm:active {
+  transform: translateY(2px);
+  box-shadow: 0 0 0 rgb(var(--bd5));
+}
+
+/* lever-grade (RUN RULES / EXPORT) */
+.dk-key.dk-lever {
+  height: 52px;
+  padding: 0 20px;
+  font-size: 12.5px;
+  letter-spacing: 0.05em;
+  border-radius: 11px;
+  box-shadow:
+    0 4px 0 rgb(var(--bd5)),
+    0 6px 12px rgb(0 0 0 / 0.3);
+}
+.dk-key.dk-lever:active {
+  transform: translateY(4px);
+  box-shadow:
+    0 0 0 rgb(var(--bd5)),
+    0 1px 2px rgb(0 0 0 / 0.2);
+}
+.dk-key.dk-primary {
+  background: #5ccfe0;
+  color: rgb(var(--on-cyan));
+  border-color: #5ccfe0;
+  box-shadow:
+    0 4px 0 rgb(92 207 224 / 0.45),
+    0 6px 14px rgb(92 207 224 / 0.3);
+}
+.dk-key.dk-primary:hover {
+  filter: brightness(1.06);
+}
+.dk-key.dk-primary:active {
+  box-shadow: 0 0 0 rgb(92 207 224 / 0.45);
+}
+/* never-dead not-ready state */
+.dk-key.dk-fix {
+  background: rgb(var(--am-bg));
+  color: rgb(var(--am-fg));
+  border-color: rgb(var(--am-bd-h));
+  box-shadow:
+    0 4px 0 rgb(var(--am-bd)),
+    0 6px 12px rgb(0 0 0 / 0.25);
+}
+.dk-key.dk-fix:active {
+  box-shadow: 0 0 0 rgb(var(--am-bd));
+}
+
+/* count badge + LED on keycaps */
+.dk-badge {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  background: rgb(var(--cy-fg) / 0.14);
+  color: rgb(var(--cy-fg));
+  padding: 1px 6px;
+  border-radius: 5px;
+  min-width: 20px;
+  text-align: center;
+}
+.dk-badge.dk-tick {
+  animation: dk-badge-tick 0.35s ease;
+}
+@keyframes dk-badge-tick {
+  40% {
+    transform: scale(1.35);
+    background: rgb(var(--gn-fg) / 0.25);
+  }
+}
+.dk-led {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgb(var(--tx8) / 0.5);
+  transition: all 0.2s;
+}
+.dk-led.dk-on {
+  background: rgb(var(--gn-fg));
+  box-shadow: 0 0 7px rgb(var(--gn-fg) / 0.8);
+}
+
+/* ---------- latch (toggle) ---------- */
+.dk-latch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  padding: 5px 11px;
+  border-radius: 7px;
+  background: rgb(var(--btn2));
+  border: 1px solid rgb(var(--bd4));
+  box-shadow: 0 2px 0 rgb(var(--bd5));
+  color: rgb(var(--tx5));
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.14s ease;
+}
+.dk-latch:hover {
+  border-color: rgb(var(--bdh));
+}
+.dk-latch:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.dk-latch:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.dk-latch .dk-led {
+  width: 5px;
+  height: 5px;
+}
+.dk-latch.dk-on {
+  background: rgb(var(--inset));
+  color: rgb(var(--tx1));
+  border-color: rgb(var(--cy-bd));
+  box-shadow: inset 0 2px 4px rgb(0 0 0 / 0.28);
+  transform: translateY(1px);
+}
+.dk-latch.dk-on .dk-led {
+  background: rgb(var(--cy-fg));
+  box-shadow: 0 0 6px rgb(var(--cy-fg) / 0.8);
+}
+
+/* ---------- result pulses ---------- */
+.dk-pulse-ok {
+  animation: dk-rim-ok 0.32s ease;
+}
+.dk-pulse-err {
+  animation: dk-rim-err 0.4s ease;
+}
+@keyframes dk-rim-ok {
+  40% {
+    border-color: rgb(var(--gn-fg));
+    box-shadow:
+      0 3px 0 rgb(var(--bd5)),
+      0 0 0 4px rgb(var(--gn-fg) / 0.3);
+  }
+}
+@keyframes dk-rim-err {
+  25%,
+  75% {
+    transform: translateX(-2px);
+  }
+  50% {
+    transform: translateX(2px);
+  }
+  40% {
+    border-color: rgb(var(--rd-fg));
+    box-shadow:
+      0 3px 0 rgb(var(--bd5)),
+      0 0 0 4px rgb(var(--rd-fg) / 0.3);
+  }
+}
+
+/* fill sweep (export completion) */
+.dk-sweep {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+}
+.dk-sweep::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgb(var(--gn-fg) / 0.35);
+  transform: translateX(-101%);
+}
+.dk-sweeping .dk-sweep::before {
+  animation: dk-sweep-in 0.25s ease-out forwards;
+}
+@keyframes dk-sweep-in {
+  to {
+    transform: translateX(0);
+  }
+}
+
+/* breathing hint — exactly one element at a time */
+.dk-breathe {
+  animation: dk-breathe 2s ease-in-out infinite;
+}
+@keyframes dk-breathe {
+  0%,
+  100% {
+    box-shadow:
+      0 3px 0 rgb(var(--bd5)),
+      0 4px 8px rgb(0 0 0 / 0.25),
+      0 0 0 0 rgb(var(--cy-fg) / 0);
+  }
+  50% {
+    box-shadow:
+      0 3px 0 rgb(var(--bd5)),
+      0 4px 8px rgb(0 0 0 / 0.25),
+      0 0 0 6px rgb(var(--cy-fg) / 0.22);
+  }
+}
+
+/* ---------- hold-to-confirm ring ---------- */
+.dk-holdable {
+  position: relative;
+}
+.dk-hold-ring {
+  position: absolute;
+  inset: -5px;
+  border-radius: 13px;
+  padding: 2.5px;
+  pointer-events: none;
+  opacity: 0;
+  background: conic-gradient(rgb(var(--rd-fg)) calc(var(--dk-hold, 0) * 1turn), transparent 0);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  transition: opacity 0.12s;
+}
+.dk-holding .dk-hold-ring {
+  opacity: 1;
+}
+
+/* ---------- board row flashes ---------- */
+.dk-row-in {
+  animation: dk-row-in 0.6s ease;
+}
+@keyframes dk-row-in {
+  0% {
+    background: rgb(var(--gn-fg) / 0.3);
+    transform: translateX(-6px);
+    opacity: 0.4;
+  }
+  100% {
+    background: transparent;
+  }
+}
+.dk-row-out {
+  animation: dk-row-out 0.3s ease forwards;
+}
+@keyframes dk-row-out {
+  to {
+    background: rgb(var(--rd-fg) / 0.25);
+    opacity: 0;
+    transform: translateX(10px);
+  }
+}
+.dk-row-edit {
+  animation: dk-row-edit 0.6s ease;
+}
+@keyframes dk-row-edit {
+  0% {
+    background: rgb(var(--cy-fg) / 0.3);
+  }
+}
+.dk-board-sweep {
+  animation: dk-board-sweep 0.3s ease;
+}
+@keyframes dk-board-sweep {
+  0% {
+    opacity: 0.25;
+    transform: translateY(6px);
+  }
+}
+
+/* ---------- tray + drawer ---------- */
+.dk-tray {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  background: rgb(var(--panel));
+  transform: translateY(103%);
+  visibility: hidden;
+  transition:
+    transform 0.16s ease,
+    visibility 0.16s;
+}
+.dk-tray.dk-open {
+  transform: none;
+  visibility: visible;
+}
+.dk-drawer {
+  position: absolute;
+  inset: 0;
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  background: rgb(var(--panel));
+  border-left: 1px solid rgb(var(--bd3));
+  box-shadow: -12px 0 28px rgb(0 0 0 / 0.3);
+  transform: translateX(103%);
+  visibility: hidden;
+  transition:
+    transform 0.16s ease,
+    visibility 0.16s;
+}
+.dk-drawer.dk-open {
+  transform: none;
+  visibility: visible;
+}
+
+/* ---------- output pane ---------- */
+.dk-ticker-roll {
+  animation: dk-tick-roll 0.4s ease;
+}
+@keyframes dk-tick-roll {
+  30% {
+    color: rgb(var(--cy-fg));
+    transform: translateY(-3px);
+  }
+  60% {
+    transform: translateY(1px);
+  }
+}
+.dk-chg {
+  background: rgb(var(--cy-fg) / 0.14);
+  display: inline-block;
+  width: 100%;
+  animation: dk-chg-fade 0.6s ease 0.6s forwards;
+}
+@keyframes dk-chg-fade {
+  to {
+    background: transparent;
+  }
+}
+.dk-stamp {
+  position: absolute;
+  top: 44px;
+  right: 16px;
+  z-index: 46;
+  pointer-events: none;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: 0.1em;
+  color: rgb(var(--gn-fg));
+  border: 2.5px solid rgb(var(--gn-fg));
+  border-radius: 7px;
+  padding: 5px 12px;
+  transform: rotate(-11deg);
+  opacity: 0;
+  background: rgb(var(--panel) / 0.85);
+}
+.dk-stamp.dk-show {
+  animation:
+    dk-stamp-in 0.45s cubic-bezier(0.2, 1.8, 0.4, 1) forwards,
+    dk-stamp-out 0.5s ease 4s forwards;
+}
+@keyframes dk-stamp-in {
+  0% {
+    opacity: 0;
+    transform: rotate(-11deg) scale(1.45);
+  }
+  70% {
+    transform: rotate(-11deg) scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: rotate(-11deg) scale(1);
+  }
+}
+@keyframes dk-stamp-out {
+  to {
+    opacity: 0;
+  }
+}
+
+/* ---------- rewind strip ---------- */
+.dk-rewind {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 14px;
+  background: rgb(var(--panel));
+  border-bottom: 1px solid rgb(var(--bd3));
+  box-shadow: 0 8px 20px rgb(0 0 0 / 0.3);
+  overflow-x: auto;
+  animation: dk-slide-down 0.16s ease;
+}
+@keyframes dk-slide-down {
+  from {
+    transform: translateY(-100%);
+  }
+}
+.dk-snapchip {
+  flex: 0 0 auto;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgb(var(--btn2));
+  border: 1px solid rgb(var(--bd4));
+  box-shadow: 0 2px 0 rgb(var(--bd5));
+  color: rgb(var(--tx3));
+  cursor: pointer;
+  transition: all 0.13s;
+}
+.dk-snapchip:hover {
+  border-color: rgb(var(--cy-fg));
+  transform: translateY(-1px);
+}
+.dk-snapchip:active {
+  transform: translateY(1px);
+  box-shadow: none;
+}
+
+/* ---------- ghost cards ---------- */
+.dk-ghost {
+  width: 210px;
+  border: 1.5px dashed rgb(var(--bd4));
+  border-radius: 12px;
+  padding: 16px 14px;
+  color: rgb(var(--tx6));
+  text-align: center;
+  font-size: 12px;
+  background: rgb(var(--panel) / 0.4);
+}
+.dk-ghost b {
+  display: block;
+  color: rgb(var(--tx2));
+  margin-bottom: 5px;
+  font-size: 12.5px;
+}
+.dk-ghost .dk-kref {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 10px;
+  color: rgb(var(--cy-fg));
+}
+.dk-ghost-pulse {
+  animation: dk-ghost-pulse 0.5s ease 2;
+}
+@keyframes dk-ghost-pulse {
+  50% {
+    border-color: rgb(var(--am-fg));
+    color: rgb(var(--am-fg));
+  }
+}
+
+/* ---------- toasts ---------- */
+.dk-toast {
+  background: rgb(var(--panel));
+  border: 1px solid rgb(var(--bd4));
+  border-left: 3px solid rgb(var(--cy-fg));
+  border-radius: 9px;
+  padding: 9px 13px;
+  font-size: 11.5px;
+  color: rgb(var(--tx2));
+  box-shadow: 0 10px 26px rgb(0 0 0 / 0.35);
+  max-width: 340px;
+  animation:
+    dk-toast-in 0.18s ease,
+    dk-toast-out 0.3s ease 3.4s forwards;
+}
+.dk-toast.dk-ok {
+  border-left-color: rgb(var(--gn-fg));
+}
+.dk-toast.dk-err {
+  border-left-color: rgb(var(--rd-fg));
+}
+.dk-toast.dk-warn {
+  border-left-color: rgb(var(--am-fg));
+}
+@keyframes dk-toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+@keyframes dk-toast-out {
+  to {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+
+/* ---------- rating chip ---------- */
+.dk-rating {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgb(var(--pu-fg) / 0.13);
+  color: rgb(var(--pu-fg));
+  border: 1px solid rgb(var(--pu-fg) / 0.3);
+}
+
+/* ---------- die spin ---------- */
+.dk-die {
+  display: inline-block;
+  transition: transform 0.3s cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+.dk-rolling .dk-die {
+  animation: dk-die-spin 0.3s ease;
+}
+@keyframes dk-die-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .dk-key,
+  .dk-latch,
+  .dk-tray,
+  .dk-drawer,
+  .dk-breathe,
+  .dk-row-in,
+  .dk-row-out,
+  .dk-row-edit,
+  .dk-board-sweep,
+  .dk-stamp.dk-show,
+  .dk-toast,
+  .dk-ticker-roll,
+  .dk-chg,
+  .dk-sweeping .dk-sweep::before {
+    animation: none !important;
+    transition-duration: 0.01ms !important;
+  }
+}

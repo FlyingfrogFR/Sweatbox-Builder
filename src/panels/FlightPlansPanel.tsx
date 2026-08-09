@@ -32,7 +32,7 @@ export function FlightPlansPanel({ onAddToPool, vatsimCache, setVatsimCache, sim
   );
 }
 
-function SimBriefSection({ onAddToPool, cache, setCache }: any) {
+export function SimBriefSection({ onAddToPool, cache, setCache }: any) {
   const [username, setUsername] = useState(() => storage.get(KEYS.sbUser) || "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -101,7 +101,7 @@ function SimBriefSection({ onAddToPool, cache, setCache }: any) {
   );
 }
 
-function VatsimSection({ onAddToPool, cache, setCache }: any) {
+export function VatsimSection({ onAddToPool, cache, setCache }: any) {
   const [icao, setIcao] = useState(cache.icao || "");
   const [mode, setMode] = useState(cache.mode || "arr");
   const [loading, setLoading] = useState(false);
