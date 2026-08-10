@@ -2,7 +2,7 @@
 // the rule-based generators (S3/C1). Session-overview timeline + rule list +
 // inline detail pane with a produced-aircraft preview. The full rule editor
 // (all ~30 fields) stays reachable via "Edit all fields".
-import { useState, useMemo, useEffect, useDeferredValue } from "react";
+import { useState, useMemo, useEffect, useRef, useDeferredValue } from "react";
 import { Icon } from "../ui/Icon";
 import { emptyRule } from "../core/model";
 import { uid } from "../core/uid";
@@ -65,20 +65,48 @@ export function RuleWorkbench({ mode, scenario, onChange, waypoints, pool, stars
 
   const selected = rules.find((r: any) => r.id === selectedId) || null;
 
-  // Editable draft of the selected rule (Save / Revert).
+  // Editable draft of the selected rule. Edits COMMIT LIVE — debounced 300ms
+  // for typing, flushed on blur/unmount, immediate for button toggles. The old
+  // Save/Revert pair silently ate edits whenever the user left without
+  // pressing the small Save button ("changes not memorized nor applied").
+  // lastCommitted lets us ignore our own commit echoing back through props
+  // without clobbering keys typed while the commit was in flight.
   const [draft, setDraft] = useState<any>(selected);
-  useEffect(() => setDraft(selected), [selectedId, selected]);
-  const set = (f: string, v: any) => setDraft((d: any) => ({ ...d, [f]: v }));
+  const draftRef = useRef<any>(selected);
+  draftRef.current = draft;
+  const scenarioRef = useRef(scenario);
+  scenarioRef.current = scenario;
+  const lastCommitted = useRef<any>(null);
+  const commitTimer = useRef<any>(null);
+  useEffect(() => {
+    if (selected && selected === lastCommitted.current) return; // our own echo
+    setDraft(selected);
+  }, [selectedId, selected]);
 
-  const dirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(selected), [draft, selected]);
-
-  const writeRules = (next: any[]) => onChange({ ...scenario, rules: next });
-
-  const saveDraft = () => {
-    if (!draft) return;
-    writeRules(allRules.map((r: any) => (r.id === draft.id ? draft : r)));
+  const commitNow = (next: any) => {
+    clearTimeout(commitTimer.current);
+    commitTimer.current = null;
+    if (!next?.id) return;
+    const sc = scenarioRef.current;
+    if (!(sc.rules || []).some((r: any) => r.id === next.id)) return; // rule deleted meanwhile
+    lastCommitted.current = next;
+    onChange({ ...sc, rules: sc.rules.map((r: any) => (r.id === next.id ? next : r)) });
   };
-  const revertDraft = () => setDraft(selected);
+  const flushCommit = () => {
+    if (commitTimer.current) commitNow(draftRef.current);
+  };
+  // Flush (not drop) a pending commit if the workbench unmounts mid-edit.
+  useEffect(() => () => flushCommit(), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const set = (f: string, v: any, immediate = false) => {
+    setDraft((d: any) => {
+      const next = { ...d, [f]: v };
+      clearTimeout(commitTimer.current);
+      commitTimer.current = setTimeout(() => commitNow(next), immediate ? 0 : 300);
+      return next;
+    });
+  };
+
+  const writeRules = (next: any[]) => onChange({ ...scenarioRef.current, rules: next });
   const newRule = () => {
     const r = { ...emptyRule(), mode, name: `New ${mode} rule` };
     writeRules([...allRules, r]);
@@ -247,8 +275,10 @@ export function RuleWorkbench({ mode, scenario, onChange, waypoints, pool, stars
           </div>
         </div>
 
-        {/* DETAIL */}
-        <div className="overflow-auto p-[20px_22px] dotgrid min-h-0">
+        {/* DETAIL — onBlur flushes the pending commit, so clicking anything
+            (RUN RULES, DONE, another rule) right after typing never races the
+            300ms debounce. */}
+        <div className="overflow-auto p-[20px_22px] dotgrid min-h-0" onBlur={flushCommit}>
           {!draft ? (
             <div className="text-[13px] text-tx7 text-center py-16">Select or create a rule to edit it.</div>
           ) : (
@@ -315,7 +345,7 @@ export function RuleWorkbench({ mode, scenario, onChange, waypoints, pool, stars
                   <label className={lb}>TIMING</label>
                   <div className="flex gap-1">
                     <button
-                      onClick={() => set("timingMode", "regular")}
+                      onClick={() => set("timingMode", "regular", true)}
                       title="Evenly spaced across the window"
                       className={`flex-1 text-[10.5px] font-semibold px-2 py-2 rounded-md border ${
                         draft.timingMode !== "random" ? "bg-cy-soft border-cy-bd text-cy-fg" : "bg-inset border-bd3 text-tx5 hover:text-tx3"
@@ -324,7 +354,7 @@ export function RuleWorkbench({ mode, scenario, onChange, waypoints, pool, stars
                       REGULAR
                     </button>
                     <button
-                      onClick={() => set("timingMode", "random")}
+                      onClick={() => set("timingMode", "random", true)}
                       title="Same aircraft count, random spawn times — never under 2 min apart"
                       className={`flex-1 text-[10.5px] font-semibold px-2 py-2 rounded-md border ${
                         draft.timingMode === "random" ? "bg-cy-soft border-cy-bd text-cy-fg" : "bg-inset border-bd3 text-tx5 hover:text-tx3"
@@ -385,21 +415,9 @@ export function RuleWorkbench({ mode, scenario, onChange, waypoints, pool, stars
                 </div>
               )}
 
-              <div className="flex justify-end gap-[9px] mt-4">
-                <button
-                  onClick={revertDraft}
-                  disabled={!dirty}
-                  className="text-[12px] text-tx3 bg-transparent border border-bd4 hover:border-bdh disabled:opacity-40 rounded-[7px] px-[15px] py-2"
-                >
-                  Revert
-                </button>
-                <button
-                  onClick={saveDraft}
-                  disabled={!dirty}
-                  className="text-[12.5px] font-semibold text-on-cyan bg-[#5ccfe0] hover:bg-[#74d8e6] disabled:opacity-50 rounded-[7px] px-4 py-2"
-                >
-                  Save rule
-                </button>
+              <div className="flex justify-end items-center gap-2 mt-4 font-mono text-[10px] text-tx7 select-none">
+                <span className="w-[6px] h-[6px] rounded-full bg-gn-fg/70" />
+                changes save automatically
               </div>
             </>
           )}
