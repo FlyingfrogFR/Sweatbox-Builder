@@ -133,7 +133,12 @@ export function BuildTray(props: any) {
   };
 
   // RUN RULES lever with the 0→N count-up (DeckApp does the actual generation).
+  // Deferred one tick so a blur-flushed rule commit (clicking straight from an
+  // input) is rendered into the scenario ref before generation reads it.
   const doRunRules = () => {
+    setTimeout(runNow, 30);
+  };
+  const runNow = () => {
     const n = onRunRules();
     if (typeof n !== "number") return;
     pulse(document.getElementById("dk-runrules"), "dk-pulse-ok");

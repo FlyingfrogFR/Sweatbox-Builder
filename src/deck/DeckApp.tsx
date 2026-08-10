@@ -326,7 +326,11 @@ export default function DeckApp() {
 
   // ---------- RUN RULES (whole-scenario generalization of Apply all) ----------
   const runRules = () => {
-    const rules = scenario.rules || [];
+    // Read through the ref: the workbench live-commits edits on blur, and a
+    // RUN RULES click can land before React re-renders this closure — the ref
+    // always holds the freshest scenario.
+    const sc = scenarioRef.current;
+    const rules = sc.rules || [];
     if (!rules.length) {
       openTray("build", "rules");
       return;
@@ -334,7 +338,7 @@ export default function DeckApp() {
     snapshot("before RUN RULES");
     setTray(null);
     const ids = new Set(rules.map((r: any) => r.id));
-    let ac = scenario.aircraft.filter((a: any) => !a.ruleId || !ids.has(a.ruleId));
+    let ac = sc.aircraft.filter((a: any) => !a.ruleId || !ids.has(a.ruleId));
     const used = new Set<string>(ac.map((a: any) => a.callsign).filter(Boolean));
     const fresh: any[] = [];
     const errors: string[] = [];
@@ -347,7 +351,7 @@ export default function DeckApp() {
       fresh.push(...gen);
       ac = [...ac, ...gen];
     }
-    setScenario({ ...scenario, aircraft: sortByStart(ac) });
+    setScenario({ ...sc, aircraft: sortByStart(ac) });
     setFlashIds(new Set(fresh.map((a) => a.id)));
     if (errors.length) toast(`${errors.length} rule${errors.length > 1 ? "s" : ""} failed:<br>${errors.join("<br>")}`, "err");
     else toast(`${rules.length} rule${rules.length > 1 ? "s" : ""} → <b>${fresh.length} aircraft</b> regenerated`, "ok");
