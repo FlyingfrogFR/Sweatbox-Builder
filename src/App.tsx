@@ -283,7 +283,7 @@ export default function App() {
 
   const generatorProps = { scenario, onChange: setScenario, waypoints, airports, runways, positions, pool, stars, copx, gates, rampAgent, rampConfig };
 
-  const titleName = `${(scenario.name || "scenario").replace(/[^a-z0-9]+/gi, "_")}.scn`;
+  const titleName = `${(scenario.name || "scenario").replace(/[^a-z0-9]+/gi, "_")}.txt`;
   const metaLine = `${scenario.ils.length} ILS · ${(scenario.controllers || []).length} ctrl · ${(scenario.holdings || []).length} hold`;
 
   return (

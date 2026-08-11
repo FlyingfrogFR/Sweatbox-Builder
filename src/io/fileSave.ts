@@ -1,7 +1,7 @@
 // fileSave.ts — native Save-As + the export naming convention.
 //
 // Naming convention (tokens collected at save time, per the user's choice):
-//   scenario : ICAO_X.Y_CONFIGYY            (e.g. LFBO_3.3_CONFIG32.scn)
+//   scenario : ICAO_X.Y_CONFIGYY            (e.g. LFBO_3.3_CONFIG32.txt — EuroScope sweatbox loads plain .txt)
 //   ruleset  : ICAO_X.Y_CONFIGYY_RULESET.json
 // "CONFIG" (the config token) is always uppercased. The four tokens — ICAO,
 // version (X.Y), config, configNum (YY) — are entered in the Export UI, which
@@ -34,7 +34,7 @@ export function buildExportName(t: NameTokens, kind: ExportKind): string {
   const config = (t.config || "").toUpperCase().trim();
   const configNum = String(t.configNum ?? "").trim();
   const base = `${icao}_${version}_${config}${configNum}`;
-  return kind === "ruleset" ? `${base}_RULESET.json` : `${base}.scn`;
+  return kind === "ruleset" ? `${base}_RULESET.json` : `${base}.txt`;
 }
 
 export interface SaveResult {
@@ -59,7 +59,7 @@ export async function saveTextFile(
     const filters =
       kind === "ruleset"
         ? [{ name: "Ruleset JSON", extensions: ["json"] }]
-        : [{ name: "EuroScope scenario", extensions: ["scn", "txt"] }];
+        : [{ name: "EuroScope scenario (text)", extensions: ["txt"] }];
     const path = await save({ defaultPath: suggestedName, filters });
     if (!path) return { saved: false };
     await writeTextFile(path, contents);
