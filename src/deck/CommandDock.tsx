@@ -253,7 +253,7 @@ export function CommandDock({
             </div>
             {!autoPP && (
               <p className="text-[10px] text-tx7">
-                When ON, every aircraft starts under the mentor's control (INITIALPSEUDOPILOT in the .scn).
+                When ON, every aircraft starts under the mentor's control (INITIALPSEUDOPILOT in the exported file).
               </p>
             )}
             {autoPP &&

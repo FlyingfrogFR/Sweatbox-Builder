@@ -518,7 +518,7 @@ export default function DeckApp() {
     close: () => setTray(null),
   };
 
-  const titleFile = tokensSet ? `${scnName}` : `${(scenario.name || "scenario").replace(/[^a-z0-9]+/gi, "_")}.scn`;
+  const titleFile = tokensSet ? `${scnName}` : `${(scenario.name || "scenario").replace(/[^a-z0-9]+/gi, "_")}.txt`;
 
   return (
     <div className="h-screen flex flex-col bg-bg text-tx1 font-sans overflow-hidden">

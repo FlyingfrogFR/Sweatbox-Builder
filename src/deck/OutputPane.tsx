@@ -90,7 +90,7 @@ export function OutputPane({ output, navLoaded, shipped }: { output: string; nav
     <>
       {/* ===== header ===== */}
       <div className="flex-none bg-inset border-b border-bd1 px-3.5 py-2 flex items-center gap-2">
-        <span className="text-[10px] font-extrabold tracking-widest text-tx6 select-none">.SCN OUTPUT</span>
+        <span className="text-[10px] font-extrabold tracking-widest text-tx6 select-none">SCENARIO OUTPUT</span>
         <span
           className={`w-2 h-2 rounded-full flex-none transition-colors ${
             navLoaded
@@ -103,7 +103,7 @@ export function OutputPane({ output, navLoaded, shipped }: { output: string; nav
         <span ref={tickerRef} className="ml-auto font-mono text-[10.5px] text-tx6 whitespace-nowrap">
           {fmtN(lineCount)} LINES
         </span>
-        <DeckKey size="sm" id="dk-copy" onClick={doCopy} title="Copy the .scn text to the clipboard">
+        <DeckKey size="sm" id="dk-copy" onClick={doCopy} title="Copy the scenario text to the clipboard">
           {copied ? "COPIED ✓" : "COPY"}
         </DeckKey>
       </div>
