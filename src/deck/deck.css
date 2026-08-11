@@ -79,18 +79,18 @@
     0 1px 2px rgb(0 0 0 / 0.2);
 }
 .dk-key.dk-primary {
-  background: #5ccfe0;
+  background: rgb(var(--primary-bg));
   color: rgb(var(--on-cyan));
-  border-color: #5ccfe0;
+  border-color: rgb(var(--primary-bg));
   box-shadow:
-    0 4px 0 rgb(92 207 224 / 0.45),
-    0 6px 14px rgb(92 207 224 / 0.3);
+    0 4px 0 rgb(var(--primary-bg) / 0.45),
+    0 6px 14px rgb(var(--primary-bg) / 0.3);
 }
 .dk-key.dk-primary:hover {
   filter: brightness(1.06);
 }
 .dk-key.dk-primary:active {
-  box-shadow: 0 0 0 rgb(92 207 224 / 0.45);
+  box-shadow: 0 0 0 rgb(var(--primary-bg) / 0.45);
 }
 /* never-dead not-ready state */
 .dk-key.dk-fix {
@@ -195,8 +195,8 @@
    live/ok green, destructive red. Controls that merely switch a view stay
    neutral/cyan. `tone` drives both latches and keycaps. */
 .dk-latch.dk-tone-arr.dk-on {
-  background: rgb(var(--arr) / 0.13);
-  border-color: rgb(var(--arr) / 0.6);
+  background: rgb(var(--arr) / var(--tint-latch-bg));
+  border-color: rgb(var(--arr) / var(--tint-latch-bd));
   color: rgb(var(--arr));
 }
 .dk-latch.dk-tone-arr.dk-on .dk-led {
@@ -204,11 +204,11 @@
   box-shadow: 0 0 6px rgb(var(--arr) / 0.8);
 }
 .dk-latch.dk-tone-arr:hover {
-  border-color: rgb(var(--arr) / 0.5);
+  border-color: rgb(var(--arr) / var(--tint-latch-bd-h));
 }
 .dk-latch.dk-tone-dep.dk-on {
-  background: rgb(var(--dep) / 0.13);
-  border-color: rgb(var(--dep) / 0.6);
+  background: rgb(var(--dep) / var(--tint-latch-bg));
+  border-color: rgb(var(--dep) / var(--tint-latch-bd));
   color: rgb(var(--dep));
 }
 .dk-latch.dk-tone-dep.dk-on .dk-led {
@@ -216,93 +216,122 @@
   box-shadow: 0 0 6px rgb(var(--dep) / 0.8);
 }
 .dk-latch.dk-tone-dep:hover {
-  border-color: rgb(var(--dep) / 0.5);
+  border-color: rgb(var(--dep) / var(--tint-latch-bd-h));
 }
+/* `am` is the canonical amber tone name; `amber` is an accepted alias and
+   `.dk-amber` a deprecated legacy alias — all resolve to the same rules. */
+.dk-latch.dk-tone-am.dk-on,
 .dk-latch.dk-tone-amber.dk-on,
 .dk-latch.dk-amber.dk-on {
-  background: rgb(var(--am-fg) / 0.11);
-  border-color: rgb(var(--am-fg) / 0.6);
+  background: rgb(var(--am-fg) / var(--tint-latch-bg));
+  border-color: rgb(var(--am-fg) / var(--tint-latch-bd));
   color: rgb(var(--am-fg));
 }
+.dk-latch.dk-tone-am.dk-on .dk-led,
 .dk-latch.dk-tone-amber.dk-on .dk-led,
 .dk-latch.dk-amber.dk-on .dk-led {
   background: rgb(var(--am-fg));
   box-shadow: 0 0 6px rgb(var(--am-fg) / 0.8);
 }
+.dk-latch.dk-tone-am:hover,
 .dk-latch.dk-tone-amber:hover,
 .dk-latch.dk-amber:hover {
-  border-color: rgb(var(--am-fg) / 0.5);
+  border-color: rgb(var(--am-fg) / var(--tint-latch-bd-h));
 }
 .dk-latch.dk-tone-gn.dk-on {
-  background: rgb(var(--gn-fg) / 0.12);
-  border-color: rgb(var(--gn-fg) / 0.55);
+  background: rgb(var(--gn-fg) / var(--tint-latch-bg));
+  border-color: rgb(var(--gn-fg) / var(--tint-latch-bd));
   color: rgb(var(--gn-fg));
 }
 .dk-latch.dk-tone-gn.dk-on .dk-led {
   background: rgb(var(--gn-fg));
   box-shadow: 0 0 6px rgb(var(--gn-fg) / 0.8);
 }
+.dk-latch.dk-tone-gn:hover {
+  border-color: rgb(var(--gn-fg) / var(--tint-latch-bd-h));
+}
 
 /* toned keycaps — a tinted face + coloured label, still a keycap */
 .dk-key.dk-tone-arr {
   color: rgb(var(--arr));
-  border-color: rgb(var(--arr) / 0.4);
-  background: rgb(var(--arr) / 0.09);
+  border-color: rgb(var(--arr) / var(--tint-key-bd));
+  background: rgb(var(--arr) / var(--tint-key-bg));
 }
 .dk-key.dk-tone-arr:hover {
-  border-color: rgb(var(--arr) / 0.75);
+  border-color: rgb(var(--arr) / var(--tint-key-bd-h));
 }
 .dk-key.dk-tone-dep {
   color: rgb(var(--dep));
-  border-color: rgb(var(--dep) / 0.4);
-  background: rgb(var(--dep) / 0.09);
+  border-color: rgb(var(--dep) / var(--tint-key-bd));
+  background: rgb(var(--dep) / var(--tint-key-bg));
 }
 .dk-key.dk-tone-dep:hover {
-  border-color: rgb(var(--dep) / 0.75);
+  border-color: rgb(var(--dep) / var(--tint-key-bd-h));
 }
+.dk-key.dk-tone-am,
 .dk-key.dk-tone-amber {
   color: rgb(var(--am-fg));
-  border-color: rgb(var(--am-fg) / 0.4);
-  background: rgb(var(--am-fg) / 0.09);
+  border-color: rgb(var(--am-fg) / var(--tint-key-bd));
+  background: rgb(var(--am-fg) / var(--tint-key-bg));
 }
+.dk-key.dk-tone-am:hover,
 .dk-key.dk-tone-amber:hover {
-  border-color: rgb(var(--am-fg) / 0.75);
+  border-color: rgb(var(--am-fg) / var(--tint-key-bd-h));
 }
 .dk-key.dk-tone-gn {
   color: rgb(var(--gn-fg));
-  border-color: rgb(var(--gn-fg) / 0.4);
-  background: rgb(var(--gn-fg) / 0.09);
+  border-color: rgb(var(--gn-fg) / var(--tint-key-bd));
+  background: rgb(var(--gn-fg) / var(--tint-key-bg));
 }
 .dk-key.dk-tone-gn:hover {
-  border-color: rgb(var(--gn-fg) / 0.75);
+  border-color: rgb(var(--gn-fg) / var(--tint-key-bd-h));
 }
 /* cyan-tinted "preferred" key — the action we WANT the user to pick among
    siblings (import over paste, fetch over type). A middle tier between the
-   filled primary lever and a neutral key. */
+   filled primary lever and a neutral key. cy is keycap-only: lit latches are
+   already cyan, so a cy latch would be indistinguishable from neutral-on. */
 .dk-key.dk-tone-cy {
   color: rgb(var(--cy-fg));
   border-color: rgb(var(--cy-bd));
-  background: rgb(var(--cy-fg) / 0.09);
+  background: rgb(var(--cy-fg) / var(--tint-key-bg));
 }
 .dk-key.dk-tone-cy:hover {
-  border-color: rgb(var(--cy-fg) / 0.75);
+  border-color: rgb(var(--cy-fg) / var(--tint-key-bd-h));
 }
+/* pu is latch-only (orientation marks like ↺ LEFT) — no keycap variant on
+   purpose; a purple action key has no defined meaning. */
 .dk-latch.dk-tone-pu.dk-on {
-  background: rgb(var(--pu-fg) / 0.12);
-  border-color: rgb(var(--pu-fg) / 0.55);
+  background: rgb(var(--pu-fg) / var(--tint-latch-bg));
+  border-color: rgb(var(--pu-fg) / var(--tint-latch-bd));
   color: rgb(var(--pu-fg));
 }
 .dk-latch.dk-tone-pu.dk-on .dk-led {
   background: rgb(var(--pu-fg));
   box-shadow: 0 0 6px rgb(var(--pu-fg) / 0.8);
 }
+.dk-latch.dk-tone-pu:hover {
+  border-color: rgb(var(--pu-fg) / var(--tint-latch-bd-h));
+}
 .dk-key.dk-tone-rd {
   color: rgb(var(--rd-fg));
-  border-color: rgb(var(--rd-fg) / 0.4);
-  background: rgb(var(--rd-fg) / 0.09);
+  border-color: rgb(var(--rd-fg) / var(--tint-key-bd));
+  background: rgb(var(--rd-fg) / var(--tint-key-bg));
 }
 .dk-key.dk-tone-rd:hover {
-  border-color: rgb(var(--rd-fg) / 0.75);
+  border-color: rgb(var(--rd-fg) / var(--tint-key-bd-h));
+}
+
+/* a control that can't be pressed carries no tone — disabled keys/latches
+   drop back to neutral so dead controls stop making colour statements */
+.dk-key:disabled[class*="dk-tone-"] {
+  color: rgb(var(--tx2));
+  border-color: rgb(var(--bd4));
+  background: rgb(var(--btn2));
+}
+.dk-latch:disabled[class*="dk-tone-"] {
+  color: rgb(var(--tx5));
+  border-color: rgb(var(--bd4));
+  background: rgb(var(--btn2));
 }
 
 /* ---------- result pulses ---------- */
@@ -643,14 +672,31 @@
     dk-toast-in 0.18s ease,
     dk-toast-out 0.3s ease 3.4s forwards;
 }
+/* severity carries a glyph as well as a colour, so state survives with tone
+   removed (colour-blind safety rule in TONES.md) */
 .dk-toast.dk-ok {
   border-left-color: rgb(var(--gn-fg));
+}
+.dk-toast.dk-ok::before {
+  content: "✓ ";
+  color: rgb(var(--gn-fg));
+  font-weight: 700;
 }
 .dk-toast.dk-err {
   border-left-color: rgb(var(--rd-fg));
 }
+.dk-toast.dk-err::before {
+  content: "× ";
+  color: rgb(var(--rd-fg));
+  font-weight: 700;
+}
 .dk-toast.dk-warn {
   border-left-color: rgb(var(--am-fg));
+}
+.dk-toast.dk-warn::before {
+  content: "! ";
+  color: rgb(var(--am-fg));
+  font-weight: 700;
 }
 @keyframes dk-toast-in {
   from {
@@ -673,7 +719,7 @@
   letter-spacing: 0.08em;
   padding: 2px 6px;
   border-radius: 4px;
-  background: rgb(var(--pu-fg) / 0.13);
+  background: rgb(var(--pu-fg) / var(--tint-chip-bg));
   color: rgb(var(--pu-fg));
   border: 1px solid rgb(var(--pu-fg) / 0.3);
 }

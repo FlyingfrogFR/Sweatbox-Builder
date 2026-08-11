@@ -68,7 +68,44 @@ await page.waitForTimeout(250);
 const fetchCy = await page.locator('.dk-tray.dk-open .dk-key.dk-tone-cy:has-text("FETCH")').count();
 fetchCy === 0 ? ok("FETCH keys neutral (lone keys carry no cy)") : fail("FETCH still cy");
 
+// --- Light theme: toned key labels must clear WCAG AA 4.5:1 on their tinted face (TONES.md rule 13) ---
 await page.keyboard.press("Escape");
+await page.waitForTimeout(250);
+await page.evaluate(() => { document.documentElement.dataset.theme = "light"; });
+await page.waitForTimeout(200);
+await page.click('button:has-text("SETUP")');
+await page.waitForTimeout(350);
+const contrast = await page.locator('.dk-tray.dk-open .dk-key:has-text("LOAD .SCT")').first().evaluate((el) => {
+  const lin = (c) => { c /= 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+  const lum = ([r, g, b]) => 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  const parse = (s) => s.match(/[\d.]+/g).map(Number);
+  const cs = getComputedStyle(el);
+  const fg = parse(cs.color).slice(0, 3);
+  const bg = parse(cs.backgroundColor); // rgba tint — blend over the base surface
+  const base = parse(getComputedStyle(document.documentElement).getPropertyValue("--btn2").trim().split(" ").join(","));
+  const a = bg.length > 3 ? bg[3] : 1;
+  const face = base.map((c, i) => c * (1 - a) + bg[i] * a);
+  const [l1, l2] = [lum(fg), lum(face)].sort((x, y) => y - x);
+  return (l1 + 0.05) / (l2 + 0.05);
+});
+contrast >= 4.5 ? ok("light-theme LOAD key contrast " + contrast.toFixed(2) + ":1 (AA)") : fail("light-theme contrast " + contrast.toFixed(2) + " < 4.5");
+await page.evaluate(() => { delete document.documentElement.dataset.theme; });
+
+// --- Disabled toned control is neutral (TONES.md rule 8) + primary uses --primary-bg token ---
+const probe = await page.evaluate(() => {
+  const mk = (cls, dis) => { const b = document.createElement("button"); b.className = cls; b.textContent = "X"; if (dis) b.disabled = true; document.body.appendChild(b); return getComputedStyle(b).color; };
+  const disabledToned = mk("dk-key dk-sm dk-tone-arr", true);
+  const enabledToned = mk("dk-key dk-sm dk-tone-arr", false);
+  const neutral = mk("dk-key dk-sm", true);
+  const b = document.createElement("button"); b.className = "dk-key dk-primary"; document.body.appendChild(b);
+  const primaryBg = getComputedStyle(b).backgroundColor;
+  return { disabledToned, enabledToned, neutral, primaryBg };
+});
+probe.disabledToned === probe.neutral && probe.disabledToned !== probe.enabledToned
+  ? ok("disabled toned key drops to neutral (" + probe.disabledToned + ")")
+  : fail("disabled tone not neutralized: " + JSON.stringify(probe));
+probe.primaryBg === "rgb(92, 207, 224)" ? ok("primary lever uses --primary-bg token") : fail("primary bg unexpected: " + probe.primaryBg);
+
 if (errors.length) fail("page errors: " + errors.join(" | "));
 await browser.close();
 console.log(process.exitCode ? "TONE E2E FAILED" : "TONE E2E PASSED");

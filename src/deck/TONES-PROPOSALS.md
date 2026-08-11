@@ -1,8 +1,9 @@
-# Colorscheme proposals (advisory — not yet applied)
+# Colorscheme proposals — ALL IMPLEMENTED
 
 Output of the stage-3 design-advisory pass over the tone system (TONES.md).
-The current scheme was judged elegant; these are refinements that lock the
-existing logic in place. S = small tweak, M = token refactor, L = owner decision.
+All 10 items below are now applied: rules 8–13 in TONES.md, tokens + fixes in
+index.css/deck.css, glyphs in GroundSection/Toasts. Kept as the rationale
+record. S = small tweak, M = token refactor, L = owner decision.
 
 Measured baseline (WCAG contrast of toned text on its own 9% tint):
 dark theme all tones pass ≥ 4.98:1 (cy 8.2, gn 7.7, am 7.3, dep 5.8, arr 5.4,

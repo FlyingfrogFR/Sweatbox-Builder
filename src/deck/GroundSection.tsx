@@ -63,6 +63,8 @@ function PoolCell({ label, have, want, tone }: any) {
       <div className="text-[9px] font-bold tracking-[0.1em] text-tx8 mb-1">{label}</div>
       <div className="flex items-baseline gap-1.5">
         <span className={`font-mono text-[17px] leading-none font-semibold ${colour}`}>{have}</span>
+        {/* glyph so met/short reads without colour (colour-blind safety) */}
+        {ok && <span className="font-mono text-[11px] text-gn-fg">✓</span>}
         <span className="text-[10.5px] text-tx7">in pool ·</span>
         <span className="font-mono text-[11.5px] text-tx3">{want} requested</span>
       </div>

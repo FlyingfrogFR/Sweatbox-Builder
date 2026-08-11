@@ -58,6 +58,17 @@
   --dot-a: 0.022;
   --on-cyan: 6 34 42; /* on-accent text on filled cyan buttons */
   --on-green: 14 22 18; /* on-accent text on filled green buttons */
+  --primary-bg: 92 207 224; /* the one filled-primary accent (levers, ::selection) */
+  /* Tint intensity ladder — the ONLY legal alphas for toned surfaces, quietest
+     to loudest: chip < key < latch-on < FIX lever < filled primary.
+     (TONES.md "intensity ladder"; do not hardcode tint alphas in tone rules.) */
+  --tint-chip-bg: 0.13;
+  --tint-key-bg: 0.09;
+  --tint-key-bd: 0.4;
+  --tint-key-bd-h: 0.75;
+  --tint-latch-bg: 0.12;
+  --tint-latch-bd: 0.6;
+  --tint-latch-bd-h: 0.5;
 }
 :root[data-theme="light"] {
   --bg: 232 236 241;
@@ -84,13 +95,15 @@
   --tx7: 124 137 147;
   --tx8: 151 162 171;
   --tx9: 170 178 186;
-  --cy-fg: 10 133 160;
-  --gn-fg: 18 152 106;
-  --am-fg: 163 118 13;
-  --pu-fg: 107 78 230;
-  --rd-fg: 205 62 83;
+  /* Light-theme tone foregrounds are deepened (same hue) until they clear
+     WCAG AA 4.5:1 on their own 9%-tinted key face — measured, not eyeballed. */
+  --cy-fg: 0 110 134;
+  --gn-fg: 0 116 76;
+  --am-fg: 135 95 0;
+  --pu-fg: 101 71 229;
+  --rd-fg: 186 48 68;
   --rd-mut: 192 137 145;
-  --arr: 194 69 63; /* Direction B: arrivals (red), deepened for light */
+  --arr: 178 62 56; /* Direction B: arrivals (red), deepened for light */
   --dep: 47 95 208; /* Direction B: departures (blue), deepened for light */
   --cy-soft: 225 243 247;
   --cy-soft2: 211 235 241;
@@ -149,8 +162,8 @@ body {
 
 /* selection + placeholders + focus ring */
 ::selection {
-  background: #5ccfe0;
-  color: #06222a;
+  background: rgb(var(--primary-bg));
+  color: rgb(var(--on-cyan));
 }
 input::placeholder,
 textarea::placeholder {
