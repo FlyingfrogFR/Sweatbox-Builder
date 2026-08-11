@@ -182,6 +182,13 @@
   background: rgb(var(--cy-fg));
   box-shadow: 0 0 6px rgb(var(--cy-fg) / 0.8);
 }
+/* 32px latch — for control rows where toggles sit beside inputs and keycaps,
+   so the whole row shares one height */
+.dk-latch.dk-md {
+  height: 32px;
+  padding: 0 12px;
+}
+
 /* amber-toned latch — used where a section must read as "different kind of
    thing" (e.g. GROUND TFC among the build modes) */
 .dk-latch.dk-amber.dk-on {

@@ -43,10 +43,10 @@ export function DeckKey({
   );
 }
 
-export function Latch({ on, onClick, children, disabled = false, title, className = "" }: any) {
+export function Latch({ on, onClick, children, disabled = false, title, size, className = "" }: any) {
   return (
     <button
-      className={`dk-latch ${on ? "dk-on" : ""} ${className}`}
+      className={`dk-latch ${size === "md" ? "dk-md" : ""} ${on ? "dk-on" : ""} ${className}`}
       onClick={onClick}
       disabled={disabled}
       title={title}
