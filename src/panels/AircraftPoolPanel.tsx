@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo, useCallback, memo } from "react";
 import { Icon } from "../ui/Icon";
 import { SRC_LABELS } from "../core/pool";
 import { downloadJsonBundle, readJsonFile } from "../io/bundles";
+import { wrongKindMessage } from "../state/bundleKind";
 
 // Memoized row: selection toggles only re-render the rows whose `selected`
 // flag changed; derived strings are precomputed in the panel.
@@ -90,6 +91,11 @@ export function AircraftPoolPanel({ pool, onDelete, onAddToScenario, airac, onSe
     e.target.value = "";
     try {
       const bundle = await readJsonFile(file);
+      const wrong = wrongKindMessage(bundle, "pool");
+      if (wrong) {
+        flash(wrong.replace(/<\/?b>/g, ""));
+        return;
+      }
       if (bundle.kind !== "sweatbox-pool") throw new Error("Not a pool bundle");
       onImportPool(bundle);
       flash(`Imported ${file.name}${bundle.airac ? ` (AIRAC ${bundle.airac})` : ""}: ${(bundle.pool || []).length} entries`);
@@ -109,10 +115,10 @@ export function AircraftPoolPanel({ pool, onDelete, onAddToScenario, airac, onSe
         <div className="flex-1" />
         <div className="flex items-center gap-2">
           <button onClick={exportPool} disabled={!pool.length} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:text-slate-600 rounded text-xs text-slate-200">
-            <Icon name="download" size={12} />Export pool.json
+            <Icon name="download" size={12} />Export pool
           </button>
           <label className="flex items-center gap-1.5 px-3 py-1.5 bg-sky-700 hover:bg-sky-600 rounded text-xs text-white cursor-pointer">
-            <Icon name="upload" size={12} />Import bundle
+            <Icon name="upload" size={12} />Import pool
             <input type="file" accept=".json,application/json" onChange={importPool} className="hidden" />
           </label>
         </div>

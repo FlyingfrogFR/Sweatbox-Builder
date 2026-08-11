@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { DeckKey, HoldKey, RatingChip, pulse } from "./ui";
 import { Icon } from "../ui/Icon";
 import { downloadJsonBundle, readJsonFile } from "../io/bundles";
+import { wrongKindMessage } from "../state/bundleKind";
 import * as slots from "../state/slots";
 
 // Local one-off animations (shake on rejected rename, menu pop-in).
@@ -44,6 +45,7 @@ export function SlotRail({
   onClone,
   onDelete,
   onImportBundle,
+  trayOpen,
   toast,
 }: {
   slotList: string[];
@@ -56,6 +58,7 @@ export function SlotRail({
   onClone: (name: string) => void;
   onDelete: (name: string) => void;
   onImportBundle: (bundle: any) => void;
+  trayOpen?: boolean;
   toast: (html: string, kind?: "ok" | "warn" | "err" | "info") => void;
 }) {
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -145,6 +148,11 @@ export function SlotRail({
     if (!f) return;
     try {
       const parsed = await readJsonFile(f);
+      const wrong = wrongKindMessage(parsed, "scenario");
+      if (wrong) {
+        toast(wrong, "warn");
+        return;
+      }
       onImportBundle(parsed);
     } catch (err: any) {
       toast(`Import failed: ${esc(err?.message || String(err))}`, "err");
@@ -270,12 +278,15 @@ export function SlotRail({
         })}
       </div>
 
-      {/* footer */}
+      {/* footer — the scenario import hides while a tray is open so exactly one
+          import button is ever on screen (the navdata section aside). */}
       <div className="flex-none flex items-center gap-2 p-2.5 border-t border-bd1">
-        <DeckKey size="sm" onClick={() => fileRef.current?.click()} title="Import .scenario.json as a new slot">
-          <Icon name="upload" size={13} />
-          IMPORT
-        </DeckKey>
+        {!trayOpen && (
+          <DeckKey size="sm" onClick={() => fileRef.current?.click()} title="Import a saved scenario (.scenario.json) as a new slot">
+            <Icon name="upload" size={13} />
+            IMPORT SCENARIO
+          </DeckKey>
+        )}
         <input ref={fileRef} type="file" accept=".json,application/json" className="hidden" onChange={onFile} />
         {airac && (
           <span className="ml-auto font-mono text-[10px] text-tx6 bg-panel border border-bd1 rounded-md px-[7px] py-[3px]">

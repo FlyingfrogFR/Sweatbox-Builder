@@ -551,6 +551,7 @@ export default function DeckApp() {
           onClone={cloneSlot}
           onDelete={removeSlot}
           onImportBundle={importSlotBundle}
+          trayOpen={!!tray}
           toast={toast}
         />
 

@@ -11,6 +11,7 @@ import { getGenerators } from "../../generators";
 import { emptyRule } from "../../core/model";
 import { readJsonFile, downloadJsonBundle } from "../../io/bundles";
 import { extractRules, normalizeRules } from "../../state/rulesImport";
+import { wrongKindMessage } from "../../state/bundleKind";
 
 type Mode = "S3" | "C1";
 const MODE_LABEL: Record<Mode, string> = { S3: "S3 · APPROACH", C1: "C1 · ENROUTE" };
@@ -110,6 +111,11 @@ export function BuildTray(props: any) {
     e.target.value = "";
     try {
       const parsed = await readJsonFile(file);
+      const wrong = wrongKindMessage(parsed, "rules");
+      if (wrong) {
+        toast(wrong, "warn");
+        return;
+      }
       const rules = extractRules(parsed);
       if (!rules.length) throw new Error("Rules array is empty");
       applyRules(rules);
@@ -207,11 +213,11 @@ export function BuildTray(props: any) {
         </span>
       }
       footer={
-        section === "rules" ? (
+        section === "rules" && allRules.length ? (
           <>
-            <DeckKey size="sm" onClick={() => fileRef.current?.click()} title="Import a ruleset .json (merge or replace)">
+            <DeckKey size="sm" onClick={() => fileRef.current?.click()} title="Import a ruleset .json — MERGE adds to these rules, REPLACE swaps them all">
               <Icon name="upload" size={13} />
-              IMPORT RULES
+              IMPORT RULESET
             </DeckKey>
             <Latch on={importMode === "merge"} onClick={() => setImportMode("merge")} title="Imported rules merge in (same id replaces)">
               MERGE

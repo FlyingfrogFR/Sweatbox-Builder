@@ -6,7 +6,7 @@ import { useState } from "react";
 import { Tray } from "../Tray";
 import { Latch, RATINGS } from "../ui";
 import { SetupPanel } from "../../panels/SetupPanel";
-import { NavdataPanel } from "../../panels/NavdataPanel";
+import { NavdataSection } from "../NavdataSection";
 
 export function SetupTray(props: any) {
   const {
@@ -77,7 +77,7 @@ export function SetupTray(props: any) {
           <SetupPanel scenario={scenario} onChange={onChange} positions={positions} runways={runways} waypoints={waypoints} />
         </>
       ) : (
-        <NavdataPanel
+        <NavdataSection
           waypoints={waypoints}
           airports={props.airports}
           positions={positions}
@@ -98,6 +98,7 @@ export function SetupTray(props: any) {
           onLoadRampAgent={props.onLoadRampAgent}
           onLoadRampConfig={props.onLoadRampConfig}
           onResetRampAgent={props.onResetRampAgent}
+          toast={props.toast}
         />
       )}
     </Tray>
