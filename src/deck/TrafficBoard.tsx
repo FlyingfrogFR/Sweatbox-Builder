@@ -103,7 +103,7 @@ export const TrafficBoard = forwardRef<HTMLDivElement, any>(function TrafficBoar
           </HoldKey>
         )}
         {gndCount > 0 && (
-          <HoldKey onHold={clearGnd} tone="amber" title="Hold to clear ground traffic">
+          <HoldKey onHold={clearGnd} title="Hold to clear ground traffic">
             CLEAR GND <span className="dk-badge">{gndCount}</span>
           </HoldKey>
         )}

@@ -338,7 +338,7 @@ export function SlotRail({
           <div className="mt-1 pt-1.5 pb-0.5 px-0.5 border-t border-bd2">
             <HoldKey
               size="sm"
-              className="w-full text-rd-fg"
+              className="w-full"
               title="Hold to delete this slot"
               onHold={() => {
                 const n = menu.name;

@@ -202,7 +202,7 @@ export function BuildTray(props: any) {
       footer={
         section === "rules" && allRules.length ? (
           <>
-            <DeckKey size="sm" onClick={() => fileRef.current?.click()} title="Import a ruleset .json — MERGE adds to these rules, REPLACE swaps them all">
+            <DeckKey size="sm" tone="cy" onClick={() => fileRef.current?.click()} title="Import a ruleset .json — MERGE adds to these rules, REPLACE swaps them all">
               <Icon name="upload" size={13} />
               IMPORT RULESET
             </DeckKey>

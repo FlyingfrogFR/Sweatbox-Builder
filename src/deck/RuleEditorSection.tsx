@@ -49,11 +49,12 @@ const SRC: Record<string, { label: string; cls: string }> = {
 const srcOf = (s: string) =>
   SRC[s] || { label: (s || "?").toUpperCase(), cls: "text-tx5 bg-inset border-bd3" };
 
-// WTC categories keep the legacy severity ramp, remapped onto deck tones.
-// Red is reserved for arrivals and destructive keys, so Super shares Heavy's
-// amber rather than borrowing the arrivals colour.
+// WTC categories: only Heavy/Super carry a tone — amber, for their wingspan /
+// wake caveats (an amber meaning in TONES.md). Light and Medium stay neutral:
+// red is reserved for arrivals/destructive, and green means live/verified
+// data, not "small aircraft" — the legacy severity ramp was decoration.
 const CAT_TONE: Record<string, string | undefined> = {
-  L: "gn",
+  L: undefined,
   M: undefined,
   H: "amber",
   J: "amber",

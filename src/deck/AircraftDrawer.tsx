@@ -128,17 +128,17 @@ export function AircraftDrawer({ aircraft, waypoints, onSave, onCancel, onDelete
             <label className={LB}>Role</label>
             <div className="flex gap-1.5 items-center h-[30px]">
               <Latch
+                tone="arr"
                 on={!a.isDeparture}
                 onClick={() => update("isDeparture", false)}
-                className={!a.isDeparture ? "!text-arr" : ""}
                 title="Arrival"
               >
                 ARR
               </Latch>
               <Latch
+                tone="dep"
                 on={!!a.isDeparture}
                 onClick={() => update("isDeparture", true)}
-                className={a.isDeparture ? "!text-dep" : ""}
                 title="Departure"
               >
                 DEP
@@ -309,7 +309,7 @@ export function AircraftDrawer({ aircraft, waypoints, onSave, onCancel, onDelete
       {/* ===== footer ===== */}
       <div className="flex-none flex items-center gap-2.5 px-4 py-2.5 border-t border-bd1 bg-inset">
         {!isNew && (
-          <HoldKey onHold={() => onDelete(a.id)} className="!text-rd-fg" title="Hold to delete this aircraft">
+          <HoldKey onHold={() => onDelete(a.id)} title="Hold to delete this aircraft">
             DELETE
           </HoldKey>
         )}

@@ -79,7 +79,7 @@ function SourceCard({
           </span>
           <span className="text-[12.5px] font-semibold text-tx1 flex-1 min-w-0 truncate">{title}</span>
           <div className="flex items-center gap-1.5 flex-none">
-            <DeckKey size="sm" onClick={() => inputRef.current?.click()}>
+            <DeckKey size="sm" tone="cy" onClick={() => inputRef.current?.click()}>
               <Icon name="upload" size={12} />
               {loadLabel}
             </DeckKey>
@@ -318,7 +318,7 @@ export function NavdataSection({
           <Icon name="download" size={12} />
           EXPORT NAVDATA
         </DeckKey>
-        <DeckKey size="sm" onClick={() => bundleRef.current?.click()} title="Load a previously exported navdata.json">
+        <DeckKey size="sm" tone="cy" onClick={() => bundleRef.current?.click()} title="Load a previously exported navdata.json">
           <Icon name="upload" size={12} />
           IMPORT NAVDATA
         </DeckKey>

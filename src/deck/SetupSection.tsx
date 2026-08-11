@@ -323,6 +323,7 @@ export function SetupSection({
             </div>
             <DeckKey
               size="sm"
+              tone="cy"
               disabled={!hasRunways || !canAddFromRwy}
               onClick={addIlsFromRwy}
               title="Copy both threshold coordinates straight from the sector file"
@@ -419,6 +420,7 @@ export function SetupSection({
             </div>
             <DeckKey
               size="sm"
+              tone="cy"
               disabled={!pickPos}
               onClick={addCtrlFromEse}
               title="Add this position as a controller, callsign and frequency filled in"
@@ -555,15 +557,16 @@ export function SetupSection({
                               onClick={() => patch("holdings", holdings, i, { turn: "R" })}
                               title="Right turns (standard)"
                             >
-                              RIGHT
+                              ↻ RIGHT
                             </Latch>
                             <Latch
                               size="md"
+                              tone="pu"
                               on={h.turn === "L"}
                               onClick={() => patch("holdings", holdings, i, { turn: "L" })}
-                              title="Left turns"
+                              title="Left turns (non-standard)"
                             >
-                              LEFT
+                              ↺ LEFT
                             </Latch>
                           </div>
                         </td>

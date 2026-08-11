@@ -24,6 +24,9 @@ something. Adding a tone anywhere means answering "which rule below?".
    (arr/dep/amber). If everything is coloured, nothing is.
 2. Sibling actions where we have a preference: preferred gets `cy`, the rest
    stay neutral. No preference → all neutral.
+   - "The workflow's next step" still requires a sibling choice in the same
+     cluster: a lone action key (e.g. a solitary FETCH) stays neutral — its
+     placement already says it's next, so `cy` there is decoration.
 3. `arr`/`dep` are reserved for the arrival/departure meaning ONLY. Never
    reuse red/blue for unrelated pairs.
 4. Paired opposites that aren't arr/dep (e.g. LEFT/RIGHT turns) distinguish
@@ -31,6 +34,9 @@ something. Adding a tone anywhere means answering "which rule below?".
    too subtle. Never invent a new hue.
 5. Destructive is always a HoldKey (red, hold-to-confirm). Red never appears
    on a plain click.
+   - Destructive wins over domain tones: a key that clears a semantic domain
+     (e.g. CLEAR GND) is still red — the domain lives in the label/badge, not
+     the key colour, and the red matches the hold-ring.
 6. View-switching controls (section latches, tab-like things) stay neutral —
    the lit cyan latch state is enough — EXCEPT when the section itself is a
    semantic concept (GROUND = amber).

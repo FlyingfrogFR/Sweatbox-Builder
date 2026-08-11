@@ -625,7 +625,7 @@ export function FplnPoolTray(props: any) {
       </>
     ) : (
       <>
-        <DeckKey size="sm" onClick={() => importRef.current?.click()} title="Load a previously exported pool.json">
+        <DeckKey size="sm" tone="cy" onClick={() => importRef.current?.click()} title="Load a previously exported pool.json">
           <Icon name="upload" size={12} />
           IMPORT POOL
         </DeckKey>
