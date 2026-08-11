@@ -84,10 +84,12 @@ export function RuleWorkbench({ mode, scenario, onChange, waypoints, pool, stars
     setDraft(selected);
   }, [selectedId, selected]);
 
+  const editingFullRef = useRef<any>(null);
   const commitNow = (next: any) => {
     clearTimeout(commitTimer.current);
     commitTimer.current = null;
     if (!next?.id) return;
+    if (editingFullRef.current) return; // the full editor owns the rule now
     const sc = scenarioRef.current;
     if (!(sc.rules || []).some((r: any) => r.id === next.id)) return; // rule deleted meanwhile
     lastCommitted.current = next;
@@ -127,7 +129,9 @@ export function RuleWorkbench({ mode, scenario, onChange, waypoints, pool, stars
     });
   };
   const saveFull = (r: any) => {
+    editingFullRef.current = null;
     writeRules(allRules.filter((x: any) => x.id !== r.id).concat({ ...r, mode: r.mode || mode }));
+    setDraft({ ...r, mode: r.mode || mode }); // keep the inline pane in sync
     setEditingFull(null);
   };
 
@@ -167,7 +171,7 @@ export function RuleWorkbench({ mode, scenario, onChange, waypoints, pool, stars
     "w-full bg-inset border border-bd3 rounded-md px-2.5 py-2 text-[12.5px] text-tx1 font-mono focus:border-cy-fg focus:outline-none";
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="relative flex flex-col h-full">
       {/* SESSION OVERVIEW */}
       <div className="px-[18px] py-[13px] bg-panel border-b border-bd1">
         <div className="flex items-center justify-between mb-3">
@@ -378,7 +382,14 @@ export function RuleWorkbench({ mode, scenario, onChange, waypoints, pool, stars
               {/* produced aircraft */}
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[10px] font-semibold tracking-[0.14em] text-tx6">PRODUCED AIRCRAFT</span>
-                <button onClick={() => setEditingFull(draft)} className="text-[11px] text-cy-fg hover:underline">
+                <button
+                  onClick={() => {
+                    flushCommit();
+                    editingFullRef.current = draft;
+                    setEditingFull(draft);
+                  }}
+                  className="text-[11px] text-cy-fg hover:underline"
+                >
                   Edit all fields →
                 </button>
               </div>
@@ -425,7 +436,24 @@ export function RuleWorkbench({ mode, scenario, onChange, waypoints, pool, stars
         </div>
       </div>
 
-      {editingFull && (
+      {editingFull && FullEditor ? (
+        <div className="absolute inset-0 z-40 bg-panel">
+          <FullEditor
+            rule={editingFull}
+            waypoints={waypoints}
+            pool={pool}
+            stars={stars}
+            copx={copx}
+            runways={runways}
+            scenarioIls={scenario.ils}
+            onSave={saveFull}
+            onCancel={() => {
+              editingFullRef.current = null;
+              setEditingFull(null);
+            }}
+          />
+        </div>
+      ) : editingFull ? (
         <Editor
           rule={editingFull}
           waypoints={waypoints}
@@ -435,9 +463,12 @@ export function RuleWorkbench({ mode, scenario, onChange, waypoints, pool, stars
           runways={runways}
           scenarioIls={scenario.ils}
           onSave={saveFull}
-          onCancel={() => setEditingFull(null)}
+          onCancel={() => {
+              editingFullRef.current = null;
+              setEditingFull(null);
+            }}
         />
-      )}
+      ) : null}
     </div>
   );
 }

@@ -7,7 +7,8 @@ import { Tray } from "../Tray";
 import { DeckKey, Latch, pulse } from "../ui";
 import { Icon } from "../../ui/Icon";
 import { RuleWorkbench } from "../../generators/RuleWorkbench";
-import { getGenerators } from "../../generators";
+import { GroundSection } from "../GroundSection";
+import { RuleEditorSection } from "../RuleEditorSection";
 import { emptyRule } from "../../core/model";
 import { readJsonFile, downloadJsonBundle } from "../../io/bundles";
 import { extractRules, normalizeRules } from "../../state/rulesImport";
@@ -31,6 +32,7 @@ export function BuildTray(props: any) {
     gates,
     rampAgent,
     rampConfig,
+    runways,
     section,
     setSection,
     focusRuleId,
@@ -162,21 +164,6 @@ export function BuildTray(props: any) {
   const runLabel =
     ruleCount === 0 ? "RUN RULES" : `RUN RULES · ${ruleCount} → ${runAnim !== null ? runAnim : estRuleAc}`;
 
-  // ---------- GROUND TFC section (registered S1 panel) ----------
-  const s1 = getGenerators().find((g) => g.id === "S1");
-  const groundBase = useRef(0);
-  const groundCount = (scenario.aircraft || []).filter((a: any) => a.groundMeta).length;
-  useEffect(() => {
-    if (open && section === "ground") groundBase.current = groundCount;
-  }, [open, section]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (!open || section !== "ground") return;
-    if (groundCount > groundBase.current) {
-      onGroundGenerated(groundCount - groundBase.current);
-      groundBase.current = groundCount;
-    }
-  }, [groundCount, open, section]); // eslint-disable-line react-hooks/exhaustive-deps
-
   return (
     <Tray
       open={open}
@@ -298,7 +285,17 @@ export function BuildTray(props: any) {
                 )}
               </div>
               <div className="flex-1 min-h-0">
-                <RuleWorkbench mode={mode} scenario={scenario} onChange={onChange} waypoints={waypoints} pool={pool} stars={stars} copx={copx} />
+                <RuleWorkbench
+                  mode={mode}
+                  scenario={scenario}
+                  onChange={onChange}
+                  waypoints={waypoints}
+                  pool={pool}
+                  stars={stars}
+                  copx={copx}
+                  runways={runways}
+                  FullEditor={RuleEditorSection}
+                />
               </div>
             </>
           ))}
@@ -324,13 +321,18 @@ export function BuildTray(props: any) {
               <Icon name="alert" size={13} />
               Ground traffic — parked / taxiing ramp aircraft (S1), not airborne flows. Rows land with a GND chip.
             </div>
-            {s1 ? (
-              <div className="flex-1 min-h-0 overflow-y-auto">
-                {s1.render({ scenario, onChange, gates, pool, rampAgent, rampConfig })}
-              </div>
-            ) : (
-              <div className="p-10 text-center text-tx6">S1 ground generator not loaded.</div>
-            )}
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              <GroundSection
+                scenario={scenario}
+                onChange={onChange}
+                gates={gates}
+                pool={pool}
+                rampAgent={rampAgent}
+                rampConfig={rampConfig}
+                toast={toast}
+                onGenerated={onGroundGenerated}
+              />
+            </div>
           </>
         )}
       </div>
