@@ -276,6 +276,26 @@
 .dk-key.dk-tone-gn:hover {
   border-color: rgb(var(--gn-fg) / 0.75);
 }
+/* cyan-tinted "preferred" key — the action we WANT the user to pick among
+   siblings (import over paste, fetch over type). A middle tier between the
+   filled primary lever and a neutral key. */
+.dk-key.dk-tone-cy {
+  color: rgb(var(--cy-fg));
+  border-color: rgb(var(--cy-bd));
+  background: rgb(var(--cy-fg) / 0.09);
+}
+.dk-key.dk-tone-cy:hover {
+  border-color: rgb(var(--cy-fg) / 0.75);
+}
+.dk-latch.dk-tone-pu.dk-on {
+  background: rgb(var(--pu-fg) / 0.12);
+  border-color: rgb(var(--pu-fg) / 0.55);
+  color: rgb(var(--pu-fg));
+}
+.dk-latch.dk-tone-pu.dk-on .dk-led {
+  background: rgb(var(--pu-fg));
+  box-shadow: 0 0 6px rgb(var(--pu-fg) / 0.8);
+}
 .dk-key.dk-tone-rd {
   color: rgb(var(--rd-fg));
   border-color: rgb(var(--rd-fg) / 0.4);
