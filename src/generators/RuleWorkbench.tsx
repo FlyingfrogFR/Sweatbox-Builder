@@ -52,7 +52,8 @@ function Timeline({ times, color, maxT }: { times: number[]; color: string; maxT
   );
 }
 
-export function RuleWorkbench({ mode, scenario, onChange, waypoints, pool, stars, copx }: any) {
+export function RuleWorkbench({ mode, scenario, onChange, waypoints, pool, stars, copx, runways, FullEditor }: any) {
+  const Editor = FullEditor || RuleEditor;
   const allRules = scenario.rules || [];
   const rules = allRules.filter((r: any) => r.mode === mode);
   const [selectedId, setSelectedId] = useState<string | null>(rules[0]?.id ?? null);
@@ -425,12 +426,13 @@ export function RuleWorkbench({ mode, scenario, onChange, waypoints, pool, stars
       </div>
 
       {editingFull && (
-        <RuleEditor
+        <Editor
           rule={editingFull}
           waypoints={waypoints}
           pool={pool}
           stars={stars}
           copx={copx}
+          runways={runways}
           scenarioIls={scenario.ils}
           onSave={saveFull}
           onCancel={() => setEditingFull(null)}

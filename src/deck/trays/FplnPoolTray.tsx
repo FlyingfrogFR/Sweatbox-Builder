@@ -198,10 +198,10 @@ function VatsimBody({ cache, setCache, sel, setSel, busyRef }: any) {
           <div>
             <label className={LABEL}>SHOW</label>
             <div className="flex gap-1">
-              <Latch size="md" on={mode === "arr"} onClick={() => setMode("arr")}>
+              <Latch size="md" tone="arr" on={mode === "arr"} onClick={() => setMode("arr")}>
                 ARRIVALS
               </Latch>
-              <Latch size="md" on={mode === "dep"} onClick={() => setMode("dep")}>
+              <Latch size="md" tone="dep" on={mode === "dep"} onClick={() => setMode("dep")}>
                 DEPARTURES
               </Latch>
               <Latch size="md" on={mode === "both"} onClick={() => setMode("both")}>
@@ -640,7 +640,6 @@ export function FplnPoolTray(props: any) {
               setPoolSel(new Set());
             }}
             title="Hold to remove the selected entries"
-            className="!text-rd-fg"
           >
             DELETE {poolSel.size}
           </HoldKey>
@@ -652,7 +651,6 @@ export function FplnPoolTray(props: any) {
               setPoolSel(new Set());
             }}
             title="Hold to empty the pool"
-            className="!text-rd-fg"
           >
             CLEAR ALL
           </HoldKey>

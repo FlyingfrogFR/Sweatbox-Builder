@@ -189,18 +189,100 @@
   padding: 0 12px;
 }
 
-/* amber-toned latch — used where a section must read as "different kind of
-   thing" (e.g. GROUND TFC among the build modes) */
+/* ---------- semantic tones ----------
+   Controls that stand for a MEANING carry that meaning's colour, so the deck
+   isn't a wall of identical cyan: arrivals red, departures blue, ground amber,
+   live/ok green, destructive red. Controls that merely switch a view stay
+   neutral/cyan. `tone` drives both latches and keycaps. */
+.dk-latch.dk-tone-arr.dk-on {
+  background: rgb(var(--arr) / 0.13);
+  border-color: rgb(var(--arr) / 0.6);
+  color: rgb(var(--arr));
+}
+.dk-latch.dk-tone-arr.dk-on .dk-led {
+  background: rgb(var(--arr));
+  box-shadow: 0 0 6px rgb(var(--arr) / 0.8);
+}
+.dk-latch.dk-tone-arr:hover {
+  border-color: rgb(var(--arr) / 0.5);
+}
+.dk-latch.dk-tone-dep.dk-on {
+  background: rgb(var(--dep) / 0.13);
+  border-color: rgb(var(--dep) / 0.6);
+  color: rgb(var(--dep));
+}
+.dk-latch.dk-tone-dep.dk-on .dk-led {
+  background: rgb(var(--dep));
+  box-shadow: 0 0 6px rgb(var(--dep) / 0.8);
+}
+.dk-latch.dk-tone-dep:hover {
+  border-color: rgb(var(--dep) / 0.5);
+}
+.dk-latch.dk-tone-amber.dk-on,
 .dk-latch.dk-amber.dk-on {
+  background: rgb(var(--am-fg) / 0.11);
   border-color: rgb(var(--am-fg) / 0.6);
   color: rgb(var(--am-fg));
 }
+.dk-latch.dk-tone-amber.dk-on .dk-led,
 .dk-latch.dk-amber.dk-on .dk-led {
   background: rgb(var(--am-fg));
   box-shadow: 0 0 6px rgb(var(--am-fg) / 0.8);
 }
+.dk-latch.dk-tone-amber:hover,
 .dk-latch.dk-amber:hover {
   border-color: rgb(var(--am-fg) / 0.5);
+}
+.dk-latch.dk-tone-gn.dk-on {
+  background: rgb(var(--gn-fg) / 0.12);
+  border-color: rgb(var(--gn-fg) / 0.55);
+  color: rgb(var(--gn-fg));
+}
+.dk-latch.dk-tone-gn.dk-on .dk-led {
+  background: rgb(var(--gn-fg));
+  box-shadow: 0 0 6px rgb(var(--gn-fg) / 0.8);
+}
+
+/* toned keycaps — a tinted face + coloured label, still a keycap */
+.dk-key.dk-tone-arr {
+  color: rgb(var(--arr));
+  border-color: rgb(var(--arr) / 0.4);
+  background: rgb(var(--arr) / 0.09);
+}
+.dk-key.dk-tone-arr:hover {
+  border-color: rgb(var(--arr) / 0.75);
+}
+.dk-key.dk-tone-dep {
+  color: rgb(var(--dep));
+  border-color: rgb(var(--dep) / 0.4);
+  background: rgb(var(--dep) / 0.09);
+}
+.dk-key.dk-tone-dep:hover {
+  border-color: rgb(var(--dep) / 0.75);
+}
+.dk-key.dk-tone-amber {
+  color: rgb(var(--am-fg));
+  border-color: rgb(var(--am-fg) / 0.4);
+  background: rgb(var(--am-fg) / 0.09);
+}
+.dk-key.dk-tone-amber:hover {
+  border-color: rgb(var(--am-fg) / 0.75);
+}
+.dk-key.dk-tone-gn {
+  color: rgb(var(--gn-fg));
+  border-color: rgb(var(--gn-fg) / 0.4);
+  background: rgb(var(--gn-fg) / 0.09);
+}
+.dk-key.dk-tone-gn:hover {
+  border-color: rgb(var(--gn-fg) / 0.75);
+}
+.dk-key.dk-tone-rd {
+  color: rgb(var(--rd-fg));
+  border-color: rgb(var(--rd-fg) / 0.4);
+  background: rgb(var(--rd-fg) / 0.09);
+}
+.dk-key.dk-tone-rd:hover {
+  border-color: rgb(var(--rd-fg) / 0.75);
 }
 
 /* ---------- result pulses ---------- */

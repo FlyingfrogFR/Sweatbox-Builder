@@ -90,10 +90,10 @@ export const TrafficBoard = forwardRef<HTMLDivElement, any>(function TrafficBoar
         <Latch on={filter === "all"} onClick={() => setFilter("all")} title="Show all aircraft">
           ALL <b className="font-mono">{aircraft.length}</b>
         </Latch>
-        <Latch on={filter === "arr"} onClick={() => setFilter("arr")} title="Show arrivals only">
+        <Latch tone="arr" on={filter === "arr"} onClick={() => setFilter("arr")} title="Show arrivals only">
           ARR <b className="font-mono">{arrCount}</b>
         </Latch>
-        <Latch on={filter === "dep"} onClick={() => setFilter("dep")} title="Show departures only">
+        <Latch tone="dep" on={filter === "dep"} onClick={() => setFilter("dep")} title="Show departures only">
           DEP <b className="font-mono">{depCount}</b>
         </Latch>
         <span className="flex-1" />
@@ -103,7 +103,7 @@ export const TrafficBoard = forwardRef<HTMLDivElement, any>(function TrafficBoar
           </HoldKey>
         )}
         {gndCount > 0 && (
-          <HoldKey onHold={clearGnd} title="Hold to clear ground traffic">
+          <HoldKey onHold={clearGnd} tone="amber" title="Hold to clear ground traffic">
             CLEAR GND <span className="dk-badge">{gndCount}</span>
           </HoldKey>
         )}

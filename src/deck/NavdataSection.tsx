@@ -89,7 +89,7 @@ function SourceCard({
               </DeckKey>
             )}
             {loaded && onClear && (
-              <HoldKey onHold={onClear} title="Hold to clear this data" className="!text-rd-fg">
+              <HoldKey onHold={onClear} title="Hold to clear this data">
                 CLEAR
               </HoldKey>
             )}

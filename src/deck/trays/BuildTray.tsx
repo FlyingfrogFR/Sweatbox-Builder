@@ -194,7 +194,7 @@ export function BuildTray(props: any) {
           <Latch
             on={section === "ground"}
             onClick={() => setSection("ground")}
-            className="dk-amber"
+            tone="amber"
             title="Parked / taxiing ramp traffic — a different beast from airborne flows"
           >
             GROUND

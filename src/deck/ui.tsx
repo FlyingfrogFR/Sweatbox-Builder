@@ -18,6 +18,7 @@ export function DeckKey({
   led, // undefined = no LED; boolean = LED on/off
   badge, // string | number badge
   breathe = false,
+  tone,
   className = "",
   title,
   disabled = false,
@@ -29,6 +30,7 @@ export function DeckKey({
     size === "lever" && "dk-lever",
     variant === "primary" && "dk-primary",
     variant === "fix" && "dk-fix",
+    tone && `dk-tone-${tone}`,
     breathe && "dk-breathe",
     className,
   ]
@@ -43,10 +45,10 @@ export function DeckKey({
   );
 }
 
-export function Latch({ on, onClick, children, disabled = false, title, size, className = "" }: any) {
+export function Latch({ on, onClick, children, disabled = false, title, size, tone, className = "" }: any) {
   return (
     <button
-      className={`dk-latch ${size === "md" ? "dk-md" : ""} ${on ? "dk-on" : ""} ${className}`}
+      className={`dk-latch ${size === "md" ? "dk-md" : ""} ${tone ? `dk-tone-${tone}` : ""} ${on ? "dk-on" : ""} ${className}`}
       onClick={onClick}
       disabled={disabled}
       title={title}
@@ -58,7 +60,7 @@ export function Latch({ on, onClick, children, disabled = false, title, size, cl
 }
 
 // Press-and-hold 600ms to confirm; releasing early cancels. Replaces confirm().
-export function HoldKey({ onHold, children, size = "sm", className = "", title, ms = 600 }: any) {
+export function HoldKey({ onHold, children, size = "sm", tone = "rd", className = "", title, ms = 600 }: any) {
   const ref = useRef<HTMLButtonElement>(null);
   const raf = useRef<number>(0);
   const start = useCallback(
@@ -93,7 +95,7 @@ export function HoldKey({ onHold, children, size = "sm", className = "", title, 
   return (
     <button
       ref={ref}
-      className={`dk-key ${size === "sm" ? "dk-sm" : ""} dk-holdable ${className}`}
+      className={`dk-key ${size === "sm" ? "dk-sm" : ""} ${tone ? `dk-tone-${tone}` : ""} dk-holdable ${className}`}
       title={title || "Hold to confirm"}
       onPointerDown={start}
       onPointerUp={cancel}
