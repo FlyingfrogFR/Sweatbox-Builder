@@ -296,24 +296,65 @@ describe("P7 — autoBoundary + scenario FIR", () => {
 });
 
 describe("P7 — ESE parser ingests FIR_COPX", () => {
-  it("parses COPX and FIR_COPX lines with kind/fromFir/toFir (CoFrance middle-dot sectors)", () => {
+  // Shapes taken verbatim from a real CoFrance LFXX.ese. Three things this
+  // locks down, each of which broke against the real file:
+  //   1. COPX/FIR_COPX live in [AIRSPACE] — there is no [COPX] section
+  //   2. fields are positional: the crossing point is field 3, NOT the first
+  //      token that happens to look like a fix (field 1 is the departure point)
+  //   3. the sector separator is a Latin-1 middle dot; read as UTF-8 it becomes
+  //      U+FFFD, and the FIR must still be recoverable
+  const REPL = "\uFFFD"; // what 0xB7 decodes to when the file is read as UTF-8
+
+  it("reads COPX and FIR_COPX out of [AIRSPACE], positionally", () => {
     const ese = [
-      "[COPX]",
-      "COPX:*:*:TINIL:*:*:LFFF·APP·118.15·1:LFFF·S·125.7·1:*:24500:TINIL COP",
-      "FIR_COPX:*:*:SOPIL:LFBO:*:LFRR·V U·133.725·1:LFBB·L1 UAC·195·295:*:19500:SOPIL LFBO",
+      "[AIRSPACE]",
+      "SECTORLINE:LFBBL1",
+      "COORD:N044.00.00.000:E000.00.00.000",
+      `COPX:MINSO:*:NARAK:LFBO:*:LFBB${REPL}L1 UAC${REPL}195${REPL}295:LFBB${REPL}X1 UAC${REPL}195${REPL}295:*:29000:TFL`,
+      `FIR_COPX:VANAD:*:VADOM:EBKT:*:LFRR${REPL}XS2 UAC${REPL}305${REPL}345:LFFF${REPL}UZ3 UAC${REPL}285${REPL}295:*:30000:VADOM`,
     ].join("\n");
     const { copx } = parseESE(ese);
     expect(copx.length).toBe(2);
-    const internal = copx.find((c: any) => c.fix === "TINIL");
-    const gate = copx.find((c: any) => c.fix === "SOPIL");
+
+    const internal: any = copx.find((c: any) => c.fix === "NARAK");
     expect(internal.kind).toBe("copx");
-    expect(internal.fromFir).toBe("LFFF");
-    expect(internal.toFir).toBe("LFFF");
-    expect(internal.level).toBe(24500);
+    expect(internal.fromFir).toBe("LFBB");
+    expect(internal.toFir).toBe("LFBB");
+    expect(internal.destApt).toBe("LFBO");
+    expect(internal.level).toBe(29000);
+
+    const gate: any = copx.find((c: any) => c.fix === "VADOM");
     expect(gate.kind).toBe("fir");
     expect(gate.fromFir).toBe("LFRR");
-    expect(gate.toFir).toBe("LFBB");
-    expect(gate.destApt).toBe("LFBO");
-    expect(gate.level).toBe(19500);
+    expect(gate.toFir).toBe("LFFF");
+    expect(gate.level).toBe(30000);
+    // field 1 (VANAD) is the departure point, never the crossing point
+    expect(copx.some((c: any) => c.fix === "VANAD")).toBe(false);
+  });
+
+  it("still works with the middle dot intact and with a legacy [COPX] header", () => {
+    const ese = [
+      "[COPX]",
+      "FIR_COPX:*:*:SOPIL:LFBO:*:LFRR·V U·133.725·1:LFBB·L1 UAC·195·295:*:19500:SOPIL LFBO",
+    ].join("\n");
+    const { copx } = parseESE(ese);
+    expect(copx.length).toBe(1);
+    expect(copx[0]).toMatchObject({
+      fix: "SOPIL",
+      kind: "fir",
+      fromFir: "LFRR",
+      toFir: "LFBB",
+      destApt: "LFBO",
+      level: 19500,
+    });
+  });
+
+  it("skips lines with no named crossing point and no level", () => {
+    const ese = [
+      "[AIRSPACE]",
+      "COPX:*:*:*:LFRL:*:LFRR·JS UAC·195·325:LFRR·KS UAC·195·355:*:28000:TFL",
+      "FIR_COPX:*:*:BOKNO:*:*:LFRR·N·128.1·1:EGTT·S·132.2·1:*:*:no level",
+    ].join("\n");
+    expect(parseESE(ese).copx.length).toBe(0);
   });
 });
