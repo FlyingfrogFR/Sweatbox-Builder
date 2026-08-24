@@ -561,7 +561,7 @@ export default function DeckApp() {
           <span className="w-[9px] h-[9px] rounded-full bg-dotbtn" />
         </div>
         <div className="absolute inset-x-0 text-center font-mono text-[11px] text-tx7 tracking-[0.04em] pointer-events-none flex items-center justify-center gap-2">
-          <span>{titleFile} — Sweatbox Builder FLIGHTDECK</span>
+          <span>{titleFile} — Sweatbox Builder</span>
           {rating && <span className="dk-rating pointer-events-none">{rating}</span>}
         </div>
         <div className="absolute right-3 top-1/2 -translate-y-1/2">

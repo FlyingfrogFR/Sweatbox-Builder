@@ -5,12 +5,12 @@
 // source of truth — no need to hand-edit version files for a release.
 import { readFileSync, writeFileSync } from "node:fs";
 
-const ref = process.env.GITHUB_REF_NAME || "";
-const v = ref.replace(/^v/, "");
-if (!v) {
-  console.error("No GITHUB_REF_NAME tag found; skipping version sync.");
+const ref = process.env.RELEASE_TAG || process.env.GITHUB_REF_NAME || "";
+if (!/^v\d/.test(ref)) {
+  console.error(`No v* release tag found (got "${ref}"); skipping version sync.`);
   process.exit(0);
 }
+const v = ref.replace(/^v/, "");
 
 for (const f of ["package.json", "src-tauri/tauri.conf.json"]) {
   const j = JSON.parse(readFileSync(f, "utf8"));

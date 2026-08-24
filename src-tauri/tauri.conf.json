@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Sweatbox Builder FLIGHTDECK",
-  "version": "6.1.0",
-  "identifier": "com.flyingfrog.sweatboxbuilder.flightdeck",
+  "productName": "Sweatbox Builder",
+  "version": "7.0.0",
+  "identifier": "com.flyingfrog.sweatboxbuilder",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1430",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Sweatbox Builder FLIGHTDECK",
+        "title": "Sweatbox Builder",
         "width": 1440,
         "height": 860,
         "minWidth": 980,

@@ -14,7 +14,7 @@ no hand-editing scenario text, no fiddly EuroScope encoding.
 [![CI & Build](https://github.com/FlyingfrogFR/Sweatbox-Builder/actions/workflows/build.yml/badge.svg)](https://github.com/FlyingfrogFR/Sweatbox-Builder/actions/workflows/build.yml)
 &nbsp;·&nbsp; [**⬇ Download the latest release**](https://github.com/FlyingfrogFR/Sweatbox-Builder/releases)
 
-<img src="docs/screenshots/scenario-dark.png" alt="Sweatbox Builder — dark theme" width="49%"> <img src="docs/screenshots/scenario-light.png" alt="Sweatbox Builder — light theme" width="49%">
+<img src="docs/screenshots/flightdeck-dark.png" alt="Sweatbox Builder — dark theme" width="49%"> <img src="docs/screenshots/flightdeck-light.png" alt="Sweatbox Builder — light theme" width="49%">
 
 </div>
 
@@ -23,13 +23,13 @@ no hand-editing scenario text, no fiddly EuroScope encoding.
 ## The gist
 
 If you mentor on VATSIM, you know the drill: a good **sweatbox** session needs
-a scenario file full of AI traffic, and writing those `.scn` files by hand is a pain.
+a scenario file full of AI traffic, and writing those scenario files by hand is a pain.
 Every aircraft wants a position, squawk, route, spawn heading, timing… all in
 EuroScope's exact format, and one typo and it won't load right.
 
 Sweatbox Builder does that part for you. Load your sector data, set up a few **rules**
 — like _"arrivals over OKABO for 26L, 10 an hour for 45 minutes, mediums and heavies"_
-— and it spits out properly-formatted traffic and exports a `.scn` you can drop
+— and it spits out properly-formatted traffic and exports a scenario file you can drop
 straight into EuroScope. All the gnarly bits (spawn-heading encoding, squawks,
 holdings, altitude requests, pseudo-pilots) are handled under the hood.
 
@@ -44,7 +44,7 @@ It's a real desktop app — double-click and go. No browser, no setup server.
 - **Bring your own navdata** — drop in EuroScope `.sct` / `.ese` files (waypoints, runways, STARs, gates), plus optional vaCC France RampAgent stand data for gate-fit-aware parking
 - **Pull real flight plans** — grab routes from **SimBrief** and **VATSIM live** right into an aircraft pool (works straight away — no CORS proxy to babysit)
 - **EuroScope-correct output** — the heading encoding, squawk modes (including `56XX` and Mode-S fallbacks), holdings, altitude requests, pre-entry offsets and ground-speed handling all match what EuroScope expects
-- **Native save** — writes your `.scn` and ruleset `.json` straight to disk, auto-named `ICAO_X.Y_CONFIGYY`
+- **Native save** — writes your scenario `.txt` and ruleset `.json` straight to disk, auto-named `ICAO_X.Y_CONFIGYY`
 - **Looks the part** — light/dark themes, clean typography, fully offline
 - **Reuse everything** — save and share scenarios, pools and rulesets as JSON
 
@@ -53,9 +53,10 @@ It's a real desktop app — double-click and go. No browser, no setup server.
 Head to [**Releases**](https://github.com/FlyingfrogFR/Sweatbox-Builder/releases) and grab:
 
 - **Windows** — the `.msi` or NSIS `.exe` installer (or just run the standalone `.exe`)
-- **macOS / Linux** — build it yourself for now (see below)
+- **macOS** — the universal `.dmg` (Apple Silicon + Intel), signed and notarized, so it opens without Gatekeeper warnings
+- **Linux** — build it yourself for now (see below)
 
-> Each version tag (`vX.Y.Z`) kicks off a build that attaches the Windows installers automatically.
+> Each version tag (`vX.Y.Z`) kicks off a build that attaches the Windows and macOS installers automatically.
 
 ## Try it from source
 
@@ -64,8 +65,9 @@ npm install
 npm run tauri:dev      # opens the app with hot reload
 ```
 
-Then it's: **Navdata** (load your `.sct`/`.ese`) → **Generators** (add rules → _Apply all_)
-→ **Scenario** (eyeball it) → **Export** (save the `.scn`). Done.
+Everything lives on one screen: **SETUP** (load your `.sct`/`.ese`, name the scenario)
+→ **FPLN POOL** (pull SimBrief / VATSIM plans) → **BUILD TFC** (rules, ground, manual)
+→ **EXPORT**. Traffic lands on the board as you go; Esc always takes you back to the deck.
 
 ---
 
@@ -84,7 +86,7 @@ Then it's: **Navdata** (load your `.sct`/`.ese`) → **Generators** (add rules �
 npm run tauri:dev     # native dev window (hot reload)
 npm run tauri:build   # app + installers (.msi/NSIS on Windows, .dmg on macOS, .deb/.AppImage on Linux)
 npm test              # byte-for-byte generation regression suite (Vitest)
-npm run dev           # front-end only, http://localhost:1420
+npm run dev           # front-end only, http://localhost:1430
 npm run build         # production web build into dist/
 npm run lint          # ESLint
 npm run fixtures      # regenerate golden .scn fixtures from the oracle
@@ -92,10 +94,12 @@ npm run fixtures      # regenerate golden .scn fixtures from the oracle
 
 ### Builds in CI
 `.github/workflows/build.yml` runs the tests on every push, and builds the Windows
-installers **on demand** (Actions → *CI & Build* → **Run workflow** → grab the
-`sweatbox-builder-windows` artifact) or **on a `v*` tag** (installers attached to a
-Release). Heads-up: a plain push only runs the quick test job — it doesn't rebuild the
-installers.
+installers + the macOS DMG **on demand** (Actions → *CI & Build* → **Run workflow** →
+grab the `sweatbox-builder-windows` / `sweatbox-builder-macos` artifacts). To cut a
+release, either push a `v*` tag or fill in that same **Run workflow** form's
+`release_tag` field (e.g. `v7.1.0`) — CI stamps the version from the tag and attaches
+both platforms' installers to the Release. Heads-up: a plain push only runs the quick
+test job — it doesn't rebuild the installers.
 
 ### No CORS proxy on desktop
 The old browser prototype needed a localhost proxy to reach FlightPlanDatabase /
@@ -109,8 +113,9 @@ around for an optional web build.
 reference/   The original single-file prototype (kept as the regression "oracle")
 src/
   core/      Generation logic, ported VERBATIM (generateSweatbox, generateFromRule, ground, geo, …)
+  deck/      The app shell: Slot Rail · Traffic Board · Output Pane · Command Dock, trays + drawers
   generators/ ES-module plugin registry + S1/S2 generators, S3 rule editor + Workbench (S3/C1)
-  panels/    Tab panels + App shell (sidebar, titlebar, context strip)
+  panels/    Legacy tabbed shell, kept for the S1 ground panel the deck embeds
   parsers/   .sct / .ese parsers
   net/ io/ state/ ui/   HTTP + APIs, file save/bundles, localStorage, icons
 src-tauri/   Rust backend: tauri.conf.json, capabilities/, src/lib.rs, icons/

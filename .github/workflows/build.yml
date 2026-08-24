@@ -5,13 +5,18 @@ on:
     branches: ["**"]
     tags: ["v*"]
   pull_request:
-  workflow_dispatch: # lets you build Windows installers on demand from the Actions tab
+  workflow_dispatch: # build installers on demand — and optionally publish a release
+    inputs:
+      release_tag:
+        description: "Publish a GitHub Release with this tag (e.g. v7.0.0). Leave empty to only build artifacts."
+        required: false
+        default: ""
 
 permissions:
-  contents: write # tauri-action needs this to publish a Release on tag builds
+  contents: write # tauri-action needs this to publish a Release
 
 jobs:
-  # Fast feedback on every push/PR: typecheck-free build + the parity suite.
+  # Fast feedback on every push/PR: typecheck + lint + the parity suite.
   test:
     runs-on: ubuntu-latest
     steps:
@@ -26,12 +31,33 @@ jobs:
       - run: npm test
       - run: npm run build
 
+  # Single source of truth for "is this a release, and under what tag" — a v*
+  # tag push and a workflow_dispatch carrying release_tag both land here, so the
+  # build jobs stay free of nested conditionals.
+  meta:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.t.outputs.tag }}
+      name: ${{ steps.t.outputs.name }}
+    steps:
+      - id: t
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            TAG="$GITHUB_REF_NAME"
+          else
+            TAG="${{ inputs.release_tag }}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          if [[ -n "$TAG" ]]; then
+            echo "name=Sweatbox Builder $TAG" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=" >> "$GITHUB_OUTPUT"
+          fi
+          echo "release tag: ${TAG:-<none — artifacts only>}"
+
   # Windows installers (.msi + NSIS .exe) + standalone .exe.
-  # Runs on manual dispatch or when a v* tag is pushed. On a tag, the installers
-  # are attached to a GitHub Release; otherwise they are uploaded as run artifacts
-  # you can download from the Actions run page.
   windows-build:
-    needs: test
+    needs: [test, meta]
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     runs-on: windows-latest
     steps:
@@ -45,21 +71,21 @@ jobs:
         with:
           workspaces: src-tauri -> target
       - run: npm ci
-      - name: Sync app version to the tag
-        if: startsWith(github.ref, 'refs/tags/v')
-        # Patch version (only on the runner, never committed) so the installer
-        # and in-app version always match the v* tag — no need to hand-edit.
-        # A committed script avoids any PowerShell/bash quoting differences.
+      - name: Sync app version to the release tag
+        if: needs.meta.outputs.tag != ''
+        # Patch the version on the runner only (never committed) so installers
+        # and the in-app version always match the tag being released.
+        env:
+          RELEASE_TAG: ${{ needs.meta.outputs.tag }}
         run: node scripts/sync-version.mjs
       - name: Build app + installers
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          # On a v* tag, publish a Release with the installers attached.
-          # On manual dispatch, both are empty so it just builds (no release).
-          tagName: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
-          releaseName: ${{ startsWith(github.ref, 'refs/tags/v') && format('Sweatbox Builder {0}', github.ref_name) || '' }}
+          # Empty tagName = build only, no release.
+          tagName: ${{ needs.meta.outputs.tag }}
+          releaseName: ${{ needs.meta.outputs.name }}
           releaseDraft: false
           prerelease: false
       - name: Upload installers as run artifacts
@@ -73,10 +99,10 @@ jobs:
             src-tauri/target/release/*.exe
 
   # macOS .dmg (universal: Apple Silicon + Intel in one image).
-  # Mirrors windows-build: manual dispatch -> run artifact; v* tag -> the DMG
-  # is attached to the same GitHub Release as the Windows installers.
+  # Runs AFTER windows-build: on a release both jobs upload to the same tag, and
+  # starting them in parallel makes them race to create that release.
   macos-build:
-    needs: test
+    needs: [test, meta, windows-build]
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     runs-on: macos-latest
     steps:
@@ -92,8 +118,10 @@ jobs:
         with:
           workspaces: src-tauri -> target
       - run: npm ci
-      - name: Sync app version to the tag
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Sync app version to the release tag
+        if: needs.meta.outputs.tag != ''
+        env:
+          RELEASE_TAG: ${{ needs.meta.outputs.tag }}
         run: node scripts/sync-version.mjs
       - name: Build app + DMG
         uses: tauri-apps/tauri-action@v0
@@ -110,8 +138,8 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           args: --target universal-apple-darwin
-          tagName: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
-          releaseName: ${{ startsWith(github.ref, 'refs/tags/v') && format('Sweatbox Builder {0}', github.ref_name) || '' }}
+          tagName: ${{ needs.meta.outputs.tag }}
+          releaseName: ${{ needs.meta.outputs.name }}
           releaseDraft: false
           prerelease: false
       - name: Upload DMG as run artifact
