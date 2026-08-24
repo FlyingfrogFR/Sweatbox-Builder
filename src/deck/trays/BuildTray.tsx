@@ -29,6 +29,7 @@ export function BuildTray(props: any) {
     pool,
     stars,
     copx,
+    firBounds,
     gates,
     rampAgent,
     rampConfig,
@@ -95,11 +96,17 @@ export function BuildTray(props: any) {
       snapshot("before REPLACE import");
       const keptAc = (scenario.aircraft || []).filter((a: any) => !a.ruleId);
       onChange({ ...scenario, rules: normalised, aircraft: keptAc });
-      toast(`Replaced: <b>${n}</b> rule${n !== 1 ? "s" : ""} imported — review & press RUN RULES`, "ok");
+      toast(
+        `Replaced: <b>${n}</b> rule${n !== 1 ? "s" : ""} imported — review & press RUN RULES`,
+        "ok",
+      );
     } else {
       const existingIds = new Set(allRules.map((r: any) => r.id));
       const overlap = normalised.filter((x: any) => existingIds.has(x.id)).length;
-      const merged = [...allRules.filter((r: any) => !normalised.some((x: any) => x.id === r.id)), ...normalised];
+      const merged = [
+        ...allRules.filter((r: any) => !normalised.some((x: any) => x.id === r.id)),
+        ...normalised,
+      ];
       onChange({ ...scenario, rules: merged });
       toast(
         `<b>${n}</b> rule${n !== 1 ? "s" : ""} imported${overlap ? ` (${overlap} replaced by id)` : ""} — review & press RUN RULES`,
@@ -132,7 +139,12 @@ export function BuildTray(props: any) {
     }
     const prefix = (scenario.name || "scenario").replace(/[^a-z0-9]+/gi, "_");
     const filename = `${prefix}.RULESET.json`;
-    downloadJsonBundle(filename, { kind: "sweatbox-rules", version: 1, exportedAt: new Date().toISOString(), rules: allRules });
+    downloadJsonBundle(filename, {
+      kind: "sweatbox-rules",
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      rules: allRules,
+    });
     toast(`Ruleset saved — <b class="font-mono">${filename}</b>`, "ok");
   };
   const firstRule = () => {
@@ -162,7 +174,9 @@ export function BuildTray(props: any) {
     rafRef.current = requestAnimationFrame(step);
   };
   const runLabel =
-    ruleCount === 0 ? "RUN RULES" : `RUN RULES · ${ruleCount} → ${runAnim !== null ? runAnim : estRuleAc}`;
+    ruleCount === 0
+      ? "RUN RULES"
+      : `RUN RULES · ${ruleCount} → ${runAnim !== null ? runAnim : estRuleAc}`;
 
   return (
     <Tray
@@ -189,10 +203,18 @@ export function BuildTray(props: any) {
           {section !== "ground" && (
             <>
               <span className="text-tx8 text-[11px] select-none px-0.5">›</span>
-              <Latch on={section === "rules"} onClick={() => setSection("rules")} title="Import a syllabus ruleset or build rules">
+              <Latch
+                on={section === "rules"}
+                onClick={() => setSection("rules")}
+                title="Import a syllabus ruleset or build rules"
+              >
                 RULESET {ruleCount > 0 && <b className="font-mono">{ruleCount}</b>}
               </Latch>
-              <Latch on={section === "manual"} onClick={() => setSection("manual")} title="Add aircraft one by one">
+              <Latch
+                on={section === "manual"}
+                onClick={() => setSection("manual")}
+                title="Add aircraft one by one"
+              >
                 MANUAL
               </Latch>
             </>
@@ -202,11 +224,20 @@ export function BuildTray(props: any) {
       footer={
         section === "rules" && allRules.length ? (
           <>
-            <DeckKey size="sm" tone="cy" onClick={() => fileRef.current?.click()} title="Import a ruleset .json — MERGE adds to these rules, REPLACE swaps them all">
+            <DeckKey
+              size="sm"
+              tone="cy"
+              onClick={() => fileRef.current?.click()}
+              title="Import a ruleset .json — MERGE adds to these rules, REPLACE swaps them all"
+            >
               <Icon name="upload" size={13} />
               IMPORT RULESET
             </DeckKey>
-            <Latch on={importMode === "merge"} onClick={() => setImportMode("merge")} title="Imported rules merge in (same id replaces)">
+            <Latch
+              on={importMode === "merge"}
+              onClick={() => setImportMode("merge")}
+              title="Imported rules merge in (same id replaces)"
+            >
               MERGE
             </Latch>
             <Latch
@@ -216,7 +247,11 @@ export function BuildTray(props: any) {
             >
               REPLACE
             </Latch>
-            <DeckKey size="sm" onClick={saveRuleset} title="Download all rules as a portable ruleset .json">
+            <DeckKey
+              size="sm"
+              onClick={saveRuleset}
+              title="Download all rules as a portable ruleset .json"
+            >
               <Icon name="download" size={13} />
               SAVE RULESET
             </DeckKey>
@@ -236,7 +271,13 @@ export function BuildTray(props: any) {
       }
     >
       <div className="h-full min-h-0 flex flex-col">
-        <input ref={fileRef} type="file" accept=".json,application/json" className="hidden" onChange={onFile} />
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".json,application/json"
+          className="hidden"
+          onChange={onFile}
+        />
 
         {/* ================= RULESET ================= */}
         {section === "rules" &&
@@ -247,7 +288,9 @@ export function BuildTray(props: any) {
                   <Icon name="upload" size={15} />
                   IMPORT RULESET
                 </DeckKey>
-                <span className="text-[10px] font-extrabold tracking-[0.18em] text-tx8 select-none">OR</span>
+                <span className="text-[10px] font-extrabold tracking-[0.18em] text-tx8 select-none">
+                  OR
+                </span>
                 <DeckKey size="lever" onClick={firstRule}>
                   <Icon name="plus" size={15} />
                   FIRST RULE
@@ -293,6 +336,7 @@ export function BuildTray(props: any) {
                   pool={pool}
                   stars={stars}
                   copx={copx}
+                  firBounds={firBounds}
                   runways={runways}
                   FullEditor={RuleEditorSection}
                 />
@@ -308,8 +352,8 @@ export function BuildTray(props: any) {
               ADD AIRCRAFT
             </DeckKey>
             <div className="text-[11.5px] text-tx6 text-center max-w-[380px]">
-              Drops one blank aircraft on the board and opens its editor — callsign, type, route, spawn fix,
-              start time. Repeat as needed; rows land on the board instantly.
+              Drops one blank aircraft on the board and opens its editor — callsign, type, route,
+              spawn fix, start time. Repeat as needed; rows land on the board instantly.
             </div>
           </div>
         )}
@@ -319,7 +363,8 @@ export function BuildTray(props: any) {
           <>
             <div className="flex-none flex items-center gap-2 px-4 py-2 border-b border-am-bd bg-am-bg text-[11px] text-am-fg">
               <Icon name="alert" size={13} />
-              Ground traffic — parked / taxiing ramp aircraft (S1), not airborne flows. Rows land with a GND chip.
+              Ground traffic — parked / taxiing ramp aircraft (S1), not airborne flows. Rows land
+              with a GND chip.
             </div>
             <div className="flex-1 min-h-0 overflow-y-auto">
               <GroundSection

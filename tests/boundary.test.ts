@@ -17,6 +17,9 @@ import { emptyRule } from "../src/core/model";
 import { preEntryOffset, bearingBetween, distanceNm } from "../src/core/geo";
 import { parseESE } from "../src/parsers/ese";
 
+const autoRuleForFallback = () =>
+  poolRule({ spawnMode: "autoBoundary", spawnWaypoint: "", preEntryNm: 10 });
+
 // DGO → VANAD → BAMES is a real-shaped airway route; UN858/UT191/PODEM never
 // resolve. ALPHA/BRAVO are FIR gates north/south of their centroid (49, 3).
 const WPTS = [
@@ -230,14 +233,16 @@ describe("P7 — autoBoundary + scenario FIR", () => {
       "LFBB",
     );
     expect(z.aircraft.length).toBe(0);
-    expect(z.error).toMatch(/Auto-boundary: 2 matched DEP\/ARR · 2 cross the LFBB boundary/);
+    expect(z.error).toMatch(
+      /published gates.*2 matched DEP\/ARR · 2 enter the FIR · 0 match direction \[E\]/,
+    );
   });
 
   it("blank FIR or missing copx → the explicit setup error, no throw", () => {
     const a = generateFromRule(autoRule(), WPTS, new Set(), POOL2, COPX, "");
     expect(a.error).toMatch(/set the scenario FIR/);
     const b = generateFromRule(autoRule(), WPTS, new Set(), POOL2, undefined, "LFBB");
-    expect(b.error).toMatch(/set the scenario FIR/);
+    expect(b.error).toMatch(/no LFBB sector geometry and no LFBB FIR_COPX gates/);
   });
 
   it("no route crosses the boundary → funnel error, not an on-fix spawn", () => {
@@ -250,7 +255,7 @@ describe("P7 — autoBoundary + scenario FIR", () => {
       "LFBB",
     );
     expect(r.aircraft.length).toBe(0);
-    expect(r.error).toMatch(/0 cross the LFBB boundary/);
+    expect(r.error).toMatch(/0 enter the FIR/);
   });
 
   it("last-resort radial: gate with no derivable inbound leg spawns outside the FIR, heading at the gate", () => {
@@ -356,5 +361,122 @@ describe("P7 — ESE parser ingests FIR_COPX", () => {
       "FIR_COPX:*:*:BOKNO:*:*:LFRR·N·128.1·1:EGTT·S·132.2·1:*:*:no level",
     ].join("\n");
     expect(parseESE(ese).copx.length).toBe(0);
+  });
+});
+
+describe("P8 — FIR boundary geometry from [AIRSPACE] sectorlines", () => {
+  // A 2°-square FIR around (49, 3): sectorlines trace its four edges, and one
+  // internal split. WEST/EAST sit outside it, MID inside.
+  const SQUARE = [
+    "[AIRSPACE]",
+    "SECTORLINE:1",
+    "COORD:N048.00.00.000:E002.00.00.000",
+    "COORD:N050.00.00.000:E002.00.00.000",
+    "SECTORLINE:2",
+    "COORD:N050.00.00.000:E002.00.00.000",
+    "COORD:N050.00.00.000:E004.00.00.000",
+    "SECTORLINE:3",
+    "COORD:N050.00.00.000:E004.00.00.000",
+    "COORD:N048.00.00.000:E004.00.00.000",
+    "SECTORLINE:4",
+    "COORD:N048.00.00.000:E004.00.00.000",
+    "COORD:N048.00.00.000:E002.00.00.000",
+    "CIRCLE_SECTORLINE:9:LFPG:20",
+    "SECTOR:LFBB·L1 UAC·195·295:19500:29500",
+    "OWNER:BB",
+    "BORDER:1:2:3:4",
+    "SECTOR:LFRR·V U·195·295:19500:29500",
+    "BORDER:1",
+  ].join("\n");
+
+  const GEO_WPTS = [
+    { name: "WEST", lat: 49.0, lon: 0.5, type: "FIXES" },
+    { name: "MID", lat: 49.0, lon: 3.0, type: "FIXES" },
+    { name: "EAST", lat: 49.0, lon: 6.0, type: "FIXES" },
+    { name: "NORTH", lat: 52.0, lon: 3.0, type: "FIXES" },
+  ];
+
+  it("parses sectorlines into per-FIR boundary segments", () => {
+    const { firBounds } = parseESE(SQUARE);
+    expect(Object.keys(firBounds).sort()).toEqual(["LFBB", "LFRR"]);
+    expect(firBounds.LFBB.length).toBe(4); // four edges, one segment each
+    expect(firBounds.LFRR.length).toBe(1); // shares only the western edge
+    // west edge: lat 48->50 at lon 2
+    expect(firBounds.LFBB.some((s: number[]) => s[1] === 2 && s[3] === 2)).toBe(true);
+  });
+
+  it("spawns each aircraft where its own route crosses the FIR edge, offset outside", () => {
+    const { firBounds } = parseESE(SQUARE);
+    const pool = [
+      entry("WEST1", "WEST MID", "LFBO"), // enters through the west edge (lon 2)
+      entry("EAST1", "EAST MID", "LFBO"), // enters through the east edge (lon 4)
+    ];
+    const r = generateFromRule(
+      poolRule({ spawnMode: "autoBoundary", spawnWaypoint: "", preEntryNm: 10 }),
+      GEO_WPTS,
+      new Set(),
+      pool,
+      [],
+      "LFBB",
+      firBounds,
+    );
+    expect(r.error).toBeNull();
+    expect(r.aircraft.length).toBe(2);
+
+    const w: any = r.aircraft.find((a: any) => a.callsign === "WEST1");
+    const e: any = r.aircraft.find((a: any) => a.callsign === "EAST1");
+    // crossing points are on the edges; spawn sits 10 NM outside, still on the leg
+    expect(w.lon).toBeLessThan(2);
+    expect(distanceNm(w.lat, w.lon, 49, 2)).toBeCloseTo(10, 0);
+    expect(e.lon).toBeGreaterThan(4);
+    expect(distanceNm(e.lat, e.lon, 49, 4)).toBeCloseTo(10, 0);
+    // routed at the first fix INSIDE the FIR, flying its own filed route
+    expect(w.spawnWaypoint).toBe("MID");
+    expect(w.simRoute).toBe("MID");
+    expect(w.fpRoute).toBe("WEST MID");
+    expect(w.preEntryNm).toBe(0); // position is final — no second offset
+  });
+
+  it("direction filter uses the crossing point, and geometry beats published gates", () => {
+    const { firBounds } = parseESE(SQUARE);
+    const pool = [entry("WEST1", "WEST MID", "LFBO"), entry("NORTH1", "NORTH MID", "LFBO")];
+    const west = generateFromRule(
+      poolRule({ spawnMode: "autoBoundary", spawnWaypoint: "", entryDirection: "W" }),
+      GEO_WPTS,
+      new Set(),
+      pool,
+      [],
+      "LFBB",
+      firBounds,
+    );
+    expect(west.aircraft.map((a: any) => a.callsign)).toEqual(["WEST1"]);
+    const north = generateFromRule(
+      poolRule({ spawnMode: "autoBoundary", spawnWaypoint: "", entryDirection: "N" }),
+      GEO_WPTS,
+      new Set(),
+      pool,
+      [],
+      "LFBB",
+      firBounds,
+    );
+    expect(north.aircraft.map((a: any) => a.callsign)).toEqual(["NORTH1"]);
+  });
+
+  it("falls back to published gates when the FIR has no geometry, and errors when it has neither", () => {
+    const { firBounds } = parseESE(SQUARE);
+    const gated = generateFromRule(
+      autoRuleForFallback(),
+      WPTS,
+      new Set(),
+      [entry("G1", "EGLL ALPHA BAMES LFBO", "LFBO")],
+      COPX,
+      "LFBB",
+      { LFMM: firBounds.LFBB }, // geometry exists, but not for LFBB
+    );
+    expect(gated.error).toBeNull();
+    expect((gated.aircraft[0] as any).spawnWaypoint).toBe("ALPHA");
+
+    const none = generateFromRule(autoRuleForFallback(), WPTS, new Set(), [], [], "LFBB", {});
+    expect(none.error).toMatch(/no LFBB sector geometry and no LFBB FIR_COPX gates/);
   });
 });

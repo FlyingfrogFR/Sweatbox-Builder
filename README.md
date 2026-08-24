@@ -40,6 +40,7 @@ It's a real desktop app — double-click and go. No browser, no setup server.
 - **Generate traffic from rules**
   - **S1 Ground** — single-airport ground scenarios with smart stand assignment (RampAgent / ESE gates), departures, arrivals and VFR
   - **S3 Approach** & **C1 Enroute** — rule-driven terminal/enroute traffic in a tidy workbench: a session timeline, your rule list, a live preview of what each rule produces, and an inline editor
+  - **C1 auto-boundary spawns** — bind the scenario to a FIR and each aircraft appears exactly where *its own* filed route crosses that FIR's edge, flying its real route in. The boundary is traced from the ESE's sector geometry, so it works with any file and any AIRAC (published `FIR_COPX` gates are used as a fallback)
   - **S2 Tower** — coming later (placeholder for now)
 - **Bring your own navdata** — drop in EuroScope `.sct` / `.ese` files (waypoints, runways, STARs, gates), plus optional vaCC France RampAgent stand data for gate-fit-aware parking
 - **Pull real flight plans** — grab routes from **SimBrief** and **VATSIM live** right into an aircraft pool (works straight away — no CORS proxy to babysit)

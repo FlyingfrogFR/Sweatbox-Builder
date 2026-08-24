@@ -41,7 +41,15 @@ export function GeneratorsPanel(props: any) {
         aircraft: gen,
         error,
         warning,
-      }: any = generateFromRule(r, waypoints, used, pool, props.copx, scenario.boundaryFir);
+      }: any = generateFromRule(
+        r,
+        waypoints,
+        used,
+        pool,
+        props.copx,
+        scenario.boundaryFir,
+        props.firBounds,
+      );
       if (error) {
         alert(`${r.name}: ${error}`);
         continue;
@@ -110,6 +118,7 @@ export function GeneratorsPanel(props: any) {
             pool={pool}
             stars={props.stars}
             copx={props.copx}
+            firBounds={props.firBounds}
           />
         ) : byId[subTab] ? (
           <div className="h-full overflow-auto">{byId[subTab].render(props)}</div>

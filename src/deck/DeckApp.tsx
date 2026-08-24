@@ -53,6 +53,7 @@ export default function DeckApp() {
   const [runways, setRunways] = useState<any[]>([]);
   const [stars, setStarsState] = useState<any[]>([]);
   const [copx, setCopx] = useState<any[]>([]);
+  const [firBounds, setFirBounds] = useState<any>({});
   const [gates, setGates] = useState<any[]>([]);
   const [navMeta, setNavMeta] = useState<any>({});
   const [loaded, setLoaded] = useState(false);
@@ -94,6 +95,7 @@ export default function DeckApp() {
     g(KEYS.runways, setRunways);
     g(KEYS.stars, setStarsState);
     g(KEYS.copx, setCopx);
+    g(KEYS.firBounds, setFirBounds);
     g(KEYS.gates, setGates);
     g(KEYS.navMeta, setNavMeta);
     g(KEYS.pool, setPool);
@@ -211,6 +213,7 @@ export default function DeckApp() {
     put(KEYS.runways, b.runways || [], setRunways);
     put(KEYS.stars, b.stars || [], setStarsState);
     put(KEYS.copx, b.copx || [], setCopx);
+    put(KEYS.firBounds, b.firBounds || {}, setFirBounds);
     put(KEYS.gates, b.gates || [], setGates);
     const meta = b.navMeta || { sctAt: Date.now(), eseAt: Date.now() };
     put(KEYS.navMeta, meta, setNavMeta);
@@ -358,7 +361,7 @@ export default function DeckApp() {
         aircraft: gen,
         error,
         warning,
-      }: any = generateFromRule(r, waypoints, used, pool, copx, sc.boundaryFir);
+      }: any = generateFromRule(r, waypoints, used, pool, copx, sc.boundaryFir, firBounds);
       if (error) {
         errors.push(`${r.name}: ${error}`);
         continue;
@@ -538,6 +541,7 @@ export default function DeckApp() {
     runways,
     stars,
     copx,
+    firBounds,
     gates,
     pool,
     rampAgent,
@@ -634,10 +638,12 @@ export default function DeckApp() {
               setPositions(d.positions);
               setStarsState(d.stars || []);
               setCopx(d.copx || []);
+              setFirBounds(d.firBounds || {});
               setGates(d.gates || []);
               storage.set(KEYS.positions, d.positions);
               storage.set(KEYS.stars, d.stars || []);
               storage.set(KEYS.copx, d.copx || []);
+              storage.set(KEYS.firBounds, d.firBounds || {});
               storage.set(KEYS.gates, d.gates || []);
               const m = { ...navMeta, eseAt: Date.now() };
               setNavMeta(m);
@@ -658,10 +664,12 @@ export default function DeckApp() {
               setPositions([]);
               setStarsState([]);
               setCopx([]);
+              setFirBounds({});
               setGates([]);
               storage.del(KEYS.positions);
               storage.del(KEYS.stars);
               storage.del(KEYS.copx);
+              storage.del(KEYS.firBounds);
               storage.del(KEYS.gates);
               const m = { ...navMeta, eseAt: null };
               setNavMeta(m);

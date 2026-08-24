@@ -48,6 +48,7 @@ export default function App() {
   const [runways, setRunways] = useState<any[]>([]);
   const [stars, setStarsState] = useState<any[]>([]);
   const [copx, setCopx] = useState<any[]>([]);
+  const [firBounds, setFirBounds] = useState<any>({});
   const [gates, setGates] = useState<any[]>([]);
   const [navMeta, setNavMeta] = useState<any>({});
   const [loaded, setLoaded] = useState(false);
@@ -57,7 +58,12 @@ export default function App() {
   const [rampConfig, setRampConfigState] = useState<any>(null);
   const [pendingAircraft, setPendingAircraft] = useState<any>(null);
   const [pool, setPool] = useState<any[]>([]);
-  const [vatsimCache, setVatsimCache] = useState<any>({ pilots: [], icao: "", mode: "arr", fetchedAt: null });
+  const [vatsimCache, setVatsimCache] = useState<any>({
+    pilots: [],
+    icao: "",
+    mode: "arr",
+    fetchedAt: null,
+  });
   const [simbriefCache, setSimbriefCache] = useState<any>({ ofp: null });
 
   // Initial load from localStorage
@@ -72,6 +78,8 @@ export default function App() {
     if (rw) setRunways(rw);
     const st = storage.get(KEYS.stars);
     if (st) setStarsState(st);
+    const fb = storage.get(KEYS.firBounds);
+    if (fb) setFirBounds(fb);
     const cx = storage.get(KEYS.copx);
     if (cx) setCopx(cx);
     const gt = storage.get(KEYS.gates);
@@ -202,6 +210,9 @@ export default function App() {
     storage.set(KEYS.runways, rw);
     storage.set(KEYS.stars, st);
     storage.set(KEYS.copx, cx);
+    const fb2 = b.firBounds || {};
+    setFirBounds(fb2);
+    storage.set(KEYS.firBounds, fb2);
     storage.set(KEYS.gates, gt);
     const meta = b.navMeta || { sctAt: Date.now(), eseAt: Date.now() };
     setNavMeta(meta);
@@ -209,7 +220,10 @@ export default function App() {
     if (b.airac) setNavAirac(b.airac); // persisted by usePersist
   }
   function applyPoolBundle(b: any) {
-    const items = (b.pool || []).map((p: any) => ({ ...p, id: p.id || crypto.randomUUID?.() || String(Math.random()) }));
+    const items = (b.pool || []).map((p: any) => ({
+      ...p,
+      id: p.id || crypto.randomUUID?.() || String(Math.random()),
+    }));
     setPool(items); // persisted by usePersist — the extra storage.set here double-wrote the full pool blob
     if (b.airac) setPoolAirac(b.airac);
   }
@@ -225,7 +239,13 @@ export default function App() {
     setNavMeta(meta);
     storage.set(KEYS.navMeta, meta);
   };
-  const handleParseEse = ({ positions: po, stars: st, copx: cx, gates: gt }: any) => {
+  const handleParseEse = ({
+    positions: po,
+    stars: st,
+    copx: cx,
+    gates: gt,
+    firBounds: fb,
+  }: any) => {
     setPositions(po);
     setStarsState(st || []);
     setCopx(cx || []);
@@ -233,6 +253,8 @@ export default function App() {
     storage.set(KEYS.positions, po);
     storage.set(KEYS.stars, st || []);
     storage.set(KEYS.copx, cx || []);
+    setFirBounds(fb || {});
+    storage.set(KEYS.firBounds, fb || {});
     storage.set(KEYS.gates, gt || []);
     const meta = { ...navMeta, eseAt: Date.now() };
     setNavMeta(meta);
@@ -259,18 +281,23 @@ export default function App() {
     storage.del(KEYS.positions);
     storage.del(KEYS.stars);
     storage.del(KEYS.copx);
+    setFirBounds({});
+    storage.del(KEYS.firBounds);
     storage.del(KEYS.gates);
     const meta = { ...navMeta, eseAt: null };
     setNavMeta(meta);
     storage.set(KEYS.navMeta, meta);
   };
-  const handleAddToPool = (items: any[], source: string) => setPool((prev) => addToPool(prev, items, source));
-  const handleDeleteFromPool = (ids: string[]) => setPool((prev) => prev.filter((p) => !ids.includes(p.id)));
+  const handleAddToPool = (items: any[], source: string) =>
+    setPool((prev) => addToPool(prev, items, source));
+  const handleDeleteFromPool = (ids: string[]) =>
+    setPool((prev) => prev.filter((p) => !ids.includes(p.id)));
   const handleAddPoolToScenario = (entries: any[]) => {
     setPendingAircraft(entries.map((e) => poolToAc(e, false)));
     setTab("scenario");
   };
-  const handleLoadRampAgent = (parsed: any) => setRampAgent((prev: any) => ({ ...prev, [parsed.icao]: parsed }));
+  const handleLoadRampAgent = (parsed: any) =>
+    setRampAgent((prev: any) => ({ ...prev, [parsed.icao]: parsed }));
   const handleLoadRampConfig = (parsed: any) => setRampConfigState(parsed);
   const handleResetRampAgent = () => {
     if (!confirm("Clear all RampAgent data?")) return;
@@ -281,7 +308,21 @@ export default function App() {
     setRampConfigState(null);
   };
 
-  const generatorProps = { scenario, onChange: setScenario, waypoints, airports, runways, positions, pool, stars, copx, gates, rampAgent, rampConfig };
+  const generatorProps = {
+    scenario,
+    onChange: setScenario,
+    waypoints,
+    airports,
+    runways,
+    positions,
+    pool,
+    stars,
+    copx,
+    firBounds,
+    gates,
+    rampAgent,
+    rampConfig,
+  };
 
   const titleName = `${(scenario.name || "scenario").replace(/[^a-z0-9]+/gi, "_")}.txt`;
   const metaLine = `${scenario.ils.length} ILS · ${(scenario.controllers || []).length} ctrl · ${(scenario.holdings || []).length} hold`;
@@ -363,6 +404,7 @@ export default function App() {
                 runways={runways}
                 stars={stars}
                 copx={copx}
+                firBounds={firBounds}
                 gates={gates}
                 navMeta={navMeta}
                 airac={navAirac}
@@ -379,11 +421,44 @@ export default function App() {
                 onResetRampAgent={handleResetRampAgent}
               />
             )}
-            {tab === "setup" && <SetupPanel scenario={scenario} onChange={setScenario} positions={positions} runways={runways} waypoints={waypoints} />}
-            {tab === "plans" && <FlightPlansPanel onAddToPool={handleAddToPool} vatsimCache={vatsimCache} setVatsimCache={setVatsimCache} simbriefCache={simbriefCache} setSimbriefCache={setSimbriefCache} />}
-            {tab === "pool" && <AircraftPoolPanel pool={pool} onDelete={handleDeleteFromPool} onAddToScenario={handleAddPoolToScenario} airac={poolAirac} onSetAirac={setPoolAirac} onImportPool={applyPoolBundle} />}
+            {tab === "setup" && (
+              <SetupPanel
+                scenario={scenario}
+                onChange={setScenario}
+                positions={positions}
+                runways={runways}
+                waypoints={waypoints}
+              />
+            )}
+            {tab === "plans" && (
+              <FlightPlansPanel
+                onAddToPool={handleAddToPool}
+                vatsimCache={vatsimCache}
+                setVatsimCache={setVatsimCache}
+                simbriefCache={simbriefCache}
+                setSimbriefCache={setSimbriefCache}
+              />
+            )}
+            {tab === "pool" && (
+              <AircraftPoolPanel
+                pool={pool}
+                onDelete={handleDeleteFromPool}
+                onAddToScenario={handleAddPoolToScenario}
+                airac={poolAirac}
+                onSetAirac={setPoolAirac}
+                onImportPool={applyPoolBundle}
+              />
+            )}
             {tab === "generators" && <GeneratorsPanel {...generatorProps} />}
-            {tab === "scenario" && <ScenarioPanel scenario={scenario} onChange={setScenario} waypoints={waypoints} pendingAircraft={pendingAircraft} onClearPending={() => setPendingAircraft(null)} />}
+            {tab === "scenario" && (
+              <ScenarioPanel
+                scenario={scenario}
+                onChange={setScenario}
+                waypoints={waypoints}
+                pendingAircraft={pendingAircraft}
+                onClearPending={() => setPendingAircraft(null)}
+              />
+            )}
             {tab === "export" && <ExportPanel scenario={scenario} waypoints={waypoints} />}
             {tab === "saved" && <SavedPanel scenario={scenario} onChange={setScenario} />}
           </main>

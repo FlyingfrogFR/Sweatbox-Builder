@@ -18,13 +18,20 @@ type Explorer = "waypoints" | "gates" | "stars" | "ramp";
 
 const fmtTs = (ts: number) =>
   ts
-    ? new Date(ts).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
+    ? new Date(ts).toLocaleString([], {
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
     : null;
 
 function CountCard({ label, value, on }: { label: string; value: number | string; on?: boolean }) {
   return (
     <div className="bg-inset border border-bd1 rounded-lg px-3 py-2">
-      <div className={`font-mono text-[17px] leading-none ${on ? "text-tx1" : "text-tx8"}`}>{value}</div>
+      <div className={`font-mono text-[17px] leading-none ${on ? "text-tx1" : "text-tx8"}`}>
+        {value}
+      </div>
       <div className="text-[9px] font-bold tracking-[0.1em] text-tx8 mt-1.5">{label}</div>
     </div>
   );
@@ -77,14 +84,20 @@ function SourceCard({
           <span className={loaded ? "text-gn-fg" : "text-tx7"}>
             <Icon name={loaded ? "check" : "database"} size={16} />
           </span>
-          <span className="text-[12.5px] font-semibold text-tx1 flex-1 min-w-0 truncate">{title}</span>
+          <span className="text-[12.5px] font-semibold text-tx1 flex-1 min-w-0 truncate">
+            {title}
+          </span>
           <div className="flex items-center gap-1.5 flex-none">
             <DeckKey size="sm" tone="cy" onClick={() => inputRef.current?.click()}>
               <Icon name="upload" size={12} />
               {loadLabel}
             </DeckKey>
             {onPaste && (
-              <DeckKey size="sm" onClick={() => setPasting((v) => !v)} title="Paste the file contents instead">
+              <DeckKey
+                size="sm"
+                onClick={() => setPasting((v) => !v)}
+                title="Paste the file contents instead"
+              >
                 PASTE
               </DeckKey>
             )}
@@ -156,6 +169,7 @@ export function NavdataSection({
   runways,
   stars,
   copx,
+  firBounds,
   gates,
   navMeta,
   airac,
@@ -187,13 +201,21 @@ export function NavdataSection({
       return (f ? waypoints.filter((w: any) => w.name.includes(f)) : waypoints).slice(0, 300);
     if (explorer === "gates")
       return (
-        f ? gates.filter((g: any) => g.icao.includes(f) || String(g.label).toUpperCase().includes(f)) : gates
+        f
+          ? gates.filter(
+              (g: any) => g.icao.includes(f) || String(g.label).toUpperCase().includes(f),
+            )
+          : gates
       ).slice(0, 300);
     if (explorer === "stars")
       return (
         f
           ? stars.filter((s: any) =>
-              [s.airport, s.runway, s.name, s.iaf].some((x: any) => String(x || "").toUpperCase().includes(f)),
+              [s.airport, s.runway, s.name, s.iaf].some((x: any) =>
+                String(x || "")
+                  .toUpperCase()
+                  .includes(f),
+              ),
             )
           : stars
       ).slice(0, 300);
@@ -258,7 +280,10 @@ export function NavdataSection({
     if (airportCount) parts.push(`${airportCount} airport${airportCount !== 1 ? "s" : ""}`);
     if (configCount) parts.push("config.json");
     if (failCount) parts.push(`${failCount} failed`);
-    toast("RampAgent: " + (parts.join(" · ") || "nothing loaded"), failCount && !airportCount ? "err" : "ok");
+    toast(
+      "RampAgent: " + (parts.join(" · ") || "nothing loaded"),
+      failCount && !airportCount ? "err" : "ok",
+    );
   }
   async function importNavBundle(e: any) {
     const file = e.target.files?.[0];
@@ -287,6 +312,7 @@ export function NavdataSection({
       runways,
       stars,
       copx,
+      firBounds,
       gates,
     });
     toast("Exported <b class='font-mono'>navdata.json</b>", "ok");
@@ -314,15 +340,31 @@ export function NavdataSection({
         />
         <span className="text-[10.5px] text-tx7">tags this navdata everywhere it's used</span>
         <span className="flex-1" />
-        <DeckKey size="sm" onClick={exportBundle} disabled={!hasNav} title="Save all parsed navdata as one navdata.json">
+        <DeckKey
+          size="sm"
+          onClick={exportBundle}
+          disabled={!hasNav}
+          title="Save all parsed navdata as one navdata.json"
+        >
           <Icon name="download" size={12} />
           EXPORT NAVDATA
         </DeckKey>
-        <DeckKey size="sm" tone="cy" onClick={() => bundleRef.current?.click()} title="Load a previously exported navdata.json">
+        <DeckKey
+          size="sm"
+          tone="cy"
+          onClick={() => bundleRef.current?.click()}
+          title="Load a previously exported navdata.json"
+        >
           <Icon name="upload" size={12} />
           IMPORT NAVDATA
         </DeckKey>
-        <input ref={bundleRef} type="file" accept=".json,application/json" className="hidden" onChange={importNavBundle} />
+        <input
+          ref={bundleRef}
+          type="file"
+          accept=".json,application/json"
+          className="hidden"
+          onChange={importNavBundle}
+        />
       </div>
 
       {/* ===== sources ===== */}
@@ -371,7 +413,9 @@ export function NavdataSection({
         multiple
         loaded={rampAirports.length > 0 || !!rampConfig}
         summary={`${rampAirports.length} airport${rampAirports.length !== 1 ? "s" : ""}${
-          rampConfig ? ` · config (${Object.keys(rampConfig.aircraftWingspans || {}).length} types)` : ""
+          rampConfig
+            ? ` · config (${Object.keys(rampConfig.aircraftWingspans || {}).length} types)`
+            : ""
         }`}
         onFile={loadRamp}
         onClear={onResetRampAgent}
@@ -379,7 +423,8 @@ export function NavdataSection({
       {!rampConfig && rampAirports.length > 0 && (
         <div className="flex items-center gap-2 text-[11px] text-am-fg bg-am-bg border border-am-bd rounded-lg px-3 py-2">
           <Icon name="alert" size={13} />
-          Airports loaded but no <span className="font-mono">config.json</span> — wingspan checks fall back to WTC values.
+          Airports loaded but no <span className="font-mono">config.json</span> — wingspan checks
+          fall back to WTC values.
         </div>
       )}
 
@@ -392,7 +437,11 @@ export function NavdataSection({
         <CountCard label="STARS" value={stars.length} on={stars.length > 0} />
         <CountCard label="COPX" value={copx.length} on={copx.length > 0} />
         <CountCard label="GATES" value={gates.length} on={gates.length > 0} />
-        <CountCard label="RAMP" value={rampAirports.length || (rampConfig ? "cfg" : 0)} on={!!rampConfig || rampAirports.length > 0} />
+        <CountCard
+          label="RAMP"
+          value={rampAirports.length || (rampConfig ? "cfg" : 0)}
+          on={!!rampConfig || rampAirports.length > 0}
+        />
       </div>
 
       {/* ===== data explorer ===== */}
@@ -484,12 +533,15 @@ export function NavdataSection({
                   {explorer === "ramp" && (
                     <>
                       <td className="px-3 py-1.5 text-cy-fg font-semibold">{r}</td>
-                      <td className="px-3 py-1.5 text-tx2 text-right">{rampAgent[r].stands.length}</td>
+                      <td className="px-3 py-1.5 text-tx2 text-right">
+                        {rampAgent[r].stands.length}
+                      </td>
                       <td className="px-3 py-1.5 text-tx4 text-right">
                         {rampAgent[r].stands.filter((s: any) => s.wingspan !== null).length}
                       </td>
                       <td className="px-3 py-1.5 text-tx4 text-right">
-                        {rampAgent[r].stands.filter((s: any) => s.code && s.code.includes("F")).length || "—"}
+                        {rampAgent[r].stands.filter((s: any) => s.code && s.code.includes("F"))
+                          .length || "—"}
                       </td>
                     </>
                   )}

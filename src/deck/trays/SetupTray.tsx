@@ -7,7 +7,8 @@ import { SetupSection } from "../SetupSection";
 import { NavdataSection } from "../NavdataSection";
 
 export function SetupTray(props: any) {
-  const { open, close, scenario, onChange, positions, runways, waypoints, section, setSection } = props;
+  const { open, close, scenario, onChange, positions, runways, waypoints, section, setSection } =
+    props;
   const navLoaded = (waypoints || []).length > 0;
 
   return (
@@ -45,6 +46,7 @@ export function SetupTray(props: any) {
           runways={runways}
           stars={props.stars}
           copx={props.copx}
+          firBounds={props.firBounds}
           gates={props.gates}
           navMeta={props.navMeta}
           airac={props.airac}

@@ -60,6 +60,37 @@ function buildSchedule(rule: any, count: number, intMin: number): number[] {
   return t;
 }
 
+// First intersection of the leg a->b with any boundary segment, as a fraction
+// along the leg (so "earliest crossing" is well defined). Planar maths with
+// longitude scaled by cos(lat): at FIR scale the error is far below the 1 NM
+// spawn offset. Segments are [lat1, lon1, lat2, lon2].
+function firstBoundaryHit(
+  a: { lat: number; lon: number },
+  b: { lat: number; lon: number },
+  segs: number[][],
+) {
+  const k = Math.cos((((a.lat + b.lat) / 2) * Math.PI) / 180) || 1;
+  const x1 = a.lon * k,
+    y1 = a.lat,
+    x2 = b.lon * k,
+    y2 = b.lat;
+  let best: { t: number; lat: number; lon: number } | null = null;
+  for (const sg of segs) {
+    const X1 = sg[1] * k,
+      Y1 = sg[0],
+      X2 = sg[3] * k,
+      Y2 = sg[2];
+    const d = (x2 - x1) * (Y2 - Y1) - (y2 - y1) * (X2 - X1);
+    if (Math.abs(d) < 1e-12) continue; // parallel
+    const t = ((X1 - x1) * (Y2 - Y1) - (Y1 - y1) * (X2 - X1)) / d;
+    const u = ((X1 - x1) * (y2 - y1) - (Y1 - y1) * (x2 - x1)) / d;
+    if (t < 0 || t > 1 || u < 0 || u > 1) continue;
+    if (!best || t < best.t)
+      best = { t, lat: a.lat + t * (b.lat - a.lat), lon: a.lon + t * (b.lon - a.lon) };
+  }
+  return best;
+}
+
 const OCTANTS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
 const octantOf = (brg: number) => OCTANTS[Math.round((((brg % 360) + 360) % 360) / 45) % 8];
 
@@ -70,6 +101,7 @@ export function generateFromRule(
   pool: any[] = [],
   copx?: any[],
   boundaryFir?: string,
+  firBounds?: Record<string, number[][]>,
 ) {
   // autoBoundary (pool rules only): each aircraft spawns where ITS OWN filed
   // route crosses the scenario FIR boundary — no rule-level spawn waypoint.
@@ -138,18 +170,33 @@ export function generateFromRule(
       return true;
     });
 
-    // ---- autoBoundary: derive each aircraft's entry gate from its own route
-    // (a filter before the count loop — the rate math below is untouched).
-    // spawnGate[pool index] = { fixName, fixWp } for survivors.
-    const spawnGate = new Map<any, { fixName: string; fixWp: any }>();
+    // ---- autoBoundary: derive each aircraft's entry into the session FIR
+    // from its OWN filed route (a filter before the count loop — the rate math
+    // below is untouched).
+    //
+    // Two sources, in order of preference:
+    //   1. BOUNDARY GEOMETRY from the ESE's [AIRSPACE] sectorlines — the first
+    //      place the route actually crosses the FIR edge. Works with any ESE
+    //      and any AIRAC, and puts the aircraft exactly on the boundary
+    //      instead of at the nearest published gate.
+    //   2. FIR_COPX gates — the published crossing points, used when the file
+    //      has no usable sector geometry.
+    // spawnPlan[pool entry] = where and how that aircraft enters.
+    const spawnPlan = new Map<
+      any,
+      { fixName: string; fixWp: any; at?: { lat: number; lon: number }; brg?: number }
+    >();
     let ref: { lat: number; lon: number } | null = null;
     if (autoBoundary) {
       const fir = (boundaryFir || "").trim().toUpperCase();
       const wpByName = new Map(waypoints.map((w) => [String(w.name).toUpperCase(), w]));
+      const segs = (firBounds || {})[fir] || [];
+      const useGeometry = segs.length > 0;
+
       // Gates INTO the session FIR only (toFir filter): a route may cross a
       // neighbouring FIR first, and its first boundary fix overall would
       // spawn it a whole FIR too early.
-      const gateApts = new Map<string, Set<string>>(); // fix -> destApts seen on its FIR_COPX lines
+      const gateApts = new Map<string, Set<string>>(); // fix -> destApts on its FIR_COPX lines
       for (const c of copx || []) {
         if (c.kind !== "fir" || String(c.toFir || "").toUpperCase() !== fir) continue;
         const f = String(c.fix || "").toUpperCase();
@@ -157,20 +204,34 @@ export function generateFromRule(
         if (!gateApts.has(f)) gateApts.set(f, new Set());
         if (c.destApt) gateApts.get(f)!.add(String(c.destApt).toUpperCase());
       }
-      if (!fir || gateApts.size === 0)
+      if (!fir || (!useGeometry && gateApts.size === 0))
         return {
           aircraft: [],
-          error:
-            "Auto-boundary spawn: set the scenario FIR in the C1 tab and load an ESE with FIR_COPX",
+          error: !fir
+            ? "Auto-boundary spawn: set the scenario FIR in the C1 tab"
+            : `Auto-boundary spawn: the loaded ESE has no ${fir} sector geometry and no ${fir} FIR_COPX gates`,
         };
-      let sLat = 0,
-        sLon = 0;
-      for (const f of gateApts.keys()) {
-        const w = wpByName.get(f)!;
-        sLat += w.lat;
-        sLon += w.lon;
+
+      // Direction reference: centroid of the boundary, or of the gates.
+      if (useGeometry) {
+        let sLat = 0,
+          sLon = 0;
+        for (const sg of segs) {
+          sLat += sg[0] + sg[2];
+          sLon += sg[1] + sg[3];
+        }
+        ref = { lat: sLat / (segs.length * 2), lon: sLon / (segs.length * 2) };
+      } else {
+        let sLat = 0,
+          sLon = 0;
+        for (const f of gateApts.keys()) {
+          const w = wpByName.get(f)!;
+          sLat += w.lat;
+          sLon += w.lon;
+        }
+        ref = { lat: sLat / gateApts.size, lon: sLon / gateApts.size };
       }
-      ref = { lat: sLat / gateApts.size, lon: sLon / gateApts.size };
+
       const dirList = (rule.entryDirection || "")
         .toUpperCase()
         .split(",")
@@ -185,26 +246,55 @@ export function generateFromRule(
           .split(/\s+/)
           .filter(Boolean)
           .map((t: string) => t.split("/")[0]);
-        // Entry fix = first route token that is a gate; among candidates,
-        // prefer the earliest whose FIR_COPX destApt matches the destination.
-        const cands = toks.filter((t: string) => gateApts.has(t));
-        if (!cands.length) continue;
+        let plan: {
+          fixName: string;
+          fixWp: any;
+          at?: { lat: number; lon: number };
+          brg?: number;
+        } | null = null;
+
+        if (useGeometry) {
+          // Walk consecutive resolvable fixes and take the first leg that
+          // crosses the boundary; the leg's downstream fix is the first fix
+          // inside the FIR, and the crossing point is where it enters.
+          const legs = toks.map((t: string) => wpByName.get(t)).filter(Boolean) as any[];
+          const names = toks.filter((t: string) => wpByName.has(t));
+          for (let i = 0; i < legs.length - 1 && !plan; i++) {
+            const hit = firstBoundaryHit(legs[i], legs[i + 1], segs);
+            if (!hit) continue;
+            plan = {
+              fixName: names[i + 1],
+              fixWp: legs[i + 1],
+              at: { lat: hit.lat, lon: hit.lon },
+              brg: bearingBetween(legs[i].lat, legs[i].lon, legs[i + 1].lat, legs[i + 1].lon),
+            };
+          }
+        }
+        if (!plan && gateApts.size) {
+          // Published-gate fallback: first route token that is a gate, preferring
+          // the earliest whose FIR_COPX destApt matches this aircraft's destination.
+          const cands = toks.filter((t: string) => gateApts.has(t));
+          if (cands.length) {
+            const dest = String(p.dest || "").toUpperCase();
+            const fixName = cands.find((f: string) => gateApts.get(f)!.has(dest)) || cands[0];
+            plan = { fixName, fixWp: wpByName.get(fixName)! };
+          }
+        }
+        if (!plan) continue;
         nBoundary++;
-        const dest = String(p.dest || "").toUpperCase();
-        const fixName = cands.find((f: string) => gateApts.get(f)!.has(dest)) || cands[0];
-        const fixWp = wpByName.get(fixName)!;
+        const at = plan.at || plan.fixWp;
         if (
           dirList.length &&
-          !dirList.includes(octantOf(bearingBetween(ref.lat, ref.lon, fixWp.lat, fixWp.lon)))
+          !dirList.includes(octantOf(bearingBetween(ref.lat, ref.lon, at.lat, at.lon)))
         )
           continue;
-        spawnGate.set(p, { fixName, fixWp });
+        spawnPlan.set(p, plan);
         survivors.push(p);
       }
       if (!survivors.length)
         return {
           aircraft: [],
-          error: `Auto-boundary: ${nDepArr} matched DEP/ARR · ${nBoundary} cross the ${fir} boundary · ${survivors.length} match direction [${dirList.join(",") || "any"}]`,
+          error: `Auto-boundary (${useGeometry ? `${fir} boundary geometry` : `${fir} published gates`}): ${nDepArr} matched DEP/ARR · ${nBoundary} enter the FIR · 0 match direction [${dirList.join(",") || "any"}]`,
         };
       matches = survivors;
     }
@@ -266,10 +356,18 @@ export function generateFromRule(
       // Entry fix: the rule's waypoint, or this aircraft's own boundary gate.
       let spawnName: string = rule.spawnWaypoint;
       let spawnWp: any = wp;
+      // Geometric entry: the exact point the route crosses the FIR edge, with
+      // the leg's inbound bearing. Set only when boundary geometry produced it.
+      let crossAt: { lat: number; lon: number } | null = null;
+      let crossBrg: number | null = null;
       if (autoBoundary) {
-        const gate = spawnGate.get(tmpl)!;
-        spawnName = gate.fixName;
-        spawnWp = gate.fixWp;
+        const plan = spawnPlan.get(tmpl)!;
+        spawnName = plan.fixName;
+        spawnWp = plan.fixWp;
+        if (plan.at && plan.brg !== undefined) {
+          crossAt = plan.at;
+          crossBrg = plan.brg;
+        }
       }
       // spawnAnchor "priorFix": walk back from the entry fix in the aircraft's
       // own filed route to the previous resolvable fix, so the real filed leg
@@ -305,7 +403,15 @@ export function generateFromRule(
       let acLat = spawnWp ? spawnWp.lat : 0;
       let acLon = spawnWp ? spawnWp.lon : 0;
       let acPre = hasNewFields ? effPre : +rule.preEntryNm || 0;
-      if (hasNewFields) {
+      if (crossAt && crossBrg !== null && !priorChosen) {
+        // Spawn effPre NM BEFORE the crossing point, on the inbound leg, so the
+        // aircraft is outside the FIR and flies in along its own filed track.
+        // The position is final — the serializer must not offset it again.
+        const back = destinationPoint(crossAt.lat, crossAt.lon, (crossBrg + 180) % 360, effPre);
+        acLat = back.lat;
+        acLon = back.lon;
+        acPre = 0;
+      } else if (hasNewFields) {
         // Never-on-fix invariant: predict the serializer's offset. When no
         // inbound bearing is derivable even after the airway walks:
         // autoBoundary uses the last-resort radial (spawn effPre NM beyond the

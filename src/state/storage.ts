@@ -35,6 +35,7 @@ export const KEYS = {
   runways: "sb:rwy",
   stars: "sb:stars",
   copx: "sb:copx",
+  firBounds: "sb:firbounds",
   gates: "sb:gates",
   navMeta: "sb:meta",
   current: "sb:cur",
@@ -49,12 +50,7 @@ export const KEYS = {
 };
 
 // Persist a value to localStorage and (optionally) mirror to a side effect.
-export function usePersist(
-  value: any,
-  key: string,
-  loaded: boolean,
-  mirror?: (v: any) => void,
-) {
+export function usePersist(value: any, key: string, loaded: boolean, mirror?: (v: any) => void) {
   useEffect(() => {
     if (!loaded) return;
     if (value === undefined || value === null) {

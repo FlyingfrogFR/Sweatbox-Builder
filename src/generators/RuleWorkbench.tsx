@@ -12,9 +12,24 @@ import { RuleEditor } from "./s3";
 const PLANE_D =
   "M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z";
 
-function produce(rule: any, waypoints: any[], pool: any[], copx?: any[], boundaryFir?: string) {
+function produce(
+  rule: any,
+  waypoints: any[],
+  pool: any[],
+  copx?: any[],
+  boundaryFir?: string,
+  firBounds?: any,
+) {
   try {
-    const r: any = generateFromRule(rule, waypoints, new Set<string>(), pool, copx, boundaryFir);
+    const r: any = generateFromRule(
+      rule,
+      waypoints,
+      new Set<string>(),
+      pool,
+      copx,
+      boundaryFir,
+      firBounds,
+    );
     return { aircraft: r.aircraft || [], error: r.error || null, warning: r.warning || null };
   } catch (e: any) {
     return { aircraft: [], error: String(e?.message || e), warning: null };
@@ -60,6 +75,7 @@ export function RuleWorkbench({
   pool,
   stars,
   copx,
+  firBounds,
   runways,
   FullEditor,
 }: any) {
@@ -153,9 +169,9 @@ export function RuleWorkbench({
   const preview = useMemo(
     () =>
       deferredDraft
-        ? produce(deferredDraft, waypoints, pool, copx, scenario.boundaryFir)
+        ? produce(deferredDraft, waypoints, pool, copx, scenario.boundaryFir, firBounds)
         : { aircraft: [], error: null, warning: null },
-    [deferredDraft, waypoints, pool, copx, scenario.boundaryFir],
+    [deferredDraft, waypoints, pool, copx, scenario.boundaryFir, firBounds],
   );
 
   // Session overview: produce every saved rule of this mode, split by direction.
@@ -169,13 +185,13 @@ export function RuleWorkbench({
     let maxT = 0;
     const counts: Record<string, number> = {};
     for (const r of rules) {
-      const { aircraft } = produce(r, waypoints, pool, copx, scenario.boundaryFir);
+      const { aircraft } = produce(r, waypoints, pool, copx, scenario.boundaryFir, firBounds);
       counts[r.id] = aircraft.length;
       maxT = Math.max(maxT, (+r.startOffset || 0) + (+r.duration || 0));
       for (const a of aircraft) (a.isDeparture ? dep : arr).push(+a.start || 0);
     }
     return { arr, dep, maxT: maxT || 45, counts, total: arr.length + dep.length };
-  }, [rulesKey, waypoints, pool, copx, scenario.boundaryFir]);
+  }, [rulesKey, waypoints, pool, copx, scenario.boundaryFir, firBounds]);
 
   const ticks = [0, 0.3333, 0.6666, 1].map((f) => Math.round(session.maxT * f));
 
@@ -185,20 +201,22 @@ export function RuleWorkbench({
   // where its own route enters this FIR.
   const firs = useMemo(() => {
     const s = new Set<string>();
+    for (const f of Object.keys(firBounds || {})) s.add(f);
     for (const c of copx || []) if (c.kind === "fir" && c.toFir) s.add(c.toFir);
     return [...s].sort();
-  }, [copx]);
-  const gateCount = useMemo(
-    () =>
-      scenario.boundaryFir
-        ? new Set(
-            (copx || [])
-              .filter((c: any) => c.kind === "fir" && c.toFir === scenario.boundaryFir)
-              .map((c: any) => c.fix),
-          ).size
-        : 0,
-    [copx, scenario.boundaryFir],
-  );
+  }, [copx, firBounds]);
+  // What the generator will actually use for this FIR: sector geometry traced
+  // from the ESE (exact crossing points) beats published FIR_COPX gates.
+  const firSource = useMemo(() => {
+    const f = scenario.boundaryFir;
+    if (!f) return "";
+    const segs = (firBounds || {})[f]?.length || 0;
+    if (segs) return `· boundary traced from ESE · ${segs} segments`;
+    const gates = new Set(
+      (copx || []).filter((c: any) => c.kind === "fir" && c.toFir === f).map((c: any) => c.fix),
+    ).size;
+    return gates ? `· ${gates} published entry gates` : "· no geometry or gates for this FIR";
+  }, [copx, firBounds, scenario.boundaryFir]);
 
   const lb = "block text-[9.5px] tracking-[0.1em] text-tx7 mb-[5px]";
   const ip =
@@ -236,14 +254,12 @@ export function RuleWorkbench({
                     ))}
                   </select>
                   {scenario.boundaryFir && (
-                    <span className="font-mono text-[10.5px] text-tx7">
-                      · {gateCount} entry gates
-                    </span>
+                    <span className="font-mono text-[10.5px] text-tx7">{firSource}</span>
                   )}
                 </span>
               ) : (
                 <span className="ml-2 text-[10.5px] text-tx7">
-                  load an ESE with FIR_COPX to enable auto-boundary spawns
+                  load an ESE (SETUP → NAVDATA) to enable auto-boundary spawns
                 </span>
               ))}
           </div>

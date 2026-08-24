@@ -27,6 +27,14 @@ export function parseESE(text: string) {
     gates: any[] = [];
   const seen = new Set<string>();
   let section: string | null = null;
+  // [AIRSPACE] geometry — SECTORLINE:<id> + COORD: lines are polylines, and
+  // SECTOR:<FIR>·<name>·… + BORDER:<id>:<id>… says which polylines bound which
+  // sector. Every ESE has this, so FIR boundaries are derivable even when a
+  // file carries no FIR_COPX gates at all.
+  const sectorLines = new Map<string, number[][]>(); // id -> [[lat,lon], …]
+  const firLineIds = new Map<string, Set<string>>(); // FIR -> sectorline ids
+  let curLine: string | null = null;
+  let curSectorFir: string | null = null;
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.replace(/;.*$/, "").trim();
     if (!line) continue;
@@ -77,6 +85,47 @@ export function parseESE(text: string) {
         }
       }
     }
+    if (line.startsWith("SECTORLINE:")) {
+      curLine = line.slice(11).trim();
+      curSectorFir = null;
+      if (!sectorLines.has(curLine)) sectorLines.set(curLine, []);
+      continue;
+    }
+    if (line.startsWith("CIRCLE_SECTORLINE:")) {
+      // circular sectorlines carry no COORD list — nothing to trace
+      curLine = null;
+      curSectorFir = null;
+      continue;
+    }
+    if (line.startsWith("COORD:") && curLine) {
+      const p = line.split(":");
+      const c = parseDMS(`${(p[1] || "").trim()} ${(p[2] || "").trim()}`);
+      if (c) sectorLines.get(curLine)!.push([c.lat, c.lon]);
+      continue;
+    }
+    if (line.startsWith("SECTOR:")) {
+      // "SECTOR:LFBB·BIARRITZ CTR·000·003:00000:00300" — the FIR is the
+      // leading ICAO prefix of the sector name (same encoding caveat as COPX).
+      curLine = null;
+      curSectorFir =
+        (line.split(":")[1] || "")
+          .trim()
+          .toUpperCase()
+          .match(/^([A-Z]{4})/)?.[1] || null;
+      continue;
+    }
+    if (line.startsWith("BORDER:") && curSectorFir) {
+      const ids = line
+        .split(":")
+        .slice(1)
+        .map((x) => x.trim())
+        .filter(Boolean);
+      if (!firLineIds.has(curSectorFir)) firLineIds.set(curSectorFir, new Set());
+      const set = firLineIds.get(curSectorFir)!;
+      for (const id of ids) set.add(id);
+      continue;
+    }
+
     // COPX / FIR_COPX — coordination points. Real ESE files carry these
     // INSIDE [AIRSPACE] (there is no [COPX] section; the rc3 prototype looked
     // for one, which is why no COPX ever loaded from a real file), so they are
@@ -99,7 +148,11 @@ export function parseESE(text: string) {
       // Sector fields are "<FIR>·<sector>·<low>·<high>". The separator is a
       // Latin-1 middle dot (0xB7): decoded as UTF-8 it turns into U+FFFD, so
       // the FIR is taken as the leading four letters rather than by splitting.
-      const firOf = (f: string) => (String(f || "").trim().toUpperCase().match(/^([A-Z]{4})/) || [])[1] || "";
+      const firOf = (f: string) =>
+        (String(f || "")
+          .trim()
+          .toUpperCase()
+          .match(/^([A-Z]{4})/) || [])[1] || "";
       const fromFir = firOf(p[6]);
       const toFir = firOf(p[7]);
       // Descend level if set, else climb level (matches the old right-to-left scan).
@@ -130,5 +183,22 @@ export function parseESE(text: string) {
       gates.push({ icao: groupMatch[1].toUpperCase(), label, lat: coord.lat, lon: coord.lon });
     }
   }
-  return { positions, stars, copx, gates };
+  // FIR boundary = every segment of every sectorline the FIR's sectors use.
+  // Internal splits are included on purpose: an aircraft arriving from outside
+  // necessarily crosses the perimeter first, so "first crossing along the
+  // route" is the entry point, and keeping every line means no perimeter gap
+  // where a neighbouring FIR happens to be undefined in the file.
+  const firBounds: Record<string, number[][]> = {};
+  const r5 = (n: number) => Math.round(n * 1e4) / 1e4; // ~11 m, plenty for a 1 NM spawn offset
+  for (const [fir, ids] of firLineIds) {
+    const segs: number[][] = [];
+    for (const id of ids) {
+      const pts = sectorLines.get(id) || [];
+      for (let i = 0; i < pts.length - 1; i++)
+        segs.push([r5(pts[i][0]), r5(pts[i][1]), r5(pts[i + 1][0]), r5(pts[i + 1][1])]);
+    }
+    if (segs.length) firBounds[fir] = segs;
+  }
+
+  return { positions, stars, copx, gates, firBounds };
 }
