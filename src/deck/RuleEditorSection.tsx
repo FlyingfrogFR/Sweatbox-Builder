@@ -264,7 +264,6 @@ export function RuleEditorSection({
   const originsByRegion = useMemo(() => poolIcaosByRegion(allPool, "origin"), [allPool]);
   const destsByRegion = useMemo(() => poolIcaosByRegion(allPool, "dest"), [allPool]);
   const poolField = d.isDeparture ? "destPool" : "originPool";
-  const poolFieldList = csv(d[poolField]);
 
   // ---------- runway options from the parsed navdata ----------
   const focusApt = (
@@ -466,7 +465,10 @@ export function RuleEditorSection({
     return d.speedType === "mach" ? Math.round(machToTas(sp, alt)) : Math.round(iasToTas(sp, alt));
   }, [d.gsMode, d.speedType, d.assignedSpeed, d.spawnAlt]);
 
-  const homeMissing = !(d.homeIcao ?? "").trim() && d.homeIcao !== undefined && !d.poolSource;
+  // Explicitly blank home ICAO (not merely absent) on a template-mode rule =
+  // overflight/transit: both ends come from the pools, so both pool inputs show.
+  const homeBlank = !(d.homeIcao ?? "").trim() && d.homeIcao !== undefined && !d.poolSource;
+  const poolCruise = !!d.poolSource && d.spawnAltMode === "poolCruise";
   const cadence =
     d.schedulingMode === "separation" ? `${d.nmSeparation || 10} NM` : `${d.rate ?? "—"}/hr`;
 
@@ -561,21 +563,24 @@ export function RuleEditorSection({
             </div>
 
             <div className="flex flex-wrap items-start gap-3">
-              <div>
-                <label className={LABEL}>RUNWAY IN USE</label>
-                <div className="flex gap-1.5">
-                  <input
-                    className={`${INPUT} w-[86px]`}
-                    value={d.rwyInUse || ""}
-                    onChange={(e) => up("rwyInUse", e.target.value.toUpperCase())}
-                    placeholder="27R"
-                  />
-                  <RwySelect groups={rwyGroups} onSelect={(rw: string) => up("rwyInUse", rw)} />
+              {/* C1 enroute rules never use a runway — approach-only field */}
+              {d.mode !== "C1" && (
+                <div>
+                  <label className={LABEL}>RUNWAY IN USE</label>
+                  <div className="flex gap-1.5">
+                    <input
+                      className={`${INPUT} w-[86px]`}
+                      value={d.rwyInUse || ""}
+                      onChange={(e) => up("rwyInUse", e.target.value.toUpperCase())}
+                      placeholder="27R"
+                    />
+                    <RwySelect groups={rwyGroups} onSelect={(rw: string) => up("rwyInUse", rw)} />
+                  </div>
+                  <p className={HINT}>
+                    {rwyGroups.length ? "drives the STAR list" : "no navdata runways — type it"}
+                  </p>
                 </div>
-                <p className={HINT}>
-                  {rwyGroups.length ? "drives the STAR list" : "no navdata runways — type it"}
-                </p>
-              </div>
+              )}
               <div>
                 <label className={LABEL}>HOME ICAO</label>
                 <input
@@ -588,17 +593,18 @@ export function RuleEditorSection({
                 <p className={HINT}>
                   {d.poolSource
                     ? "unused — pool entries carry their own"
-                    : d.isDeparture
-                      ? "origin of every aircraft"
-                      : "destination of every aircraft"}
+                    : homeBlank
+                      ? "blank = overflight"
+                      : d.isDeparture
+                        ? "origin of every aircraft"
+                        : "destination of every aircraft"}
                 </p>
               </div>
-              {homeMissing && (
+              {homeBlank && (
                 <div className="flex-1 min-w-[180px] pt-[18px]">
-                  <Note>
-                    Home ICAO is required — it becomes the{" "}
-                    {d.isDeparture ? "origin" : "destination"} of every generated aircraft. Rules
-                    saved without it fall back to <span className="font-mono">LFPG</span>.
+                  <Note tone="cy" icon="plane">
+                    Blank home = overflight/transit — origin AND destination are both drawn from the
+                    pools in FLIGHT (set both there).
                   </Note>
                 </div>
               )}
@@ -1118,12 +1124,30 @@ export function RuleEditorSection({
                     <label className={LABEL}>SPAWN ALT (FT)</label>
                     <input
                       type="number"
-                      className={`${INPUT} w-[110px]`}
+                      className={`${INPUT} w-[110px] ${poolCruise ? "opacity-40" : ""}`}
                       value={d.spawnAlt ?? ""}
                       onChange={(e) => up("spawnAlt", +e.target.value)}
+                      disabled={poolCruise}
                     />
-                    <p className={HINT}>altitude at the entry fix</p>
+                    <p className={HINT}>
+                      {poolCruise
+                        ? "each aircraft spawns at its filed cruise FL"
+                        : "altitude at the entry fix"}
+                    </p>
                   </div>
+                  {d.poolSource && (
+                    <div>
+                      <label className={LABEL}>PER-AIRCRAFT</label>
+                      <Latch
+                        size="md"
+                        on={poolCruise}
+                        onClick={() => up("spawnAltMode", poolCruise ? "fixed" : "poolCruise")}
+                        title="Spawn each pool aircraft at its own filed cruise level instead of the rule-level spawn alt — one overflight rule yields a realistic FL band"
+                      >
+                        FILED CRUISE
+                      </Latch>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1221,10 +1245,25 @@ export function RuleEditorSection({
                         />
                       </div>
                       <div className="bg-panel border border-cy-bd rounded-lg px-3 py-1.5">
-                        <div className="text-[9px] font-bold tracking-[0.1em] text-tx8">
-                          TAS @ {d.spawnAlt ?? 0} FT
-                        </div>
-                        <div className="font-mono text-[13px] text-cy-fg">≈ {speedPreview} kt</div>
+                        {poolCruise ? (
+                          <>
+                            <div className="text-[9px] font-bold tracking-[0.1em] text-tx8">
+                              TAS
+                            </div>
+                            <div className="font-mono text-[13px] text-cy-fg">
+                              per-aircraft (filed FL)
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="text-[9px] font-bold tracking-[0.1em] text-tx8">
+                              TAS @ {d.spawnAlt ?? 0} FT
+                            </div>
+                            <div className="font-mono text-[13px] text-cy-fg">
+                              ≈ {speedPreview} kt
+                            </div>
+                          </>
+                        )}
                       </div>
                     </div>
                     <p className="text-[10.5px] text-tx7 leading-snug">
@@ -1298,49 +1337,53 @@ export function RuleEditorSection({
                 </div>
               </div>
 
-              {/* origin / destination pool */}
-              <div className={SUB}>
-                <span className={SUBHEAD}>
-                  {d.isDeparture ? "DESTINATION POOL" : "ORIGIN POOL"}
-                </span>
-                <div className="flex gap-1.5">
-                  <input
-                    className={`${INPUT} flex-1 min-w-0`}
-                    value={d[poolField] || ""}
-                    onChange={(e) => up(poolField, e.target.value.toUpperCase())}
-                    placeholder="EHAM,EGLL,EDDF"
-                  />
-                  <RegionSelect
-                    regionsMap={d.isDeparture ? destsByRegion : originsByRegion}
-                    onSelect={(icao: string) => appendApt(poolField, icao)}
-                    title="Add an airport seen in the FPLN pool, grouped by region"
-                  />
-                </div>
-                {poolFieldList.length > 0 && (
-                  <div className="flex gap-1 flex-wrap">
-                    {poolFieldList.map((a: string) => (
-                      <span
-                        key={a}
-                        className="inline-flex items-center gap-1 h-6 px-2 rounded-md bg-chip border border-bd3 font-mono text-[11px] text-tx2"
-                      >
-                        {a}
-                        <button
-                          onClick={() => removeApt(poolField, a)}
-                          title={`Remove ${a}`}
-                          className="text-tx8 hover:text-rd-fg"
-                        >
-                          <Icon name="x" size={10} />
-                        </button>
-                      </span>
-                    ))}
+              {/* origin / destination pool — both shown for a blank-home overflight rule */}
+              {(homeBlank ? ["originPool", "destPool"] : [poolField]).map((pf: string) => (
+                <div className={SUB} key={pf}>
+                  <span className={SUBHEAD}>
+                    {pf === "destPool" ? "DESTINATION POOL" : "ORIGIN POOL"}
+                  </span>
+                  <div className="flex gap-1.5">
+                    <input
+                      className={`${INPUT} flex-1 min-w-0`}
+                      value={d[pf] || ""}
+                      onChange={(e) => up(pf, e.target.value.toUpperCase())}
+                      placeholder="EHAM,EGLL,EDDF"
+                    />
+                    <RegionSelect
+                      regionsMap={pf === "destPool" ? destsByRegion : originsByRegion}
+                      onSelect={(icao: string) => appendApt(pf, icao)}
+                      title="Add an airport seen in the FPLN pool, grouped by region"
+                    />
                   </div>
-                )}
-                <p className="text-[10.5px] text-tx7 leading-snug">
-                  {d.poolSource
-                    ? "Unused in AIRCRAFT POOL mode — each pool entry brings its own origin and destination."
-                    : `The ${d.isDeparture ? "destination" : "origin"} is picked from this list; its first entry also picks the callsign region.`}
-                </p>
-              </div>
+                  {csv(d[pf]).length > 0 && (
+                    <div className="flex gap-1 flex-wrap">
+                      {csv(d[pf]).map((a: string) => (
+                        <span
+                          key={a}
+                          className="inline-flex items-center gap-1 h-6 px-2 rounded-md bg-chip border border-bd3 font-mono text-[11px] text-tx2"
+                        >
+                          {a}
+                          <button
+                            onClick={() => removeApt(pf, a)}
+                            title={`Remove ${a}`}
+                            className="text-tx8 hover:text-rd-fg"
+                          >
+                            <Icon name="x" size={10} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-[10.5px] text-tx7 leading-snug">
+                    {d.poolSource
+                      ? "Unused in AIRCRAFT POOL mode — each pool entry brings its own origin and destination."
+                      : homeBlank
+                        ? `Overflight ${pf === "destPool" ? "destinations" : "origins"} — picked in order, cycling through the list.`
+                        : `The ${d.isDeparture ? "destination" : "origin"} is picked from this list; its first entry also picks the callsign region.`}
+                  </p>
+                </div>
+              ))}
 
               {/* route templates */}
               <div className={`${SUB} lg:col-span-2`}>
@@ -1499,7 +1542,8 @@ export function RuleEditorSection({
           </Section>
 
           {/* ============ STAR / ENTRY ============ */}
-          {!d.isDeparture && (
+          {/* approach machinery — hidden for C1 enroute rules */}
+          {!d.isDeparture && d.mode !== "C1" && (
             <Section
               title="STAR / ENTRY"
               icon="layers"

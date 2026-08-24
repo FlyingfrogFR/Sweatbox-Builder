@@ -28,11 +28,23 @@ const parseTokenList = (val: string) =>
 // Does this pool entry's filed route contain at least one of the tokens?
 const routeMatchesTokens = (route: string, tokens: string[]) => {
   if (!tokens.length) return true;
-  const rTokens = (route || "").toUpperCase().split(/\s+/).map((t) => t.split("/")[0]);
+  const rTokens = (route || "")
+    .toUpperCase()
+    .split(/\s+/)
+    .map((t) => t.split("/")[0]);
   return tokens.some((tok) => rTokens.includes(tok));
 };
 
-export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, onSave, onCancel }: any) {
+export function RuleEditor({
+  rule,
+  waypoints,
+  pool,
+  stars,
+  copx,
+  scenarioIls,
+  onSave,
+  onCancel,
+}: any) {
   const [r, setR] = useState(rule);
   const [wptSearch, setWptSearch] = useState(rule.spawnWaypoint || "");
   const [showRoutePicker, setShowRoutePicker] = useState(false);
@@ -51,16 +63,30 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
       newCats.length > 0
         ? [...new Set(newCats.flatMap((c: string) => TYPE_CATS[c]?.types || []))].join(",")
         : r.typePool;
-    setR((prev: any) => ({ ...prev, typeCategories: newCats, ...(newCats.length > 0 ? { typePool: tp } : {}) }));
+    setR((prev: any) => ({
+      ...prev,
+      typeCategories: newCats,
+      ...(newCats.length > 0 ? { typePool: tp } : {}),
+    }));
   };
   const clearCats = () => setR((prev: any) => ({ ...prev, typeCategories: [], typePool: "" }));
 
   const appendApt = (field: string, icao: string) => {
-    const cur = (r[field] || "").split(",").map((s: string) => s.trim()).filter(Boolean);
+    const cur = (r[field] || "")
+      .split(",")
+      .map((s: string) => s.trim())
+      .filter(Boolean);
     if (!cur.includes(icao)) update(field, [...cur, icao].join(","));
   };
   const removeApt = (field: string, icao: string) =>
-    update(field, (r[field] || "").split(",").map((s: string) => s.trim()).filter((s: string) => s && s !== icao).join(","));
+    update(
+      field,
+      (r[field] || "")
+        .split(",")
+        .map((s: string) => s.trim())
+        .filter((s: string) => s && s !== icao)
+        .join(","),
+    );
 
   const originsByRegion = useMemo(() => poolIcaosByRegion(pool, "origin"), [pool]);
   const destsByRegion = useMemo(() => poolIcaosByRegion(pool, "dest"), [pool]);
@@ -85,7 +111,10 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
   const applyRouteSelection = () => {
     const sel = routeCandidates.filter((p: any) => routePickerSel.has(p.id));
     if (!sel.length) return;
-    update("fpRouteTemplates", sel.map((p: any) => p.route));
+    update(
+      "fpRouteTemplates",
+      sel.map((p: any) => p.route),
+    );
     if (sel.length === 1) update("fpRouteTemplate", sel[0].route);
     setShowRoutePicker(false);
   };
@@ -139,13 +168,20 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
       : 60 / Math.max(r.rate, 0.1);
   const count = Math.max(1, Math.floor(r.duration / intMin) + 1);
   const sampleTimes: string[] = [];
-  for (let i = 0; i < Math.min(count, 6); i++) sampleTimes.push((r.startOffset + i * intMin).toFixed(1));
+  for (let i = 0; i < Math.min(count, 6); i++)
+    sampleTimes.push((r.startOffset + i * intMin).toFixed(1));
   const poolMatches = useMemo(() => {
     if (!r.poolSource) return [];
     const d = (r.poolDep || "").toUpperCase().trim();
     const a = (r.poolArr || "").toUpperCase().trim();
-    const dList = d.split(",").map((s: string) => s.trim()).filter(Boolean);
-    const aList = a.split(",").map((s: string) => s.trim()).filter(Boolean);
+    const dList = d
+      .split(",")
+      .map((s: string) => s.trim())
+      .filter(Boolean);
+    const aList = a
+      .split(",")
+      .map((s: string) => s.trim())
+      .filter(Boolean);
     const rcList = parseTokenList(r.routeContains);
     return pool.filter((p: any) => {
       if (dList.length && !dList.includes(p.origin)) return false;
@@ -166,7 +202,10 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
     return Array.from({ length: 4 }, () => genCS(reg, used, { heavy: !!r.heavy }));
   }, [useRand, r.poolSource, r.heavy, r.isDeparture, r.originPool, r.destPool, r.id]);
   const trimPrev = useMemo(
-    () => (r.spawnWaypoint ? trimRoute(r.simRouteTemplate || "", r.spawnWaypoint) : r.simRouteTemplate || ""),
+    () =>
+      r.spawnWaypoint
+        ? trimRoute(r.simRouteTemplate || "", r.spawnWaypoint)
+        : r.simRouteTemplate || "",
     [r.simRouteTemplate, r.spawnWaypoint],
   );
 
@@ -200,6 +239,9 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
   const lb = "block text-xs text-slate-400 mb-1";
   const ip =
     "w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-sm text-slate-200 font-mono focus:border-sky-500 focus:outline-none";
+  // Explicitly blank home airport (not merely absent) = overflight/transit
+  // rule: both ends come from the pools, so the editor shows both pool inputs.
+  const homeBlank = r.homeIcao !== undefined && !(r.homeIcao ?? "").trim();
 
   const RegionSelect = ({ regionsMap, onSelect }: any) =>
     Object.keys(regionsMap).length > 0 ? (
@@ -236,7 +278,9 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
           <h3 className="text-lg font-semibold text-slate-200 flex items-center gap-2">
             <Icon name="zap" className="text-sky-400" />
             {r.name || "New Rule"}
-            <span className="text-xs px-2 py-0.5 bg-slate-700 text-slate-300 rounded">{r.mode || "S3"}</span>
+            <span className="text-xs px-2 py-0.5 bg-slate-700 text-slate-300 rounded">
+              {r.mode || "S3"}
+            </span>
           </h3>
           <button onClick={onCancel} className="text-slate-400 hover:text-slate-200">
             <Icon name="x" size={20} />
@@ -244,11 +288,17 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
         </div>
         <div className="p-5 space-y-5">
           <section>
-            <h4 className="text-xs uppercase text-slate-500 font-semibold mb-2">Identity & Direction</h4>
+            <h4 className="text-xs uppercase text-slate-500 font-semibold mb-2">
+              Identity & Direction
+            </h4>
             <div className="grid grid-cols-12 gap-3">
-              <div className="col-span-6">
+              <div className={r.mode === "C1" ? "col-span-9" : "col-span-6"}>
                 <label className={lb}>Rule Name</label>
-                <input className={ip} value={r.name} onChange={(e) => update("name", e.target.value)} />
+                <input
+                  className={ip}
+                  value={r.name}
+                  onChange={(e) => update("name", e.target.value)}
+                />
               </div>
               <div className="col-span-3">
                 <label className={lb}>Direction</label>
@@ -261,26 +311,33 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
                   <option value="dep">Departure</option>
                 </select>
               </div>
-              <div className="col-span-3">
-                <label className={lb}>Runway in use</label>
-                {rwyOptions.length > 0 ? (
-                  <select value={r.rwyInUse} onChange={(e) => update("rwyInUse", e.target.value)} className={ip}>
-                    <option value="">— select —</option>
-                    {rwyOptions.map((rw: string) => (
-                      <option key={rw} value={rw}>
-                        {rw}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    className={ip}
-                    value={r.rwyInUse}
-                    onChange={(e) => update("rwyInUse", e.target.value.toUpperCase())}
-                    placeholder="27R"
-                  />
-                )}
-              </div>
+              {/* C1 enroute rules never use a runway — approach-only field */}
+              {r.mode !== "C1" && (
+                <div className="col-span-3">
+                  <label className={lb}>Runway in use</label>
+                  {rwyOptions.length > 0 ? (
+                    <select
+                      value={r.rwyInUse}
+                      onChange={(e) => update("rwyInUse", e.target.value)}
+                      className={ip}
+                    >
+                      <option value="">— select —</option>
+                      {rwyOptions.map((rw: string) => (
+                        <option key={rw} value={rw}>
+                          {rw}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      className={ip}
+                      value={r.rwyInUse}
+                      onChange={(e) => update("rwyInUse", e.target.value.toUpperCase())}
+                      placeholder="27R"
+                    />
+                  )}
+                </div>
+              )}
             </div>
           </section>
 
@@ -308,20 +365,35 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className={lb}>Filter DEP</label>
-                    <input className={ip} value={r.poolDep} onChange={(e) => update("poolDep", e.target.value.toUpperCase())} placeholder="e.g. EGLL" />
+                    <input
+                      className={ip}
+                      value={r.poolDep}
+                      onChange={(e) => update("poolDep", e.target.value.toUpperCase())}
+                      placeholder="e.g. EGLL"
+                    />
                   </div>
                   <div>
                     <label className={lb}>Filter ARR</label>
-                    <input className={ip} value={r.poolArr} onChange={(e) => update("poolArr", e.target.value.toUpperCase())} placeholder="e.g. LFPG" />
+                    <input
+                      className={ip}
+                      value={r.poolArr}
+                      onChange={(e) => update("poolArr", e.target.value.toUpperCase())}
+                      placeholder="e.g. LFPG"
+                    />
                   </div>
                 </div>
                 <div>
                   <label className={lb}>Route must contain (CSV)</label>
-                  <input className={ip} value={r.routeContains || ""} onChange={(e) => update("routeContains", e.target.value.toUpperCase())} placeholder="BATAG,PO302" />
+                  <input
+                    className={ip}
+                    value={r.routeContains || ""}
+                    onChange={(e) => update("routeContains", e.target.value.toUpperCase())}
+                    placeholder="BATAG,PO302"
+                  />
                   <p className="text-xs text-slate-500 mt-1">
-                    Comma-separated waypoint tokens. The pool aircraft's filed FP must contain at least
-                    one of these. Use for departures (synthetic spawn fix won't be in any real FP) or to
-                    narrow the routing direction beyond DEP/ARR.
+                    Comma-separated waypoint tokens. The pool aircraft's filed FP must contain at
+                    least one of these. Use for departures (synthetic spawn fix won't be in any real
+                    FP) or to narrow the routing direction beyond DEP/ARR.
                   </p>
                 </div>
                 {poolMatches.length === 0 ? (
@@ -340,19 +412,27 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
                           (() => {
                             const missing = poolMatches.filter(
                               (p: any) =>
-                                !(p.route || "").toUpperCase().split(/\s+/).some((t: string) => acceptableEntrySet.has(t.split("/")[0])),
+                                !(p.route || "")
+                                  .toUpperCase()
+                                  .split(/\s+/)
+                                  .some((t: string) => acceptableEntrySet.has(t.split("/")[0])),
                             );
                             if (!missing.length) return null;
-                            const upstreams = [...acceptableEntrySet].filter((w) => w !== r.spawnWaypoint.toUpperCase());
+                            const upstreams = [...acceptableEntrySet].filter(
+                              (w) => w !== r.spawnWaypoint.toUpperCase(),
+                            );
                             const tip = upstreams.length
                               ? `Acceptable: ${r.spawnWaypoint} or any STAR entry / routeContains token — ${upstreams.join(", ")}`
                               : `Acceptable: ${r.spawnWaypoint} (no STAR entries or routeContains tokens — re-parse ESE or set routeContains if expected)`;
                             return (
-                              <span className="text-xs text-amber-400 flex items-center gap-1" title={tip}>
+                              <span
+                                className="text-xs text-amber-400 flex items-center gap-1"
+                                title={tip}
+                              >
                                 <Icon name="alert" size={11} />
                                 {missing.length} FP{missing.length !== 1 ? "s" : ""} not routing via{" "}
-                                <span className="font-mono font-semibold">{r.spawnWaypoint}</span> or its STAR entries
-                                / routeContains tokens
+                                <span className="font-mono font-semibold">{r.spawnWaypoint}</span>{" "}
+                                or its STAR entries / routeContains tokens
                                 {r.excludeNonRouting !== false ? (
                                   <span className="text-rose-400 ml-1">→ excluded</span>
                                 ) : (
@@ -379,11 +459,22 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
                     </div>
                     <div className="max-h-44 overflow-auto bg-slate-950 rounded border border-slate-800 divide-y divide-slate-800">
                       {poolMatches.map((p: any) => {
-                        const routeTokens = (p.route || "").toUpperCase().split(/\s+/).map((t: string) => t.split("/")[0]);
-                        const hasEntry = !r.spawnWaypoint || routeTokens.some((t: string) => acceptableEntrySet.has(t));
-                        const sl = SRC_LABELS[p.source] || { label: p.source, color: "text-slate-400 bg-slate-800" };
+                        const routeTokens = (p.route || "")
+                          .toUpperCase()
+                          .split(/\s+/)
+                          .map((t: string) => t.split("/")[0]);
+                        const hasEntry =
+                          !r.spawnWaypoint ||
+                          routeTokens.some((t: string) => acceptableEntrySet.has(t));
+                        const sl = SRC_LABELS[p.source] || {
+                          label: p.source,
+                          color: "text-slate-400 bg-slate-800",
+                        };
                         return (
-                          <div key={p.id} className={`px-2.5 py-1.5 ${!hasEntry && r.spawnWaypoint ? "bg-amber-950/20" : ""}`}>
+                          <div
+                            key={p.id}
+                            className={`px-2.5 py-1.5 ${!hasEntry && r.spawnWaypoint ? "bg-amber-950/20" : ""}`}
+                          >
                             <div className="flex items-center gap-2 text-xs font-mono">
                               <span className="font-semibold text-slate-200 w-20 shrink-0">
                                 {p.callsign || <span className="text-slate-600 italic">no cs</span>}
@@ -392,9 +483,16 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
                                 {p.origin}→{p.dest}
                               </span>
                               {p.cruiseFL && <span className="text-slate-600">FL{p.cruiseFL}</span>}
-                              <span className={`ml-1 px-1.5 py-0.5 rounded text-xs font-medium ${sl.color}`}>{sl.label}</span>
+                              <span
+                                className={`ml-1 px-1.5 py-0.5 rounded text-xs font-medium ${sl.color}`}
+                              >
+                                {sl.label}
+                              </span>
                               {!hasEntry && r.spawnWaypoint && (
-                                <span className="ml-auto text-amber-400 shrink-0" title={`FP route does not include ${r.spawnWaypoint} or any of its STAR entries / routeContains tokens`}>
+                                <span
+                                  className="ml-auto text-amber-400 shrink-0"
+                                  title={`FP route does not include ${r.spawnWaypoint} or any of its STAR entries / routeContains tokens`}
+                                >
                                   ⚠ no entry
                                 </span>
                               )}
@@ -420,7 +518,11 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
                     className={`${ip} min-h-[48px]`}
                     value={r.simRouteTemplate}
                     onChange={(e) => update("simRouteTemplate", e.target.value)}
-                    placeholder={r.spawnWaypoint ? `e.g. ${r.spawnWaypoint} WAYPOINT ... DEST` : "Select a spawn waypoint above first"}
+                    placeholder={
+                      r.spawnWaypoint
+                        ? `e.g. ${r.spawnWaypoint} WAYPOINT ... DEST`
+                        : "Select a spawn waypoint above first"
+                    }
                   />
                   {r.simRouteTemplate && trimPrev && trimPrev !== r.simRouteTemplate && (
                     <div className="text-xs bg-sky-950/40 border border-sky-900 rounded p-2 font-mono text-sky-300 mt-1">
@@ -431,27 +533,51 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
                 </div>
                 <div>
                   <label className={lb}>Fallback Type Pool</label>
-                  <input className={ip} value={r.typePool} onChange={(e) => update("typePool", e.target.value)} />
+                  <input
+                    className={ip}
+                    value={r.typePool}
+                    onChange={(e) => update("typePool", e.target.value)}
+                  />
                 </div>
               </div>
             ) : (
               <div className="space-y-4">
                 <div className="bg-slate-950/60 border border-slate-800 rounded p-3 space-y-2">
                   <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
-                    <input type="checkbox" checked={useRand} onChange={(e) => update("randomCallsign", e.target.checked)} className="accent-sky-500" />
+                    <input
+                      type="checkbox"
+                      checked={useRand}
+                      onChange={(e) => update("randomCallsign", e.target.checked)}
+                      className="accent-sky-500"
+                    />
                     Random ICAO callsign
                   </label>
-                  <label className={`flex items-center gap-2 text-sm cursor-pointer ${!useRand ? "text-slate-600" : "text-slate-300"}`}>
-                    <input type="checkbox" checked={!!r.heavy} onChange={(e) => update("heavy", e.target.checked)} disabled={!useRand} className="accent-rose-500" />
+                  <label
+                    className={`flex items-center gap-2 text-sm cursor-pointer ${!useRand ? "text-slate-600" : "text-slate-300"}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!!r.heavy}
+                      onChange={(e) => update("heavy", e.target.checked)}
+                      disabled={!useRand}
+                      className="accent-rose-500"
+                    />
                     Heavy / long-haul
                   </label>
                   {useRand && previewCS.length > 0 && (
-                    <div className="text-xs text-slate-500 font-mono">Preview: {previewCS.join(", ")}</div>
+                    <div className="text-xs text-slate-500 font-mono">
+                      Preview: {previewCS.join(", ")}
+                    </div>
                   )}
                   {!useRand && (
                     <div>
                       <label className={lb}>Callsign Pattern</label>
-                      <input className={ip} value={r.callsignPattern} onChange={(e) => update("callsignPattern", e.target.value)} placeholder="AFR###" />
+                      <input
+                        className={ip}
+                        value={r.callsignPattern}
+                        onChange={(e) => update("callsignPattern", e.target.value)}
+                        placeholder="AFR###"
+                      />
                     </div>
                   )}
                 </div>
@@ -473,7 +599,11 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
                     </button>
                   </div>
                   {r.squawkMode !== "random" ? (
-                    <input className={`${ip} w-32`} value={r.squawk} onChange={(e) => update("squawk", e.target.value)} />
+                    <input
+                      className={`${ip} w-32`}
+                      value={r.squawk}
+                      onChange={(e) => update("squawk", e.target.value)}
+                    />
                   ) : (
                     <div className="bg-slate-950/60 border border-slate-800 rounded p-3 space-y-2">
                       {[
@@ -481,7 +611,10 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
                         { val: "2000", label: "2000 — Standard (no TCAS)" },
                         { val: "5600", label: "56XX — Random 5600-5677" },
                       ].map(({ val, label }) => (
-                        <label key={val} className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
+                        <label
+                          key={val}
+                          className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer"
+                        >
                           <input
                             type="checkbox"
                             checked={(r.squawkOptions || []).includes(val)}
@@ -492,13 +625,15 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
                             }}
                             className="accent-sky-500"
                           />
-                          <span className="font-mono text-sky-300 text-xs font-semibold">{val}</span>{" "}
+                          <span className="font-mono text-sky-300 text-xs font-semibold">
+                            {val}
+                          </span>{" "}
                           <span className="text-slate-400 text-xs">{label}</span>
                         </label>
                       ))}
                       <p className="text-xs text-amber-400/80">
-                        <Icon name="alert" size={11} className="inline mr-1" />H and J aircraft cannot receive 1000 —
-                        will be assigned 2000 instead.
+                        <Icon name="alert" size={11} className="inline mr-1" />H and J aircraft
+                        cannot receive 1000 — will be assigned 2000 instead.
                       </p>
                     </div>
                   )}
@@ -519,7 +654,10 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
                       </button>
                     ))}
                     {activeCats.length > 0 && (
-                      <button onClick={clearCats} className="px-2 py-2 text-xs text-rose-400 hover:text-rose-300 border border-rose-800/50 rounded">
+                      <button
+                        onClick={clearCats}
+                        className="px-2 py-2 text-xs text-rose-400 hover:text-rose-300 border border-rose-800/50 rounded"
+                      >
                         ✕ clear all
                       </button>
                     )}
@@ -532,12 +670,19 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
                             {c} — {TYPE_CATS[c]?.label}
                           </span>
                           : {(TYPE_CATS[c]?.types || []).slice(0, 8).join(", ")}
-                          {(TYPE_CATS[c]?.types || []).length > 8 ? ` +${(TYPE_CATS[c]?.types || []).length - 8}` : ""}
+                          {(TYPE_CATS[c]?.types || []).length > 8
+                            ? ` +${(TYPE_CATS[c]?.types || []).length - 8}`
+                            : ""}
                         </div>
                       ))}
                     </div>
                   )}
-                  <input className={ip} value={r.typePool} onChange={(e) => update("typePool", e.target.value)} placeholder="A320,B738 — or use category buttons above" />
+                  <input
+                    className={ip}
+                    value={r.typePool}
+                    onChange={(e) => update("typePool", e.target.value)}
+                    placeholder="A320,B738 — or use category buttons above"
+                  />
                 </div>
 
                 <div>
@@ -550,74 +695,116 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
                     maxLength={4}
                   />
                   {!(r.homeIcao ?? "").trim() && r.homeIcao !== undefined && (
-                    <div className="text-[11px] text-amber-400 mt-1">Required — {r.isDeparture ? "origin" : "destination"} of every generated aircraft</div>
-                  )}
-                </div>
-
-                <div>
-                  <label className={lb}>{r.isDeparture ? "Destination" : "Origin"} Pool</label>
-                  <div className="flex gap-2">
-                    <input
-                      className={`${ip} flex-1`}
-                      value={r.isDeparture ? r.destPool : r.originPool}
-                      onChange={(e) => update(r.isDeparture ? "destPool" : "originPool", e.target.value)}
-                    />
-                    <RegionSelect
-                      regionsMap={r.isDeparture ? destsByRegion : originsByRegion}
-                      onSelect={(icao: string) => appendApt(r.isDeparture ? "destPool" : "originPool", icao)}
-                    />
-                  </div>
-                  {(r.isDeparture ? r.destPool : r.originPool) && (
-                    <div className="flex gap-1 mt-1.5 flex-wrap">
-                      {(r.isDeparture ? r.destPool : r.originPool)
-                        .split(",")
-                        .map((s: string) => s.trim())
-                        .filter(Boolean)
-                        .map((a: string) => (
-                          <span key={a} className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-slate-800 rounded text-xs font-mono text-slate-300">
-                            {a}
-                            <button onClick={() => removeApt(r.isDeparture ? "destPool" : "originPool", a)} className="text-slate-500 hover:text-rose-400 ml-0.5">
-                              ✕
-                            </button>
-                          </span>
-                        ))}
+                    <div className="text-[11px] text-slate-400 mt-1">
+                      Blank — overflight/transit: origin AND destination both drawn from the pools
+                      below
                     </div>
                   )}
                 </div>
+
+                {(homeBlank
+                  ? ["originPool", "destPool"]
+                  : [r.isDeparture ? "destPool" : "originPool"]
+                ).map((pf: string) => (
+                  <div key={pf}>
+                    <label className={lb}>
+                      {pf === "destPool" ? "Destination" : "Origin"} Pool
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        className={`${ip} flex-1`}
+                        value={r[pf]}
+                        onChange={(e) => update(pf, e.target.value)}
+                      />
+                      <RegionSelect
+                        regionsMap={pf === "destPool" ? destsByRegion : originsByRegion}
+                        onSelect={(icao: string) => appendApt(pf, icao)}
+                      />
+                    </div>
+                    {r[pf] && (
+                      <div className="flex gap-1 mt-1.5 flex-wrap">
+                        {r[pf]
+                          .split(",")
+                          .map((s: string) => s.trim())
+                          .filter(Boolean)
+                          .map((a: string) => (
+                            <span
+                              key={a}
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-slate-800 rounded text-xs font-mono text-slate-300"
+                            >
+                              {a}
+                              <button
+                                onClick={() => removeApt(pf, a)}
+                                className="text-slate-500 hover:text-rose-400 ml-0.5"
+                              >
+                                ✕
+                              </button>
+                            </span>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
           </section>
 
-          {!r.isDeparture && (
+          {/* STAR quick-config is approach machinery — hidden for C1 enroute rules */}
+          {!r.isDeparture && r.mode !== "C1" && (
             <section>
               <h4 className="text-xs uppercase text-slate-500 font-semibold mb-2 flex items-center gap-2">
                 STAR & Entry Configuration{" "}
-                <span className="text-slate-600 font-normal normal-case">(from ESE [SIDSSTARS] + [COPX])</span>
+                <span className="text-slate-600 font-normal normal-case">
+                  (from ESE [SIDSSTARS] + [COPX])
+                </span>
               </h4>
               {!(stars && stars.length) ? (
-                <p className="text-xs text-slate-500">No STARs found — paste an ESE file containing [SIDSSTARS] in the Navdata tab.</p>
+                <p className="text-xs text-slate-500">
+                  No STARs found — paste an ESE file containing [SIDSSTARS] in the Navdata tab.
+                </p>
               ) : !r.rwyInUse ? (
-                <p className="text-xs text-slate-500">Select a runway above to see available STARs.</p>
+                <p className="text-xs text-slate-500">
+                  Select a runway above to see available STARs.
+                </p>
               ) : starsForRwy.length === 0 ? (
-                <p className="text-xs text-amber-400">No STARs found for RWY {r.rwyInUse} in the ESE.</p>
+                <p className="text-xs text-amber-400">
+                  No STARs found for RWY {r.rwyInUse} in the ESE.
+                </p>
               ) : (
                 <div className="space-y-2">
                   {iafGroups.map(({ iaf, starList }: any) => {
                     const c = getCopx(iaf);
                     const isActive = r.spawnWaypoint === iaf;
-                    const selStar = starList.find((s: any) => s.name === (selectedStarByIaf[iaf] || starList[0].name)) || starList[0];
+                    const selStar =
+                      starList.find(
+                        (s: any) => s.name === (selectedStarByIaf[iaf] || starList[0].name),
+                      ) || starList[0];
                     return (
-                      <div key={iaf} className={`border rounded p-3 ${isActive ? "bg-sky-950/30 border-sky-700" : "bg-slate-950/60 border-slate-800"}`}>
+                      <div
+                        key={iaf}
+                        className={`border rounded p-3 ${isActive ? "bg-sky-950/30 border-sky-700" : "bg-slate-950/60 border-slate-800"}`}
+                      >
                         <div className="flex items-center justify-between flex-wrap gap-2">
                           <div className="flex items-center gap-2">
-                            <span className="text-sm font-mono font-semibold text-slate-200">Entry: {iaf}</span>
-                            {c && <span className="text-xs text-emerald-400 bg-emerald-900/30 px-1.5 py-0.5 rounded">COPX FL{Math.round(c.level / 100)} at entry</span>}
+                            <span className="text-sm font-mono font-semibold text-slate-200">
+                              Entry: {iaf}
+                            </span>
+                            {c && (
+                              <span className="text-xs text-emerald-400 bg-emerald-900/30 px-1.5 py-0.5 rounded">
+                                COPX FL{Math.round(c.level / 100)} at entry
+                              </span>
+                            )}
                           </div>
                           <div className="flex items-center gap-2">
                             {starList.length > 1 && (
                               <select
                                 value={selectedStarByIaf[iaf] || starList[0].name}
-                                onChange={(e) => setSelectedStarByIaf((prev) => ({ ...prev, [iaf]: e.target.value }))}
+                                onChange={(e) =>
+                                  setSelectedStarByIaf((prev) => ({
+                                    ...prev,
+                                    [iaf]: e.target.value,
+                                  }))
+                                }
                                 className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 font-mono"
                               >
                                 {starList.map((s: any) => (
@@ -627,7 +814,11 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
                                 ))}
                               </select>
                             )}
-                            {starList.length === 1 && <span className="text-xs font-mono text-slate-400">{starList[0].name}</span>}
+                            {starList.length === 1 && (
+                              <span className="text-xs font-mono text-slate-400">
+                                {starList[0].name}
+                              </span>
+                            )}
                             <button
                               onClick={() => applyStarConfig(iaf, selStar, c)}
                               className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${isActive ? "bg-emerald-700 text-white" : "bg-slate-700 hover:bg-sky-600 text-slate-200"}`}
@@ -649,10 +840,12 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
                     <div className="bg-amber-950/40 border border-amber-800/50 rounded p-3 text-xs text-amber-300 space-y-1">
                       <div className="font-semibold flex items-center gap-1.5">
                         <Icon name="alert" size={12} />
-                        Multiple entry fixes for RWY {r.rwyInUse}: {iafGroups.map((g: any) => g.iaf).join(", ")}
+                        Multiple entry fixes for RWY {r.rwyInUse}:{" "}
+                        {iafGroups.map((g: any) => g.iaf).join(", ")}
                       </div>
                       <div>
-                        Each entry fix requires a <strong>separate rule</strong>. This rule is using:{" "}
+                        Each entry fix requires a <strong>separate rule</strong>. This rule is
+                        using:{" "}
                         <span className="font-mono">{r.spawnWaypoint || "(none selected)"}</span>.
                       </div>
                     </div>
@@ -665,7 +858,11 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
           <section>
             <h4 className="text-xs uppercase text-slate-500 font-semibold mb-2">
               Spawn Waypoint{" "}
-              {r.spawnWaypoint && <span className="text-sky-400 font-mono normal-case text-xs">· {r.spawnWaypoint}</span>}
+              {r.spawnWaypoint && (
+                <span className="text-sky-400 font-mono normal-case text-xs">
+                  · {r.spawnWaypoint}
+                </span>
+              )}
             </h4>
             <div className="relative">
               <input
@@ -680,7 +877,11 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
               {wptMatches.length > 0 && (
                 <div className="absolute top-full left-0 right-0 bg-slate-800 border border-slate-700 rounded mt-1 z-10 max-h-48 overflow-auto">
                   {wptMatches.map((w: any) => (
-                    <button key={`${w.type}-${w.name}`} onClick={() => pickWpt(w)} className="w-full text-left px-3 py-1.5 hover:bg-slate-700 text-xs font-mono flex justify-between">
+                    <button
+                      key={`${w.type}-${w.name}`}
+                      onClick={() => pickWpt(w)}
+                      className="w-full text-left px-3 py-1.5 hover:bg-slate-700 text-xs font-mono flex justify-between"
+                    >
                       <span className="text-slate-200">{w.name}</span>
                       <span className="text-slate-500">
                         {w.lat.toFixed(4)}, {w.lon.toFixed(4)}
@@ -690,7 +891,9 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
                 </div>
               )}
             </div>
-            <p className="text-xs text-slate-500 mt-1">Sim route auto-trimmed from this waypoint. Set via STAR section above or manually.</p>
+            <p className="text-xs text-slate-500 mt-1">
+              Sim route auto-trimmed from this waypoint. Set via STAR section above or manually.
+            </p>
           </section>
 
           <section>
@@ -706,7 +909,11 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
               <button
                 onClick={() => r.gsMode === "fixed" && update("schedulingMode", "separation")}
                 disabled={r.gsMode !== "fixed"}
-                title={r.gsMode !== "fixed" ? "Requires ATC-assigned speed — set speed mode above first" : ""}
+                title={
+                  r.gsMode !== "fixed"
+                    ? "Requires ATC-assigned speed — set speed mode above first"
+                    : ""
+                }
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-opacity ${r.schedulingMode === "separation" ? "bg-sky-700 text-white" : r.gsMode !== "fixed" ? "bg-slate-800 text-slate-600 opacity-40 cursor-not-allowed" : "bg-slate-800 text-slate-400 hover:text-slate-200"}`}
               >
                 <Icon name="plane" size={12} />
@@ -717,32 +924,69 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
               {r.schedulingMode === "separation" ? (
                 <div className="col-span-2">
                   <label className={lb}>
-                    Separation: <span className="text-sky-300 font-mono">{r.nmSeparation || 10} NM</span>
-                    <span className="text-slate-500 ml-2">≈ {(intMin * 60).toFixed(0)}s at {repGs} kt GS</span>
+                    Separation:{" "}
+                    <span className="text-sky-300 font-mono">{r.nmSeparation || 10} NM</span>
+                    <span className="text-slate-500 ml-2">
+                      ≈ {(intMin * 60).toFixed(0)}s at {repGs} kt GS
+                    </span>
                   </label>
-                  <input type="range" min="5" max="15" step="1" className="w-full mt-1" value={r.nmSeparation || 10} onChange={(e) => update("nmSeparation", +e.target.value)} />
+                  <input
+                    type="range"
+                    min="5"
+                    max="15"
+                    step="1"
+                    className="w-full mt-1"
+                    value={r.nmSeparation || 10}
+                    onChange={(e) => update("nmSeparation", +e.target.value)}
+                  />
                   <div className="text-xs text-slate-600 mt-1 font-mono">
-                    5 NM = {((5 / Math.max(repGs, 1)) * 3600).toFixed(0)}s · 10 NM = {((10 / Math.max(repGs, 1)) * 3600).toFixed(0)}s · 15 NM ={" "}
+                    5 NM = {((5 / Math.max(repGs, 1)) * 3600).toFixed(0)}s · 10 NM ={" "}
+                    {((10 / Math.max(repGs, 1)) * 3600).toFixed(0)}s · 15 NM ={" "}
                     {((15 / Math.max(repGs, 1)) * 3600).toFixed(0)}s
                   </div>
                 </div>
               ) : (
                 <div>
                   <label className={lb}>Rate (/hr)</label>
-                  <input type="number" className={ip} value={r.rate} onChange={(e) => update("rate", +e.target.value)} min="1" max="60" />
+                  <input
+                    type="number"
+                    className={ip}
+                    value={r.rate}
+                    onChange={(e) => update("rate", +e.target.value)}
+                    min="1"
+                    max="60"
+                  />
                 </div>
               )}
               <div>
                 <label className={lb}>Duration (min)</label>
-                <input type="number" className={ip} value={r.duration} onChange={(e) => update("duration", +e.target.value)} min="1" />
+                <input
+                  type="number"
+                  className={ip}
+                  value={r.duration}
+                  onChange={(e) => update("duration", +e.target.value)}
+                  min="1"
+                />
               </div>
               <div>
                 <label className={lb}>Start Offset (min)</label>
-                <input type="number" step="0.1" className={ip} value={r.startOffset} onChange={(e) => update("startOffset", +e.target.value)} />
+                <input
+                  type="number"
+                  step="0.1"
+                  className={ip}
+                  value={r.startOffset}
+                  onChange={(e) => update("startOffset", +e.target.value)}
+                />
               </div>
               <div>
                 <label className={lb}>Seq start</label>
-                <input type="number" className={ip} value={r.seq} onChange={(e) => update("seq", +e.target.value)} min="1" />
+                <input
+                  type="number"
+                  className={ip}
+                  value={r.seq}
+                  onChange={(e) => update("seq", +e.target.value)}
+                  min="1"
+                />
               </div>
             </div>
             <div className="flex items-center gap-2 mt-2 flex-wrap">
@@ -769,26 +1013,68 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
           </section>
 
           <section>
-            <h4 className="text-xs uppercase text-slate-500 font-semibold mb-2">Flight Parameters</h4>
+            <h4 className="text-xs uppercase text-slate-500 font-semibold mb-2">
+              Flight Parameters
+            </h4>
             <div className="grid grid-cols-3 gap-3 mb-3">
               <div>
                 <label className={lb}>Cruise Alt (ft)</label>
-                <input type="number" className={ip} value={r.cruiseAlt} onChange={(e) => update("cruiseAlt", +e.target.value)} />
+                <input
+                  type="number"
+                  className={ip}
+                  value={r.cruiseAlt}
+                  onChange={(e) => update("cruiseAlt", +e.target.value)}
+                />
               </div>
               <div>
                 <label className={lb}>Spawn Alt (ft)</label>
-                <input type="number" className={ip} value={r.spawnAlt} onChange={(e) => update("spawnAlt", +e.target.value)} />
+                <input
+                  type="number"
+                  className={`${ip} ${r.poolSource && r.spawnAltMode === "poolCruise" ? "opacity-40" : ""}`}
+                  value={r.spawnAlt}
+                  onChange={(e) => update("spawnAlt", +e.target.value)}
+                  disabled={r.poolSource && r.spawnAltMode === "poolCruise"}
+                />
+                {r.poolSource && (
+                  <button
+                    onClick={() =>
+                      update(
+                        "spawnAltMode",
+                        r.spawnAltMode === "poolCruise" ? "fixed" : "poolCruise",
+                      )
+                    }
+                    className={`mt-1.5 px-2.5 py-1 rounded text-xs font-medium ${r.spawnAltMode === "poolCruise" ? "bg-purple-700 text-white" : "bg-slate-800 text-slate-400 hover:text-slate-200"}`}
+                  >
+                    Filed cruise (per-aircraft)
+                  </button>
+                )}
+                {r.poolSource && r.spawnAltMode === "poolCruise" && (
+                  <div className="text-[11px] text-slate-400 mt-1">
+                    each aircraft spawns at its filed cruise FL
+                  </div>
+                )}
               </div>
               <div>
                 <label className={lb}>
-                  Pre-entry offset: <span className="text-sky-300 font-mono">{r.preEntryNm || 0} NM</span>
+                  Pre-entry offset:{" "}
+                  <span className="text-sky-300 font-mono">{r.preEntryNm || 0} NM</span>
                 </label>
-                <input type="range" min="1" max="50" step="1" className="w-full mt-1" value={r.preEntryNm || 1} onChange={(e) => update("preEntryNm", +e.target.value)} />
+                <input
+                  type="range"
+                  min="1"
+                  max="50"
+                  step="1"
+                  className="w-full mt-1"
+                  value={r.preEntryNm || 1}
+                  onChange={(e) => update("preEntryNm", +e.target.value)}
+                />
               </div>
             </div>
             <div className="bg-slate-950/60 border border-slate-800 rounded p-3 space-y-3">
               <div className="flex items-center justify-between flex-wrap gap-2">
-                <label className="text-xs font-semibold uppercase text-slate-400">Spawn Speed</label>
+                <label className="text-xs font-semibold uppercase text-slate-400">
+                  Spawn Speed
+                </label>
                 <div className="flex gap-2 flex-wrap">
                   <button
                     onClick={() => {
@@ -818,14 +1104,19 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
               </div>
               {r.gsMode === "natural" ? (
                 <div className="text-xs text-amber-300 bg-amber-950/30 border border-amber-900/40 rounded p-2 font-mono">
-                  Aircraft spawns at 0 kt; SIMDATA accelerates from rest at 0.010 unit/s. Best for departures spawning at low altitude.
+                  Aircraft spawns at 0 kt; SIMDATA accelerates from rest at 0.010 unit/s. Best for
+                  departures spawning at low altitude.
                 </div>
               ) : r.gsMode !== "fixed" ? (
                 <div className="text-xs text-slate-400 font-mono bg-slate-950 rounded p-2">
-                  <div className="text-slate-500 mb-1">Per-aircraft GS based on ICAO WTC of the assigned type:</div>
+                  <div className="text-slate-500 mb-1">
+                    Per-aircraft GS based on ICAO WTC of the assigned type:
+                  </div>
                   <div>
-                    Light: <span className="text-sky-300">{GS_BY_WTC.L} kt</span> · Medium: <span className="text-sky-300">{GS_BY_WTC.M} kt</span> · Heavy:{" "}
-                    <span className="text-sky-300">{GS_BY_WTC.H} kt</span> · Super: <span className="text-sky-300">{GS_BY_WTC.J} kt</span>
+                    Light: <span className="text-sky-300">{GS_BY_WTC.L} kt</span> · Medium:{" "}
+                    <span className="text-sky-300">{GS_BY_WTC.M} kt</span> · Heavy:{" "}
+                    <span className="text-sky-300">{GS_BY_WTC.H} kt</span> · Super:{" "}
+                    <span className="text-sky-300">{GS_BY_WTC.J} kt</span>
                   </div>
                 </div>
               ) : (
@@ -849,14 +1140,32 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
                     </div>
                     <div>
                       <label className={lb}>{r.speedType === "mach" ? "Mach" : "IAS (kt)"}</label>
-                      <input type="number" step={r.speedType === "mach" ? "0.01" : "5"} className={ip} value={r.assignedSpeed} onChange={(e) => update("assignedSpeed", +e.target.value)} />
+                      <input
+                        type="number"
+                        step={r.speedType === "mach" ? "0.01" : "5"}
+                        className={ip}
+                        value={r.assignedSpeed}
+                        onChange={(e) => update("assignedSpeed", +e.target.value)}
+                      />
                     </div>
                     <div className="text-xs text-sky-300 bg-sky-950/40 border border-sky-900 rounded p-2 font-mono">
-                      <div className="text-slate-400">TAS @ {r.spawnAlt}ft:</div>
-                      <div className="text-sm">≈ {speedPreview} kt</div>
+                      {r.poolSource && r.spawnAltMode === "poolCruise" ? (
+                        <>
+                          <div className="text-slate-400">TAS:</div>
+                          <div className="text-sm">per-aircraft (filed FL)</div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="text-slate-400">TAS @ {r.spawnAlt}ft:</div>
+                          <div className="text-sm">≈ {speedPreview} kt</div>
+                        </>
+                      )}
                     </div>
                   </div>
-                  <p className="text-xs text-slate-500">Simulates an en-route controller having assigned a speed — converted to TAS at the spawn altitude using ISA.</p>
+                  <p className="text-xs text-slate-500">
+                    Simulates an en-route controller having assigned a speed — converted to TAS at
+                    the spawn altitude using ISA.
+                  </p>
                 </div>
               )}
             </div>
@@ -864,7 +1173,9 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
 
           {!r.poolSource && (
             <section>
-              <h4 className="text-xs uppercase text-slate-500 font-semibold mb-2">Route Templates</h4>
+              <h4 className="text-xs uppercase text-slate-500 font-semibold mb-2">
+                Route Templates
+              </h4>
               <div className="space-y-3">
                 <div>
                   <div className="flex items-center justify-between mb-1">
@@ -885,8 +1196,13 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
                   {multiRoutes.length > 0 && (
                     <div className="mb-2 bg-purple-950/40 border border-purple-900/30 rounded p-2 space-y-1">
                       <div className="flex justify-between items-center">
-                        <span className="text-xs text-purple-300 font-medium">{multiRoutes.length} routes — randomly assigned per aircraft</span>
-                        <button onClick={() => update("fpRouteTemplates", [])} className="text-xs text-rose-400 hover:text-rose-300">
+                        <span className="text-xs text-purple-300 font-medium">
+                          {multiRoutes.length} routes — randomly assigned per aircraft
+                        </span>
+                        <button
+                          onClick={() => update("fpRouteTemplates", [])}
+                          className="text-xs text-rose-400 hover:text-rose-300"
+                        >
                           ✕ clear
                         </button>
                       </div>
@@ -896,7 +1212,11 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
                           {rt.split(" ").length > 8 ? "…" : ""}
                         </div>
                       ))}
-                      {multiRoutes.length > 3 && <div className="text-xs text-slate-600">+{multiRoutes.length - 3} more…</div>}
+                      {multiRoutes.length > 3 && (
+                        <div className="text-xs text-slate-600">
+                          +{multiRoutes.length - 3} more…
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -904,16 +1224,23 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
                     <div className="mb-2 bg-slate-950 border border-slate-700 rounded overflow-hidden">
                       <div className="px-3 py-2 border-b border-slate-800 flex items-center justify-between bg-slate-900/60">
                         <span className="text-xs text-slate-400">
-                          {routePickerSel.size} selected · will be <strong className="text-slate-200">randomly assigned</strong>
+                          {routePickerSel.size} selected · will be{" "}
+                          <strong className="text-slate-200">randomly assigned</strong>
                         </span>
-                        <button onClick={applyRouteSelection} disabled={!routePickerSel.size} className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 rounded text-xs text-white font-medium">
+                        <button
+                          onClick={applyRouteSelection}
+                          disabled={!routePickerSel.size}
+                          className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 rounded text-xs text-white font-medium"
+                        >
                           Apply ({routePickerSel.size})
                         </button>
                       </div>
                       {routeCandidates.length > 0 ? (
                         <div className="max-h-52 overflow-auto divide-y divide-slate-800">
                           {routeCandidates.map((p: any) => {
-                            const hasSpawn = r.spawnWaypoint && (p.route || "").toUpperCase().includes(r.spawnWaypoint.toUpperCase());
+                            const hasSpawn =
+                              r.spawnWaypoint &&
+                              (p.route || "").toUpperCase().includes(r.spawnWaypoint.toUpperCase());
                             return (
                               <div
                                 key={p.id}
@@ -921,19 +1248,35 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
                                 className={`px-3 py-2.5 cursor-pointer hover:bg-slate-800 transition-colors group ${routePickerSel.has(p.id) ? "bg-sky-950/30" : ""}`}
                               >
                                 <div className="flex items-center gap-2 mb-0.5">
-                                  <input type="checkbox" readOnly checked={routePickerSel.has(p.id)} className="accent-sky-500 shrink-0" />
+                                  <input
+                                    type="checkbox"
+                                    readOnly
+                                    checked={routePickerSel.has(p.id)}
+                                    className="accent-sky-500 shrink-0"
+                                  />
                                   <span className="text-xs font-mono font-semibold text-slate-200 group-hover:text-sky-300">
-                                    {p.callsign || <span className="italic text-slate-500 font-normal">no callsign</span>}{" "}
+                                    {p.callsign || (
+                                      <span className="italic text-slate-500 font-normal">
+                                        no callsign
+                                      </span>
+                                    )}{" "}
                                     <span className="text-slate-400 font-normal">
                                       {p.origin}→{p.dest}
                                     </span>
-                                    {p.cruiseFL && <span className="text-slate-500 ml-2">FL{p.cruiseFL}</span>}
+                                    {p.cruiseFL && (
+                                      <span className="text-slate-500 ml-2">FL{p.cruiseFL}</span>
+                                    )}
                                   </span>
-                                  <span className={`ml-auto text-xs px-1.5 py-0.5 rounded font-medium ${SRC_LABELS[p.source]?.color || "text-slate-400 bg-slate-800"}`}>
+                                  <span
+                                    className={`ml-auto text-xs px-1.5 py-0.5 rounded font-medium ${SRC_LABELS[p.source]?.color || "text-slate-400 bg-slate-800"}`}
+                                  >
                                     {SRC_LABELS[p.source]?.label || p.source}
                                   </span>
                                   {r.spawnWaypoint && !hasSpawn && (
-                                    <span className="text-xs text-amber-400" title={`Route doesn't include ${r.spawnWaypoint}`}>
+                                    <span
+                                      className="text-xs text-amber-400"
+                                      title={`Route doesn't include ${r.spawnWaypoint}`}
+                                    >
                                       ⚠
                                     </span>
                                   )}
@@ -947,7 +1290,10 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
                           })}
                         </div>
                       ) : (
-                        <p className="p-3 text-xs text-slate-500">No pool entries match the current {r.isDeparture ? "destination" : "origin"} pool.</p>
+                        <p className="p-3 text-xs text-slate-500">
+                          No pool entries match the current{" "}
+                          {r.isDeparture ? "destination" : "origin"} pool.
+                        </p>
                       )}
                     </div>
                   )}
@@ -964,9 +1310,15 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
                 </div>
                 <div>
                   <label className={lb}>
-                    Sim Route Template <span className="text-slate-500">(auto-trimmed from spawn waypoint)</span>
+                    Sim Route Template{" "}
+                    <span className="text-slate-500">(auto-trimmed from spawn waypoint)</span>
                   </label>
-                  <textarea className={`${ip} min-h-[50px]`} value={r.simRouteTemplate} onChange={(e) => update("simRouteTemplate", e.target.value)} placeholder="Populated automatically when you select a STAR above" />
+                  <textarea
+                    className={`${ip} min-h-[50px]`}
+                    value={r.simRouteTemplate}
+                    onChange={(e) => update("simRouteTemplate", e.target.value)}
+                    placeholder="Populated automatically when you select a STAR above"
+                  />
                 </div>
                 {trimPrev !== r.simRouteTemplate && (
                   <div className="text-xs bg-sky-950/40 border border-sky-900 rounded p-2 font-mono text-sky-300">
@@ -980,25 +1332,45 @@ export function RuleEditor({ rule, waypoints, pool, stars, copx, scenarioIls, on
 
           <section>
             <h4 className="text-xs uppercase text-slate-500 font-semibold mb-2">
-              Altitude Request <span className="text-slate-600 font-normal normal-case">(pre-populated from COPX when STAR is applied)</span>
+              Altitude Request{" "}
+              <span className="text-slate-600 font-normal normal-case">
+                (pre-populated from COPX when STAR is applied)
+              </span>
             </h4>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={lb}>At waypoint</label>
-                <input className={ip} value={r.reqAltWpt} onChange={(e) => update("reqAltWpt", e.target.value.toUpperCase())} />
+                <input
+                  className={ip}
+                  value={r.reqAltWpt}
+                  onChange={(e) => update("reqAltWpt", e.target.value.toUpperCase())}
+                />
               </div>
               <div>
                 <label className={lb}>Request altitude (ft)</label>
-                <input type="number" className={ip} value={r.reqAltVal} onChange={(e) => update("reqAltVal", e.target.value === "" ? "" : +e.target.value)} />
+                <input
+                  type="number"
+                  className={ip}
+                  value={r.reqAltVal}
+                  onChange={(e) =>
+                    update("reqAltVal", e.target.value === "" ? "" : +e.target.value)
+                  }
+                />
               </div>
             </div>
           </section>
         </div>
         <div className="sticky bottom-0 bg-slate-900 border-t border-slate-700 p-4 flex justify-end gap-2">
-          <button onClick={onCancel} className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded text-sm text-slate-200">
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded text-sm text-slate-200"
+          >
             Cancel
           </button>
-          <button onClick={() => onSave(r)} className="px-4 py-2 bg-sky-600 hover:bg-sky-500 rounded text-sm text-white font-medium">
+          <button
+            onClick={() => onSave(r)}
+            className="px-4 py-2 bg-sky-600 hover:bg-sky-500 rounded text-sm text-white font-medium"
+          >
             Save Rule
           </button>
         </div>

@@ -12,7 +12,10 @@ export function machToTas(mach: number, alt: number) {
   return mach * Math.sqrt(1.4 * 287.05 * tempK) * 1.94384;
 }
 
-export function computeSpawnGs(rule: any, type: string) {
+// altOverride (optional) lets a caller compute the fixed-mode TAS at a
+// per-aircraft altitude (spawnAltMode "poolCruise") instead of the rule-level
+// spawnAlt. All existing call sites omit it and behave exactly as before.
+export function computeSpawnGs(rule: any, type: string, altOverride?: number) {
   const mode = rule.gsMode || "wtc";
   // 'natural' — no speed lock at spawn. Returns 0 so @N writes gs=0; SIMDATA's
   // `0.010:0.0` (accel:initial_speed) then takes over and the aircraft
@@ -20,7 +23,7 @@ export function computeSpawnGs(rule: any, type: string) {
   // not appear pinned at a fixed IAS the instant they materialise.
   if (mode === "natural") return 0;
   if (mode === "fixed") {
-    const alt = +rule.spawnAlt || 18000;
+    const alt = +(altOverride ?? 0) || +rule.spawnAlt || 18000;
     const sp = rule.speedType === "mach" ? +rule.assignedSpeed || 0.78 : +rule.assignedSpeed || 280;
     return Math.round(rule.speedType === "mach" ? machToTas(sp, alt) : iasToTas(sp, alt));
   }

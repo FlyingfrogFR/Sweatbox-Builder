@@ -5,7 +5,14 @@
 // and explicit imports of the helpers the shell exposed on window.SB. The
 // algorithm — squawk '0000'->rule fallback, routeContains filter, the
 // excludeNonRouting acceptable-set built from STAR upstream fixes, the
-// rate/separation interval math, count = floor(duration/intMin)+1 — is unchanged.
+// rate/separation interval math, count = floor(duration/intMin)+1 — is unchanged
+// EXCEPT for one intentional bug-fix divergence from rc3: pool-sourced
+// callsigns are now checked against / registered in usedSet (rc3 never did
+// either, so two rules with overlapping pool filters emitted duplicate
+// callsigns). The fix only changes output for inputs the golden fixtures
+// avoid — no fixture runs two overlapping pool rules, and every fixture pool
+// entry carries a unique callsign — so parity with the goldens is preserved;
+// tests/dedup.test.ts exercises the divergence port-side only.
 
 import { computeSpawnGs } from "./speed";
 import { GS_BY_WTC } from "./tables";
@@ -79,8 +86,14 @@ export function generateFromRule(
   if (rule.poolSource) {
     const dDep = (rule.poolDep || "").toUpperCase().trim();
     const dArr = (rule.poolArr || "").toUpperCase().trim();
-    const dDepList = dDep.split(",").map((s: string) => s.trim()).filter(Boolean);
-    const dArrList = dArr.split(",").map((s: string) => s.trim()).filter(Boolean);
+    const dDepList = dDep
+      .split(",")
+      .map((s: string) => s.trim())
+      .filter(Boolean);
+    const dArrList = dArr
+      .split(",")
+      .map((s: string) => s.trim())
+      .filter(Boolean);
     // routeContains — comma-separated waypoint tokens that MUST appear in
     // the pool aircraft's filed route for it to be eligible. Use this for
     // departures (where spawnWaypoint is a synthetic runway-end fix that
@@ -97,7 +110,10 @@ export function generateFromRule(
       if (dDepList.length && !dDepList.includes(p.origin)) return false;
       if (dArrList.length && !dArrList.includes(p.dest)) return false;
       if (rcList.length) {
-        const tokens = (p.route || "").toUpperCase().split(/\s+/).map((t: string) => t.split("/")[0]);
+        const tokens = (p.route || "")
+          .toUpperCase()
+          .split(/\s+/)
+          .map((t: string) => t.split("/")[0]);
         if (!rcList.some((tok: string) => tokens.includes(tok))) return false;
       }
       return true;
@@ -121,7 +137,10 @@ export function generateFromRule(
       }
       const before = matches.length;
       matches = matches.filter((p) =>
-        (p.route || "").toUpperCase().split(/\s+/).some((t: string) => acceptable.has(t.split("/")[0])),
+        (p.route || "")
+          .toUpperCase()
+          .split(/\s+/)
+          .some((t: string) => acceptable.has(t.split("/")[0])),
       );
       if (!matches.length) {
         const upstreams = [...acceptable].filter((w) => w !== spwn);
@@ -135,7 +154,10 @@ export function generateFromRule(
       }
     }
     if (!matches.length)
-      return { aircraft: [], error: `No pool aircraft match DEP="${dDep || "any"}" ARR="${dArr || "any"}"` };
+      return {
+        aircraft: [],
+        error: `No pool aircraft match DEP="${dDep || "any"}" ARR="${dArr || "any"}"`,
+      };
     const count = Math.max(1, Math.floor(rule.duration / intMin) + 1);
     const schedule = buildSchedule(rule, count, intMin);
     const out = [];
@@ -144,8 +166,29 @@ export function generateFromRule(
       const startMin = schedule[i];
       const fpR = tmpl.route || pickFP();
       const typ = tmpl.type || pickPool(rule.typePool, i);
+      // spawnAltMode "poolCruise": each aircraft spawns at its own filed
+      // cruise level (FP/level coherence for overflight bands). Absent or
+      // "fixed" reproduces the original rule-level spawnAlt exactly. Note the
+      // separation-mode interval math above keeps using the rule-level
+      // representative speed (_rgs) — an acceptable approximation.
+      const acAlt =
+        rule.spawnAltMode === "poolCruise" ? (tmpl.cruiseFL || 350) * 100 : +rule.spawnAlt || 18000;
       let cs = tmpl.callsign;
-      if (!cs) cs = genCS((rule.isDeparture ? dArr : dDep) || "", usedSet, { heavy: !!rule.heavy });
+      if (!cs) {
+        cs = genCS((rule.isDeparture ? dArr : dDep) || "", usedSet, { heavy: !!rule.heavy });
+      } else if (usedSet.has(cs)) {
+        // Overlapping pool rules select the same entries — suffix A-Z so the
+        // .scn never carries two aircraft with the same callsign; numeric
+        // suffixes past Z keep the guarantee airtight for pathological pools.
+        const base = cs;
+        let s = 0;
+        while (usedSet.has(cs) && s < 26) {
+          cs = base + String.fromCharCode(65 + s);
+          s++;
+        }
+        for (let n = 2; usedSet.has(cs); n++) cs = base + n;
+      }
+      usedSet.add(cs);
       out.push({
         id: uid(),
         callsign: cs,
@@ -161,8 +204,8 @@ export function generateFromRule(
         cruiseAlt: (tmpl.cruiseFL || 350) * 100,
         lat: wp.lat,
         lon: wp.lon,
-        alt: +rule.spawnAlt || 18000,
-        gs: computeSpawnGs(rule, typ),
+        alt: acAlt,
+        gs: computeSpawnGs(rule, typ, acAlt),
         runway: rwy,
         spawnWaypoint: rule.spawnWaypoint,
         preEntryNm: +rule.preEntryNm || 0,
@@ -211,8 +254,15 @@ export function generateFromRule(
       callsign: cs,
       squawk: assignSquawk(rule, type),
       type,
-      origin: rule.isDeparture ? homeApt(rule) : pickPool(rule.originPool, i),
-      dest: rule.isDeparture ? pickPool(rule.destPool, i) : homeApt(rule),
+      // Blank homeIcao (an explicit "" — legacy rules without the field still
+      // get LFPG from homeApt) means overflight/transit: BOTH ends come from
+      // the pools. Golden-safe: no fixture rule carries a homeIcao key.
+      origin: rule.isDeparture
+        ? homeApt(rule) || pickPool(rule.originPool, i)
+        : pickPool(rule.originPool, i),
+      dest: rule.isDeparture
+        ? pickPool(rule.destPool, i)
+        : homeApt(rule) || pickPool(rule.destPool, i),
       cruiseAlt: +rule.cruiseAlt || 35000,
       lat: wp.lat,
       lon: wp.lon,

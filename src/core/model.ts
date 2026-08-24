@@ -74,6 +74,7 @@ export function emptyRule() {
     seq: 1,
     cruiseAlt: 35000,
     spawnAlt: 18000,
+    spawnAltMode: "fixed", // "fixed" = rule-level spawnAlt · "poolCruise" = each pool aircraft at its filed cruise FL
     gsMode: "wtc",
     speedType: "ias",
     assignedSpeed: 280,
