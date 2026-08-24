@@ -1,10 +1,14 @@
 <div align="center">
 
-# ✈️ Sweatbox Builder
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/brand/banner-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/brand/banner-light.png">
+  <img src="docs/brand/banner-light.png" alt="Sweatbox Builder — EuroScope scenario workbench" width="620">
+</picture>
 
 **Build EuroScope sweatbox training scenarios without the busywork.**
 
-Describe the traffic you want, hit generate, and get a ready-to-fly `.scn` file —
+Describe the traffic you want, hit generate, and get a ready-to-fly scenario file —
 no hand-editing scenario text, no fiddly EuroScope encoding.
 
 [![CI & Build](https://github.com/FlyingfrogFR/Sweatbox-Builder/actions/workflows/build.yml/badge.svg)](https://github.com/FlyingfrogFR/Sweatbox-Builder/actions/workflows/build.yml)
