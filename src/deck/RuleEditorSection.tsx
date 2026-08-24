@@ -469,6 +469,17 @@ export function RuleEditorSection({
   // overflight/transit: both ends come from the pools, so both pool inputs show.
   const homeBlank = !(d.homeIcao ?? "").trim() && d.homeIcao !== undefined && !d.poolSource;
   const poolCruise = !!d.poolSource && d.spawnAltMode === "poolCruise";
+  // Auto-boundary spawn placement: each pool aircraft spawns where its own
+  // filed route enters the scenario FIR (set in the C1 tab header).
+  const autoB = !!d.poolSource && d.spawnMode === "autoBoundary";
+  const OCTS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+  const dirSet = new Set(parseTokenList(d.entryDirection || ""));
+  const toggleOct = (o: string) => {
+    const s = new Set(dirSet);
+    if (s.has(o)) s.delete(o);
+    else s.add(o);
+    up("entryDirection", [...s].join(","));
+  };
   const cadence =
     d.schedulingMode === "separation" ? `${d.nmSeparation || 10} NM` : `${d.rate ?? "—"}/hr`;
 
@@ -661,21 +672,102 @@ export function RuleEditorSection({
                       placeholder="LFPG"
                     />
                   </div>
-                  <div className="flex-1 min-w-[160px]">
-                    <label className={LABEL}>ROUTE MUST CONTAIN (CSV)</label>
-                    <input
-                      className={`${INPUT} w-full`}
-                      value={d.routeContains || ""}
-                      onChange={(e) => up("routeContains", e.target.value.toUpperCase())}
-                      placeholder="BATAG,PO302"
-                    />
+                  <div>
+                    <label className={LABEL}>SPAWN PLACEMENT</label>
+                    <div className="flex gap-1">
+                      <Latch
+                        size="md"
+                        on={!autoB}
+                        onClick={() => up("spawnMode", "waypoint")}
+                        title="Spawn every aircraft at the rule's fixed entry fix"
+                      >
+                        FIXED WAYPOINT
+                      </Latch>
+                      <Latch
+                        size="md"
+                        on={autoB}
+                        onClick={() => up("spawnMode", "autoBoundary")}
+                        title="Each aircraft spawns where ITS OWN filed route enters the scenario FIR — set the FIR in the C1 tab header"
+                      >
+                        AUTO — FIR BOUNDARY
+                      </Latch>
+                    </div>
                   </div>
+                  {!autoB && (
+                    <div className="flex-1 min-w-[160px]">
+                      <label className={LABEL}>ROUTE MUST CONTAIN (CSV)</label>
+                      <input
+                        className={`${INPUT} w-full`}
+                        value={d.routeContains || ""}
+                        onChange={(e) => up("routeContains", e.target.value.toUpperCase())}
+                        placeholder="BATAG,PO302"
+                      />
+                    </div>
+                  )}
                 </div>
-                <p className="text-[10.5px] text-tx7 leading-snug">
-                  Comma-separated waypoint tokens — a pool aircraft's filed FP must contain at least
-                  one. Use it for departures (the synthetic spawn fix appears in no real FP) or to
-                  narrow the routing beyond DEP/ARR.
-                </p>
+                {autoB ? (
+                  <>
+                    <p className="text-[10.5px] text-tx7 leading-snug">
+                      Traffic from the pool, entering at each aircraft's own FIR boundary gate — the
+                      scenario FIR is set once in the C1 tab header. DEP/ARR filters still apply.
+                    </p>
+                    <div className="flex flex-wrap gap-4 items-end">
+                      <div>
+                        <label className={LABEL}>ENTRY DIRECTION (NONE = ANY)</label>
+                        <div className="flex gap-1 flex-wrap">
+                          {OCTS.map((o) => (
+                            <Latch
+                              key={o}
+                              on={dirSet.has(o)}
+                              onClick={() => toggleOct(o)}
+                              tone="pu"
+                            >
+                              {o}
+                            </Latch>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <label className={LABEL}>SPAWN ANCHOR</label>
+                        <div className="flex gap-1">
+                          <Latch
+                            size="md"
+                            on={d.spawnAnchor !== "priorFix"}
+                            onClick={() => up("spawnAnchor", "entry")}
+                            title="Spawn at the boundary gate itself (offset upstream)"
+                          >
+                            BOUNDARY FIX
+                          </Latch>
+                          <Latch
+                            size="md"
+                            on={d.spawnAnchor === "priorFix"}
+                            onClick={() => up("spawnAnchor", "priorFix")}
+                            title="Spawn one filed fix before the boundary, so the real filed leg into the FIR gets flown"
+                          >
+                            ONE FIX PRIOR
+                          </Latch>
+                        </div>
+                      </div>
+                      {d.spawnAnchor === "priorFix" && (
+                        <div>
+                          <label className={LABEL}>PRIOR FIX MAX (NM)</label>
+                          <input
+                            type="number"
+                            className={`${INPUT} w-[90px]`}
+                            value={d.priorFixMaxNm ?? 80}
+                            onChange={(e) => up("priorFixMaxNm", +e.target.value)}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-[10.5px] text-tx7 leading-snug">
+                    Comma-separated waypoint tokens — a pool aircraft's filed FP must contain at
+                    least one. Use it for departures (the synthetic spawn fix appears in no real FP)
+                    or to narrow the routing beyond DEP/ARR.
+                  </p>
+                )}
 
                 {poolMatches.length === 0 ? (
                   <Note>No pool aircraft match these filters — nothing would be generated.</Note>
@@ -685,7 +777,7 @@ export function RuleEditorSection({
                       <span className="font-mono text-[11px] text-tx4">
                         {poolMatches.length} match{poolMatches.length !== 1 ? "es" : ""}
                       </span>
-                      {d.spawnWaypoint && (
+                      {!autoB && d.spawnWaypoint && (
                         <Latch
                           size="md"
                           on={d.excludeNonRouting !== false}
@@ -695,7 +787,7 @@ export function RuleEditorSection({
                           EXCLUDE NON-ROUTING
                         </Latch>
                       )}
-                      {d.spawnWaypoint && missingEntry.length > 0 && (
+                      {!autoB && d.spawnWaypoint && missingEntry.length > 0 && (
                         <span
                           className="flex items-center gap-1 text-[10.5px] text-am-fg"
                           title={
@@ -717,7 +809,7 @@ export function RuleEditorSection({
                     </div>
                     <div className="max-h-[180px] overflow-auto bg-panel border border-bd1 rounded-lg">
                       {poolMatches.map((p: any, i: number) => {
-                        const ok = hasEntry(p);
+                        const ok = autoB || hasEntry(p);
                         return (
                           <PlanRow
                             key={p.id}
@@ -744,59 +836,62 @@ export function RuleEditorSection({
               </div>
             )}
 
-            {/* spawn waypoint */}
-            <div className="relative">
-              <label className={LABEL}>
-                SPAWN / ENTRY WAYPOINT
-                {d.spawnWaypoint && (
-                  <span className="ml-2 font-mono text-cy-fg normal-case">{d.spawnWaypoint}</span>
+            {/* spawn waypoint — meaningless in auto-boundary mode (each aircraft
+                derives its own gate from its filed route) */}
+            {!autoB && (
+              <div className="relative">
+                <label className={LABEL}>
+                  SPAWN / ENTRY WAYPOINT
+                  {d.spawnWaypoint && (
+                    <span className="ml-2 font-mono text-cy-fg normal-case">{d.spawnWaypoint}</span>
+                  )}
+                </label>
+                <input
+                  className={`${INPUT} w-full`}
+                  value={wptSearch}
+                  onFocus={() => setWptOpen(true)}
+                  onBlur={() => setWptOpen(false)}
+                  onChange={(e) => {
+                    const v = e.target.value.toUpperCase();
+                    setWptSearch(v);
+                    setWptOpen(true);
+                    up("spawnWaypoint", v);
+                  }}
+                  placeholder="Type a fix name…"
+                />
+                {wptOpen && wptMatches.length > 0 && (
+                  <div className="absolute left-0 right-0 top-full mt-1 z-20 max-h-[190px] overflow-auto bg-panel border border-bd3 rounded-lg shadow-lg">
+                    {wptMatches.map((w: any) => (
+                      <button
+                        key={`${w.type}-${w.name}`}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          pickWpt(w);
+                        }}
+                        className="w-full flex items-center justify-between gap-3 px-3 py-1.5 font-mono text-[11.5px] text-left border-t border-rowdiv first:border-t-0 hover:bg-cy-fg/10"
+                      >
+                        <span className="text-tx1">{w.name}</span>
+                        <span className="text-tx7 text-[10.5px]">
+                          {w.type} · {w.lat.toFixed(4)}, {w.lon.toFixed(4)}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
                 )}
-              </label>
-              <input
-                className={`${INPUT} w-full`}
-                value={wptSearch}
-                onFocus={() => setWptOpen(true)}
-                onBlur={() => setWptOpen(false)}
-                onChange={(e) => {
-                  const v = e.target.value.toUpperCase();
-                  setWptSearch(v);
-                  setWptOpen(true);
-                  up("spawnWaypoint", v);
-                }}
-                placeholder="Type a fix name…"
-              />
-              {wptOpen && wptMatches.length > 0 && (
-                <div className="absolute left-0 right-0 top-full mt-1 z-20 max-h-[190px] overflow-auto bg-panel border border-bd3 rounded-lg shadow-lg">
-                  {wptMatches.map((w: any) => (
-                    <button
-                      key={`${w.type}-${w.name}`}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        pickWpt(w);
-                      }}
-                      className="w-full flex items-center justify-between gap-3 px-3 py-1.5 font-mono text-[11.5px] text-left border-t border-rowdiv first:border-t-0 hover:bg-cy-fg/10"
-                    >
-                      <span className="text-tx1">{w.name}</span>
-                      <span className="text-tx7 text-[10.5px]">
-                        {w.type} · {w.lat.toFixed(4)}, {w.lon.toFixed(4)}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-              <p className={HINT}>
-                the sim route is auto-trimmed from this fix — set it here or from a STAR below
-              </p>
-              {!wptKnown && (
-                <div className="mt-2">
-                  <Note>
-                    <b className="font-mono">{d.spawnWaypoint}</b> is not in the parsed navdata —
-                    this rule will produce no aircraft until the fix exists (load the .sct in SETUP
-                    → NAVDATA).
-                  </Note>
-                </div>
-              )}
-            </div>
+                <p className={HINT}>
+                  the sim route is auto-trimmed from this fix — set it here or from a STAR below
+                </p>
+                {!wptKnown && (
+                  <div className="mt-2">
+                    <Note>
+                      <b className="font-mono">{d.spawnWaypoint}</b> is not in the parsed navdata —
+                      this rule will produce no aircraft until the fix exists (load the .sct in
+                      SETUP → NAVDATA).
+                    </Note>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* pre-entry offset */}
             <div>

@@ -242,6 +242,18 @@ export function RuleEditor({
   // Explicitly blank home airport (not merely absent) = overflight/transit
   // rule: both ends come from the pools, so the editor shows both pool inputs.
   const homeBlank = r.homeIcao !== undefined && !(r.homeIcao ?? "").trim();
+  // Auto-boundary spawn placement (pool rules): each aircraft spawns where its
+  // own filed route crosses the scenario FIR — no fixed waypoint, no
+  // routeContains, no exclude-non-routing.
+  const autoB = !!r.poolSource && r.spawnMode === "autoBoundary";
+  const OCTS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+  const dirSet = new Set(parseTokenList(r.entryDirection || ""));
+  const toggleOct = (o: string) => {
+    const s = new Set(dirSet);
+    if (s.has(o)) s.delete(o);
+    else s.add(o);
+    update("entryDirection", [...s].join(","));
+  };
 
   const RegionSelect = ({ regionsMap, onSelect }: any) =>
     Object.keys(regionsMap).length > 0 ? (
@@ -383,19 +395,97 @@ export function RuleEditor({
                   </div>
                 </div>
                 <div>
-                  <label className={lb}>Route must contain (CSV)</label>
-                  <input
-                    className={ip}
-                    value={r.routeContains || ""}
-                    onChange={(e) => update("routeContains", e.target.value.toUpperCase())}
-                    placeholder="BATAG,PO302"
-                  />
-                  <p className="text-xs text-slate-500 mt-1">
-                    Comma-separated waypoint tokens. The pool aircraft's filed FP must contain at
-                    least one of these. Use for departures (synthetic spawn fix won't be in any real
-                    FP) or to narrow the routing direction beyond DEP/ARR.
-                  </p>
+                  <label className={lb}>Spawn placement</label>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => update("spawnMode", "waypoint")}
+                      className={`px-3 py-1.5 rounded text-xs font-medium ${!autoB ? "bg-sky-700 text-white" : "bg-slate-800 text-slate-400 hover:text-slate-200"}`}
+                    >
+                      Fixed waypoint
+                    </button>
+                    <button
+                      onClick={() => update("spawnMode", "autoBoundary")}
+                      className={`px-3 py-1.5 rounded text-xs font-medium ${autoB ? "bg-purple-700 text-white" : "bg-slate-800 text-slate-400 hover:text-slate-200"}`}
+                    >
+                      Auto — FIR boundary
+                    </button>
+                  </div>
+                  {autoB && (
+                    <p className="text-xs text-slate-500 mt-1">
+                      Each aircraft spawns where its own filed route enters the scenario FIR — set
+                      the FIR in the C1 tab header.
+                    </p>
+                  )}
                 </div>
+                {autoB && (
+                  <div className="space-y-3">
+                    <div>
+                      <label className={lb}>Entry direction (none = any)</label>
+                      <div className="flex gap-1.5 flex-wrap">
+                        {OCTS.map((o) => (
+                          <button
+                            key={o}
+                            onClick={() => toggleOct(o)}
+                            className={`px-2.5 py-1 rounded text-xs font-mono font-medium ${dirSet.has(o) ? "bg-purple-700 text-white" : "bg-slate-800 text-slate-400 hover:text-slate-200"}`}
+                          >
+                            {o}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Compass octant of the entry gate as seen from the FIR centroid — keep only
+                        traffic entering from these directions.
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 items-end">
+                      <div>
+                        <label className={lb}>Spawn anchor</label>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => update("spawnAnchor", "entry")}
+                            className={`px-3 py-1.5 rounded text-xs font-medium ${r.spawnAnchor !== "priorFix" ? "bg-sky-700 text-white" : "bg-slate-800 text-slate-400 hover:text-slate-200"}`}
+                          >
+                            Boundary fix
+                          </button>
+                          <button
+                            onClick={() => update("spawnAnchor", "priorFix")}
+                            className={`px-3 py-1.5 rounded text-xs font-medium ${r.spawnAnchor === "priorFix" ? "bg-sky-700 text-white" : "bg-slate-800 text-slate-400 hover:text-slate-200"}`}
+                            title="Spawn one filed fix before the boundary, so the real filed leg into the FIR gets flown"
+                          >
+                            One fix prior
+                          </button>
+                        </div>
+                      </div>
+                      {r.spawnAnchor === "priorFix" && (
+                        <div>
+                          <label className={lb}>Prior fix max distance (NM)</label>
+                          <input
+                            type="number"
+                            className={ip}
+                            value={r.priorFixMaxNm ?? 80}
+                            onChange={(e) => update("priorFixMaxNm", +e.target.value)}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {!autoB && (
+                  <div>
+                    <label className={lb}>Route must contain (CSV)</label>
+                    <input
+                      className={ip}
+                      value={r.routeContains || ""}
+                      onChange={(e) => update("routeContains", e.target.value.toUpperCase())}
+                      placeholder="BATAG,PO302"
+                    />
+                    <p className="text-xs text-slate-500 mt-1">
+                      Comma-separated waypoint tokens. The pool aircraft's filed FP must contain at
+                      least one of these. Use for departures (synthetic spawn fix won't be in any
+                      real FP) or to narrow the routing direction beyond DEP/ARR.
+                    </p>
+                  </div>
+                )}
                 {poolMatches.length === 0 ? (
                   <div className="text-xs text-amber-400 bg-amber-950/30 border border-amber-900/30 rounded p-2 flex items-center gap-1.5">
                     <Icon name="alert" size={12} />
@@ -408,7 +498,8 @@ export function RuleEditor({
                         {poolMatches.length} match{poolMatches.length !== 1 ? "es" : ""}
                       </span>
                       <div className="flex items-center gap-3">
-                        {r.spawnWaypoint &&
+                        {!autoB &&
+                          r.spawnWaypoint &&
                           (() => {
                             const missing = poolMatches.filter(
                               (p: any) =>
@@ -441,7 +532,7 @@ export function RuleEditor({
                               </span>
                             );
                           })()}
-                        {r.spawnWaypoint && (
+                        {!autoB && r.spawnWaypoint && (
                           <label
                             className="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer select-none"
                             title="When enabled, aircraft whose FP does not include the entry fix OR any of its STAR entry waypoints OR any routeContains token are excluded from generation. Disable if you have set a shared Sim Route override."
@@ -855,46 +946,48 @@ export function RuleEditor({
             </section>
           )}
 
-          <section>
-            <h4 className="text-xs uppercase text-slate-500 font-semibold mb-2">
-              Spawn Waypoint{" "}
-              {r.spawnWaypoint && (
-                <span className="text-sky-400 font-mono normal-case text-xs">
-                  · {r.spawnWaypoint}
-                </span>
-              )}
-            </h4>
-            <div className="relative">
-              <input
-                value={wptSearch}
-                onChange={(e) => {
-                  setWptSearch(e.target.value.toUpperCase());
-                  update("spawnWaypoint", e.target.value.toUpperCase());
-                }}
-                placeholder="Type waypoint name..."
-                className={ip}
-              />
-              {wptMatches.length > 0 && (
-                <div className="absolute top-full left-0 right-0 bg-slate-800 border border-slate-700 rounded mt-1 z-10 max-h-48 overflow-auto">
-                  {wptMatches.map((w: any) => (
-                    <button
-                      key={`${w.type}-${w.name}`}
-                      onClick={() => pickWpt(w)}
-                      className="w-full text-left px-3 py-1.5 hover:bg-slate-700 text-xs font-mono flex justify-between"
-                    >
-                      <span className="text-slate-200">{w.name}</span>
-                      <span className="text-slate-500">
-                        {w.lat.toFixed(4)}, {w.lon.toFixed(4)}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <p className="text-xs text-slate-500 mt-1">
-              Sim route auto-trimmed from this waypoint. Set via STAR section above or manually.
-            </p>
-          </section>
+          {!autoB && (
+            <section>
+              <h4 className="text-xs uppercase text-slate-500 font-semibold mb-2">
+                Spawn Waypoint{" "}
+                {r.spawnWaypoint && (
+                  <span className="text-sky-400 font-mono normal-case text-xs">
+                    · {r.spawnWaypoint}
+                  </span>
+                )}
+              </h4>
+              <div className="relative">
+                <input
+                  value={wptSearch}
+                  onChange={(e) => {
+                    setWptSearch(e.target.value.toUpperCase());
+                    update("spawnWaypoint", e.target.value.toUpperCase());
+                  }}
+                  placeholder="Type waypoint name..."
+                  className={ip}
+                />
+                {wptMatches.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 bg-slate-800 border border-slate-700 rounded mt-1 z-10 max-h-48 overflow-auto">
+                    {wptMatches.map((w: any) => (
+                      <button
+                        key={`${w.type}-${w.name}`}
+                        onClick={() => pickWpt(w)}
+                        className="w-full text-left px-3 py-1.5 hover:bg-slate-700 text-xs font-mono flex justify-between"
+                      >
+                        <span className="text-slate-200">{w.name}</span>
+                        <span className="text-slate-500">
+                          {w.lat.toFixed(4)}, {w.lon.toFixed(4)}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                Sim route auto-trimmed from this waypoint. Set via STAR section above or manually.
+              </p>
+            </section>
+          )}
 
           <section>
             <h4 className="text-xs uppercase text-slate-500 font-semibold mb-2">Rate & Timing</h4>

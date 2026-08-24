@@ -16,7 +16,8 @@
 
 import { computeSpawnGs } from "./speed";
 import { GS_BY_WTC } from "./tables";
-import { trimRoute, pickPool, expandCS } from "./route";
+import { trimRoute, pickPool, expandCS, nearestResolvableIdx } from "./route";
+import { preEntryOffset, bearingBetween, destinationPoint, distanceNm } from "./geo";
 import { genCS } from "./callsign";
 import { assignSquawk } from "./squawk";
 import { uid } from "./uid";
@@ -59,14 +60,30 @@ function buildSchedule(rule: any, count: number, intMin: number): number[] {
   return t;
 }
 
+const OCTANTS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+const octantOf = (brg: number) => OCTANTS[Math.round((((brg % 360) + 360) % 360) / 45) % 8];
+
 export function generateFromRule(
   rule: any,
   waypoints: any[],
   usedSet: Set<string> = new Set(),
   pool: any[] = [],
+  copx?: any[],
+  boundaryFir?: string,
 ) {
-  const wp = waypoints.find((w) => w.name === rule.spawnWaypoint);
-  if (!wp) return { aircraft: [], error: `Waypoint "${rule.spawnWaypoint}" not found in navdata` };
+  // autoBoundary (pool rules only): each aircraft spawns where ITS OWN filed
+  // route crosses the scenario FIR boundary — no rule-level spawn waypoint.
+  const autoBoundary = rule.spawnMode === "autoBoundary" && !!rule.poolSource;
+  // The presence of the (post-rc3) spawnMode key arms the never-on-fix
+  // invariant: min 1 NM pre-entry offset, and no silent on-fix placement when
+  // no inbound bearing is derivable. Raw legacy rules without the key (the
+  // golden fixtures) keep rc3 behavior byte-for-byte; every rule that passes
+  // through the app's create/import paths carries the key via emptyRule().
+  const hasNewFields = rule.spawnMode !== undefined;
+  const effPre = hasNewFields ? Math.max(1, +rule.preEntryNm || 1) : +rule.preEntryNm || 0;
+  const wp = autoBoundary ? null : waypoints.find((w) => w.name === rule.spawnWaypoint);
+  if (!autoBoundary && !wp)
+    return { aircraft: [], error: `Waypoint "${rule.spawnWaypoint}" not found in navdata` };
   const _rgs = (() => {
     if (rule.gsMode === "fixed") return computeSpawnGs(rule, "");
     const ft = (rule.typePool || "").split(",")[0].trim().toUpperCase();
@@ -100,7 +117,9 @@ export function generateFromRule(
     // never appears in real FPs) or any rule where you want a directional
     // filter beyond DEP/ARR. E.g. routeContains: "BATAG,PO302" keeps only
     // LFPO departures heading southeast on the BATAG family.
-    const rcList = (rule.routeContains || "")
+    // autoBoundary ignores routeContains / excludeNonRouting — the boundary
+    // crossing IS the routing filter. DEP/ARR filters still apply.
+    const rcList = (autoBoundary ? "" : rule.routeContains || "")
       .toUpperCase()
       .trim()
       .split(",")
@@ -118,7 +137,79 @@ export function generateFromRule(
       }
       return true;
     });
-    if (rule.excludeNonRouting !== false && rule.spawnWaypoint) {
+
+    // ---- autoBoundary: derive each aircraft's entry gate from its own route
+    // (a filter before the count loop — the rate math below is untouched).
+    // spawnGate[pool index] = { fixName, fixWp } for survivors.
+    const spawnGate = new Map<any, { fixName: string; fixWp: any }>();
+    let ref: { lat: number; lon: number } | null = null;
+    if (autoBoundary) {
+      const fir = (boundaryFir || "").trim().toUpperCase();
+      const wpByName = new Map(waypoints.map((w) => [String(w.name).toUpperCase(), w]));
+      // Gates INTO the session FIR only (toFir filter): a route may cross a
+      // neighbouring FIR first, and its first boundary fix overall would
+      // spawn it a whole FIR too early.
+      const gateApts = new Map<string, Set<string>>(); // fix -> destApts seen on its FIR_COPX lines
+      for (const c of copx || []) {
+        if (c.kind !== "fir" || String(c.toFir || "").toUpperCase() !== fir) continue;
+        const f = String(c.fix || "").toUpperCase();
+        if (!wpByName.has(f)) continue;
+        if (!gateApts.has(f)) gateApts.set(f, new Set());
+        if (c.destApt) gateApts.get(f)!.add(String(c.destApt).toUpperCase());
+      }
+      if (!fir || gateApts.size === 0)
+        return {
+          aircraft: [],
+          error:
+            "Auto-boundary spawn: set the scenario FIR in the C1 tab and load an ESE with FIR_COPX",
+        };
+      let sLat = 0,
+        sLon = 0;
+      for (const f of gateApts.keys()) {
+        const w = wpByName.get(f)!;
+        sLat += w.lat;
+        sLon += w.lon;
+      }
+      ref = { lat: sLat / gateApts.size, lon: sLon / gateApts.size };
+      const dirList = (rule.entryDirection || "")
+        .toUpperCase()
+        .split(",")
+        .map((s: string) => s.trim())
+        .filter(Boolean);
+      const nDepArr = matches.length;
+      let nBoundary = 0;
+      const survivors: any[] = [];
+      for (const p of matches) {
+        const toks = (p.route || "")
+          .toUpperCase()
+          .split(/\s+/)
+          .filter(Boolean)
+          .map((t: string) => t.split("/")[0]);
+        // Entry fix = first route token that is a gate; among candidates,
+        // prefer the earliest whose FIR_COPX destApt matches the destination.
+        const cands = toks.filter((t: string) => gateApts.has(t));
+        if (!cands.length) continue;
+        nBoundary++;
+        const dest = String(p.dest || "").toUpperCase();
+        const fixName = cands.find((f: string) => gateApts.get(f)!.has(dest)) || cands[0];
+        const fixWp = wpByName.get(fixName)!;
+        if (
+          dirList.length &&
+          !dirList.includes(octantOf(bearingBetween(ref.lat, ref.lon, fixWp.lat, fixWp.lon)))
+        )
+          continue;
+        spawnGate.set(p, { fixName, fixWp });
+        survivors.push(p);
+      }
+      if (!survivors.length)
+        return {
+          aircraft: [],
+          error: `Auto-boundary: ${nDepArr} matched DEP/ARR · ${nBoundary} cross the ${fir} boundary · ${survivors.length} match direction [${dirList.join(",") || "any"}]`,
+        };
+      matches = survivors;
+    }
+
+    if (!autoBoundary && rule.excludeNonRouting !== false && rule.spawnWaypoint) {
       const spwn = rule.spawnWaypoint.toUpperCase();
       const rwy = (rule.rwyInUse || rule.runway || "").toUpperCase();
       const acceptable = new Set([spwn]);
@@ -160,12 +251,81 @@ export function generateFromRule(
       };
     const count = Math.max(1, Math.floor(rule.duration / intMin) + 1);
     const schedule = buildSchedule(rule, count, intMin);
+    const anchorPrior = rule.spawnAnchor === "priorFix";
+    const priorMax = +rule.priorFixMaxNm || 80;
+    let excluded = 0;
     const out = [];
     for (let i = 0; i < Math.min(count, matches.length); i++) {
       const tmpl = matches[i];
       const startMin = schedule[i];
       const fpR = tmpl.route || pickFP();
       const typ = tmpl.type || pickPool(rule.typePool, i);
+
+      // ---- per-aircraft spawn resolution (post-rc3; legacy rules without
+      // spawnMode take the `wp`/rule-level path exactly as before).
+      // Entry fix: the rule's waypoint, or this aircraft's own boundary gate.
+      let spawnName: string = rule.spawnWaypoint;
+      let spawnWp: any = wp;
+      if (autoBoundary) {
+        const gate = spawnGate.get(tmpl)!;
+        spawnName = gate.fixName;
+        spawnWp = gate.fixWp;
+      }
+      // spawnAnchor "priorFix": walk back from the entry fix in the aircraft's
+      // own filed route to the previous resolvable fix, so the real filed leg
+      // into the boundary gets flown. Falls back to the entry fix when there
+      // is none, it's not in this FP, or it's farther than priorFixMaxNm.
+      const entryName = spawnName;
+      const entryWp = spawnWp;
+      if (hasNewFields && anchorPrior && fpR) {
+        const toks = String(fpR)
+          .toUpperCase()
+          .split(/\s+/)
+          .filter(Boolean)
+          .map((t: string) => t.split("/")[0]);
+        const idxE = toks.indexOf(String(entryName).toUpperCase());
+        if (idxE > 0) {
+          const pi = nearestResolvableIdx(toks, idxE - 1, -1, waypoints);
+          if (pi >= 0) {
+            const pw = waypoints.find((w) => w.name === toks[pi]);
+            if (pw && entryWp && distanceNm(pw.lat, pw.lon, entryWp.lat, entryWp.lon) <= priorMax) {
+              spawnName = toks[pi];
+              spawnWp = pw;
+            }
+          }
+        }
+      }
+      const priorChosen = spawnName !== entryName;
+      // autoBoundary: SIM RTE = the aircraft's own FP RTE from the spawn fix —
+      // per-rule sim-route templates don't exist in this mode.
+      let simR =
+        autoBoundary || priorChosen
+          ? trimRoute(fpR, spawnName)
+          : trimRoute(rule.simRouteTemplate || fpR, spawnName);
+      let acLat = spawnWp ? spawnWp.lat : 0;
+      let acLon = spawnWp ? spawnWp.lon : 0;
+      let acPre = hasNewFields ? effPre : +rule.preEntryNm || 0;
+      if (hasNewFields) {
+        // Never-on-fix invariant: predict the serializer's offset. When no
+        // inbound bearing is derivable even after the airway walks:
+        // autoBoundary uses the last-resort radial (spawn effPre NM beyond the
+        // gate on the centroid→gate radial, i.e. outside the FIR, heading
+        // toward the gate); waypoint mode excludes the aircraft and reports it.
+        const off = preEntryOffset(spawnName, simR, acPre, waypoints, fpR);
+        if (!off && autoBoundary && ref && entryWp) {
+          const radial = bearingBetween(ref.lat, ref.lon, entryWp.lat, entryWp.lon);
+          const pos = destinationPoint(entryWp.lat, entryWp.lon, radial, effPre);
+          spawnName = entryName;
+          spawnWp = entryWp;
+          simR = trimRoute(fpR, entryName);
+          acLat = pos.lat;
+          acLon = pos.lon;
+          acPre = 0; // position is already offset — the serializer must not re-offset
+        } else if (!off) {
+          excluded++;
+          continue;
+        }
+      }
       // spawnAltMode "poolCruise": each aircraft spawns at its own filed
       // cruise level (FP/level coherence for overflight bands). Absent or
       // "fixed" reproduces the original rule-level spawnAlt exactly. Note the
@@ -202,24 +362,34 @@ export function generateFromRule(
         origin: tmpl.origin,
         dest: tmpl.dest,
         cruiseAlt: (tmpl.cruiseFL || 350) * 100,
-        lat: wp.lat,
-        lon: wp.lon,
+        lat: acLat,
+        lon: acLon,
         alt: acAlt,
         gs: computeSpawnGs(rule, typ, acAlt),
         runway: rwy,
-        spawnWaypoint: rule.spawnWaypoint,
-        preEntryNm: +rule.preEntryNm || 0,
+        spawnWaypoint: spawnName,
+        preEntryNm: acPre,
         fpRoute: fpR,
-        simRoute: trimRoute(rule.simRouteTemplate || fpR, rule.spawnWaypoint),
-        starRoute: rule.simRouteTemplate || "",
+        simRoute: simR,
+        starRoute: autoBoundary ? "" : rule.simRouteTemplate || "",
         start: Math.round(startMin * 10) / 10,
         reqAltWpt: rule.reqAltWpt,
         reqAltVal: rule.reqAltVal,
         isDeparture: rule.isDeparture,
         ruleId: rule.id,
+        // Marks aircraft whose spawn went through the never-on-fix invariant;
+        // the serializer's airway-aware heading fallbacks key off this.
+        ...(hasNewFields ? { spawnMode: autoBoundary ? "autoBoundary" : "waypoint" } : {}),
       });
     }
-    return { aircraft: out, error: null };
+    return {
+      aircraft: out,
+      error: null,
+      warning:
+        excluded > 0
+          ? `${excluded} aircraft skipped — no resolvable fix to derive the inbound leg (they would spawn exactly on ${rule.spawnWaypoint})`
+          : null,
+    };
   }
 
   const count = Math.max(1, Math.floor(rule.duration / intMin) + 1);
@@ -228,6 +398,7 @@ export function generateFromRule(
   const regICAO = rule.isDeparture
     ? (rule.destPool || "").split(",")[0].trim()
     : (rule.originPool || "").split(",")[0].trim();
+  let excludedTmpl = 0;
   const out = [];
   for (let i = 0; i < count; i++) {
     const startMin = schedule[i];
@@ -249,6 +420,15 @@ export function generateFromRule(
     const simR = rule.simRouteTemplate
       ? trimRoute(rule.simRouteTemplate, rule.spawnWaypoint)
       : trimRoute(fpR, rule.spawnWaypoint);
+    // Never-on-fix invariant (rules carrying the post-rc3 spawnMode key only —
+    // raw legacy rules keep rc3 behavior byte-for-byte): when no inbound
+    // bearing is derivable the aircraft would sit exactly on the fix, so it is
+    // excluded and reported instead. Checked after the callsign draw so the
+    // rng stream of the shared path is untouched.
+    if (hasNewFields && !preEntryOffset(rule.spawnWaypoint, simR, effPre, waypoints, fpR)) {
+      excludedTmpl++;
+      continue;
+    }
     out.push({
       id: uid(),
       callsign: cs,
@@ -270,7 +450,7 @@ export function generateFromRule(
       gs: computeSpawnGs(rule, type),
       runway: rwy,
       spawnWaypoint: rule.spawnWaypoint,
-      preEntryNm: +rule.preEntryNm || 0,
+      preEntryNm: hasNewFields ? effPre : +rule.preEntryNm || 0,
       fpRoute: fpR,
       simRoute: simR,
       starRoute: rule.simRouteTemplate || "",
@@ -279,7 +459,15 @@ export function generateFromRule(
       reqAltVal: rule.reqAltVal,
       isDeparture: rule.isDeparture,
       ruleId: rule.id,
+      ...(hasNewFields ? { spawnMode: "waypoint" } : {}),
     });
   }
-  return { aircraft: out, error: null };
+  return {
+    aircraft: out,
+    error: null,
+    warning:
+      excludedTmpl > 0
+        ? `${excludedTmpl} aircraft skipped — no route to derive the inbound leg from (set an FP route template; they would spawn exactly on ${rule.spawnWaypoint})`
+        : null,
+  };
 }

@@ -80,6 +80,21 @@ export function parseESE(text: string) {
     if (section === "COPX") {
       const p = line.split(":");
       if (p.length < 4) continue;
+      // COPX: lines are internal sector splits; FIR_COPX: lines are the
+      // cross-FIR gates (in the CoFrance LFXX.ese ALL external gates are
+      // FIR_COPX). Both parse identically; `kind` + the FIR prefixes of the
+      // two sector fields (text before the first "·", e.g. "LFBB·L1 UAC" →
+      // "LFBB") let auto-boundary spawning pick out gates INTO a given FIR.
+      const kind = p[0].trim().toUpperCase() === "FIR_COPX" ? "fir" : "copx";
+      const firOf = (f: string) => {
+        const pre = String(f || "")
+          .split("·")[0]
+          .trim()
+          .toUpperCase();
+        return /^[A-Z]{4}$/.test(pre) ? pre : "";
+      };
+      const fromFir = p.length > 6 ? firOf(p[6]) : "";
+      const toFir = p.length > 7 ? firOf(p[7]) : "";
       let level: number | null = null;
       for (let i = p.length - 1; i >= 1; i--) {
         const t = p[i].trim();
@@ -104,12 +119,22 @@ export function parseESE(text: string) {
           fix = t;
         }
       }
-      if (fix) copx.push({ fix: fix.toUpperCase(), level, destApt: destApt.toUpperCase() });
+      if (fix)
+        copx.push({
+          fix: fix.toUpperCase(),
+          level,
+          destApt: destApt.toUpperCase(),
+          kind,
+          fromFir,
+          toFir,
+        });
     }
     if (section === "FREETEXT") {
       const p = line.split(":");
       if (p.length < 4) continue;
-      const groupMatch = (p[2] || "").match(/^([A-Z]{4})[\s_\/\-]+(?:Gates?|Stands?|Parking|Apron)/i);
+      const groupMatch = (p[2] || "").match(
+        /^([A-Z]{4})[\s_\/\-]+(?:Gates?|Stands?|Parking|Apron)/i,
+      );
       if (!groupMatch) continue;
       const label = (p[3] || "").trim();
       if (!label || GATE_DENYLIST.some((re) => re.test(label))) continue;

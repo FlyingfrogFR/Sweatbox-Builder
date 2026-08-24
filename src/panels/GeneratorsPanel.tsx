@@ -9,7 +9,12 @@ import { RuleWorkbench } from "../generators/RuleWorkbench";
 import { sortByStart } from "../state/aircraft";
 
 const ORDER = ["S1", "S2", "S3", "C1"];
-const LABELS: Record<string, string> = { S1: "S1 Ground", S2: "S2 Tower", S3: "S3 Approach", C1: "C1 Enroute" };
+const LABELS: Record<string, string> = {
+  S1: "S1 Ground",
+  S2: "S2 Tower",
+  S3: "S3 Approach",
+  C1: "C1 Enroute",
+};
 const RULE_MODES = new Set(["S3", "C1"]);
 
 export function GeneratorsPanel(props: any) {
@@ -30,14 +35,21 @@ export function GeneratorsPanel(props: any) {
     const myIds = new Set(rules.map((r: any) => r.id));
     let ac = scenario.aircraft.filter((a: any) => !a.ruleId || !myIds.has(a.ruleId));
     const used = new Set<string>(ac.map((a: any) => a.callsign).filter(Boolean));
+    const warnings: string[] = [];
     for (const r of rules) {
-      const { aircraft: gen, error } = generateFromRule(r, waypoints, used, pool);
+      const {
+        aircraft: gen,
+        error,
+        warning,
+      }: any = generateFromRule(r, waypoints, used, pool, props.copx, scenario.boundaryFir);
       if (error) {
         alert(`${r.name}: ${error}`);
         continue;
       }
+      if (warning) warnings.push(`${r.name}: ${warning}`);
       ac = [...ac, ...gen];
     }
+    if (warnings.length) alert(warnings.join("\n"));
     onChange({ ...scenario, aircraft: sortByStart(ac) });
   };
 

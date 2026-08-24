@@ -14,6 +14,10 @@ export function defaultScenario() {
     rules: [],
     holdings: [],
     groundConfig: null,
+    // FIR this session is bound to (C1 auto-boundary spawns) — scenario-level
+    // so rulesets stay FIR-agnostic and portable. Legacy scenarios load as ""
+    // via the {...defaultScenario(), ...saved} spreads.
+    boundaryFir: "",
   };
 }
 
@@ -53,6 +57,14 @@ export function emptyRule() {
     poolDep: "",
     poolArr: "",
     spawnWaypoint: "",
+    // "waypoint" = spawn at the rule's fix · "autoBoundary" = derive each pool
+    // aircraft's spawn from where ITS filed route crosses the scenario FIR
+    // boundary. The presence of this key also arms the never-on-fix invariant
+    // in generateFromRule (raw legacy rules without it keep rc3 behavior).
+    spawnMode: "waypoint",
+    entryDirection: "", // autoBoundary: comma list of compass octants ("N,NE"), empty = any
+    spawnAnchor: "entry", // "entry" = the boundary/spawn fix · "priorFix" = one filed fix earlier
+    priorFixMaxNm: 80, // priorFix farther than this from the entry fix → fall back to entry
     preEntryNm: 10,
     rwyInUse: "",
     fpRouteTemplate: "",

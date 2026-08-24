@@ -61,7 +61,12 @@ export default function DeckApp() {
   const [rampAgent, setRampAgent] = useState<any>({});
   const [rampConfig, setRampConfigState] = useState<any>(null);
   const [pool, setPool] = useState<any[]>([]);
-  const [vatsimCache, setVatsimCache] = useState<any>({ pilots: [], icao: "", mode: "arr", fetchedAt: null });
+  const [vatsimCache, setVatsimCache] = useState<any>({
+    pilots: [],
+    icao: "",
+    mode: "arr",
+    fetchedAt: null,
+  });
   const [simbriefCache, setSimbriefCache] = useState<any>({ ofp: null });
 
   // ---------- deck UI state ----------
@@ -181,7 +186,9 @@ export default function DeckApp() {
           if (b.kind === "sweatbox-pool") {
             if (!pool.length || (b.pool || []).length > pool.length) {
               applyPoolBundle(b);
-              results.push(`pool${b.airac ? ` (AIRAC ${b.airac})` : ""}: ${(b.pool || []).length} entries`);
+              results.push(
+                `pool${b.airac ? ` (AIRAC ${b.airac})` : ""}: ${(b.pool || []).length} entries`,
+              );
             }
           }
         }
@@ -210,7 +217,10 @@ export default function DeckApp() {
     if (b.airac) setNavAirac(b.airac);
   }
   function applyPoolBundle(b: any) {
-    const items = (b.pool || []).map((p: any) => ({ ...p, id: p.id || crypto.randomUUID?.() || String(Math.random()) }));
+    const items = (b.pool || []).map((p: any) => ({
+      ...p,
+      id: p.id || crypto.randomUUID?.() || String(Math.random()),
+    }));
     setPool(items);
     if (b.airac) setPoolAirac(b.airac);
   }
@@ -342,19 +352,34 @@ export default function DeckApp() {
     const used = new Set<string>(ac.map((a: any) => a.callsign).filter(Boolean));
     const fresh: any[] = [];
     const errors: string[] = [];
+    const warnings: string[] = [];
     for (const r of rules) {
-      const { aircraft: gen, error } = generateFromRule(r, waypoints, used, pool);
+      const {
+        aircraft: gen,
+        error,
+        warning,
+      }: any = generateFromRule(r, waypoints, used, pool, copx, sc.boundaryFir);
       if (error) {
         errors.push(`${r.name}: ${error}`);
         continue;
       }
+      if (warning) warnings.push(`${r.name}: ${warning}`);
       fresh.push(...gen);
       ac = [...ac, ...gen];
     }
+    if (warnings.length) toast(warnings.join("<br>"), "warn");
     setScenario({ ...sc, aircraft: sortByStart(ac) });
     setFlashIds(new Set(fresh.map((a) => a.id)));
-    if (errors.length) toast(`${errors.length} rule${errors.length > 1 ? "s" : ""} failed:<br>${errors.join("<br>")}`, "err");
-    else toast(`${rules.length} rule${rules.length > 1 ? "s" : ""} → <b>${fresh.length} aircraft</b> regenerated`, "ok");
+    if (errors.length)
+      toast(
+        `${errors.length} rule${errors.length > 1 ? "s" : ""} failed:<br>${errors.join("<br>")}`,
+        "err",
+      );
+    else
+      toast(
+        `${rules.length} rule${rules.length > 1 ? "s" : ""} → <b>${fresh.length} aircraft</b> regenerated`,
+        "ok",
+      );
     return fresh.length;
   };
 
@@ -456,7 +481,8 @@ export default function DeckApp() {
       if (section === "scenario" || section === "navdata") setSetupSection(section);
       else setSetupSection(navLoaded ? "scenario" : "navdata");
     }
-    if (id === "build" && (section === "rules" || section === "manual" || section === "ground")) setBuildSection(section);
+    if (id === "build" && (section === "rules" || section === "manual" || section === "ground"))
+      setBuildSection(section);
     setTray((cur) => (cur === id ? cur : id));
   };
   const openRuleFromBoard = (ruleId: string) => {
@@ -473,7 +499,10 @@ export default function DeckApp() {
         else if (tray) setTray(null);
         return;
       }
-      if ((e.ctrlKey || e.metaKey) && !(e.target as HTMLElement)?.closest?.("input,select,textarea")) {
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        !(e.target as HTMLElement)?.closest?.("input,select,textarea")
+      ) {
         if (e.key === "e") {
           e.preventDefault();
           document.getElementById("dk-export")?.click();
@@ -518,7 +547,9 @@ export default function DeckApp() {
     close: () => setTray(null),
   };
 
-  const titleFile = tokensSet ? `${scnName}` : `${(scenario.name || "scenario").replace(/[^a-z0-9]+/gi, "_")}.txt`;
+  const titleFile = tokensSet
+    ? `${scnName}`
+    : `${(scenario.name || "scenario").replace(/[^a-z0-9]+/gi, "_")}.txt`;
 
   return (
     <div className="h-screen flex flex-col bg-bg text-tx1 font-sans overflow-hidden">
@@ -588,13 +619,60 @@ export default function DeckApp() {
             airac={navAirac}
             onSetAirac={setNavAirac}
             onApplyNavBundle={applyNavBundle}
-            onParseSctData={(d: any) => { setWaypoints(d.waypoints); setAirports(d.airports); setRunways(d.runways); storage.set(KEYS.waypoints, d.waypoints); storage.set(KEYS.airports, d.airports); storage.set(KEYS.runways, d.runways); const m = { ...navMeta, sctAt: Date.now() }; setNavMeta(m); storage.set(KEYS.navMeta, m); }}
-            onParseEseData={(d: any) => { setPositions(d.positions); setStarsState(d.stars || []); setCopx(d.copx || []); setGates(d.gates || []); storage.set(KEYS.positions, d.positions); storage.set(KEYS.stars, d.stars || []); storage.set(KEYS.copx, d.copx || []); storage.set(KEYS.gates, d.gates || []); const m = { ...navMeta, eseAt: Date.now() }; setNavMeta(m); storage.set(KEYS.navMeta, m); }}
-            onResetSct={() => { setWaypoints([]); setAirports([]); setRunways([]); storage.del(KEYS.waypoints); storage.del(KEYS.airports); storage.del(KEYS.runways); const m = { ...navMeta, sctAt: null }; setNavMeta(m); storage.set(KEYS.navMeta, m); }}
-            onResetEse={() => { setPositions([]); setStarsState([]); setCopx([]); setGates([]); storage.del(KEYS.positions); storage.del(KEYS.stars); storage.del(KEYS.copx); storage.del(KEYS.gates); const m = { ...navMeta, eseAt: null }; setNavMeta(m); storage.set(KEYS.navMeta, m); }}
+            onParseSctData={(d: any) => {
+              setWaypoints(d.waypoints);
+              setAirports(d.airports);
+              setRunways(d.runways);
+              storage.set(KEYS.waypoints, d.waypoints);
+              storage.set(KEYS.airports, d.airports);
+              storage.set(KEYS.runways, d.runways);
+              const m = { ...navMeta, sctAt: Date.now() };
+              setNavMeta(m);
+              storage.set(KEYS.navMeta, m);
+            }}
+            onParseEseData={(d: any) => {
+              setPositions(d.positions);
+              setStarsState(d.stars || []);
+              setCopx(d.copx || []);
+              setGates(d.gates || []);
+              storage.set(KEYS.positions, d.positions);
+              storage.set(KEYS.stars, d.stars || []);
+              storage.set(KEYS.copx, d.copx || []);
+              storage.set(KEYS.gates, d.gates || []);
+              const m = { ...navMeta, eseAt: Date.now() };
+              setNavMeta(m);
+              storage.set(KEYS.navMeta, m);
+            }}
+            onResetSct={() => {
+              setWaypoints([]);
+              setAirports([]);
+              setRunways([]);
+              storage.del(KEYS.waypoints);
+              storage.del(KEYS.airports);
+              storage.del(KEYS.runways);
+              const m = { ...navMeta, sctAt: null };
+              setNavMeta(m);
+              storage.set(KEYS.navMeta, m);
+            }}
+            onResetEse={() => {
+              setPositions([]);
+              setStarsState([]);
+              setCopx([]);
+              setGates([]);
+              storage.del(KEYS.positions);
+              storage.del(KEYS.stars);
+              storage.del(KEYS.copx);
+              storage.del(KEYS.gates);
+              const m = { ...navMeta, eseAt: null };
+              setNavMeta(m);
+              storage.set(KEYS.navMeta, m);
+            }}
             onLoadRampAgent={(p: any) => setRampAgent((prev: any) => ({ ...prev, [p.icao]: p }))}
             onLoadRampConfig={setRampConfigState}
-            onResetRampAgent={() => { setRampAgent({}); setRampConfigState(null); }}
+            onResetRampAgent={() => {
+              setRampAgent({});
+              setRampConfigState(null);
+            }}
           />
           <FplnPoolTray
             open={tray === "pool"}
@@ -603,12 +681,23 @@ export default function DeckApp() {
             setSimbriefCache={setSimbriefCache}
             vatsimCache={vatsimCache}
             setVatsimCache={setVatsimCache}
-            onAddToPool={(items: any[], source: string) => { setPool((prev) => addToPool(prev, items, source)); }}
-            onDeleteFromPool={(ids: string[]) => setPool((prev) => prev.filter((p) => !ids.includes(p.id)))}
+            onAddToPool={(items: any[], source: string) => {
+              setPool((prev) => addToPool(prev, items, source));
+            }}
+            onDeleteFromPool={(ids: string[]) =>
+              setPool((prev) => prev.filter((p) => !ids.includes(p.id)))
+            }
             poolAirac={poolAirac}
             onSetPoolAirac={setPoolAirac}
             onImportPool={applyPoolBundle}
-            onAddToBoard={(entries: any[]) => { const acs = entries.map((e) => poolToAc(e, false)); const list = sortByStart([...scenario.aircraft, ...acs]); setScenario({ ...scenario, aircraft: list }); setFlashIds(new Set(acs.map((a) => a.id))); setTray(null); toast(`${acs.length} aircraft → board`, "ok"); }}
+            onAddToBoard={(entries: any[]) => {
+              const acs = entries.map((e) => poolToAc(e, false));
+              const list = sortByStart([...scenario.aircraft, ...acs]);
+              setScenario({ ...scenario, aircraft: list });
+              setFlashIds(new Set(acs.map((a) => a.id)));
+              setTray(null);
+              toast(`${acs.length} aircraft → board`, "ok");
+            }}
           />
           <BuildTray
             open={tray === "build"}
@@ -618,10 +707,20 @@ export default function DeckApp() {
             focusRuleId={rulesFocusId}
             clearFocus={() => setRulesFocusId(null)}
             rating={rating}
-            onAddAc={() => { setTray(null); setEditingAc("new"); }}
+            onAddAc={() => {
+              setTray(null);
+              setEditingAc("new");
+            }}
             onRunRules={runRules}
-            estRuleAc={(scenario.rules || []).reduce((s: number, r: any) => s + (Math.floor((+r.duration || 0) / Math.max(1, 60 / (+r.rate || 1))) + 1 || 0), 0)}
-            onGroundGenerated={(count: number) => { setTray(null); toast(`${count} ground aircraft spawned`, "ok"); }}
+            estRuleAc={(scenario.rules || []).reduce(
+              (s: number, r: any) =>
+                s + (Math.floor((+r.duration || 0) / Math.max(1, 60 / (+r.rate || 1))) + 1 || 0),
+              0,
+            )}
+            onGroundGenerated={(count: number) => {
+              setTray(null);
+              toast(`${count} ground aircraft spawned`, "ok");
+            }}
           />
         </div>
 

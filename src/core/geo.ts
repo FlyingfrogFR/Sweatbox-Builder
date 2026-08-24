@@ -1,4 +1,7 @@
-// geo.ts — coordinate + bearing helpers, copied VERBATIM from the rc3 shell.
+// geo.ts — coordinate + bearing helpers, copied VERBATIM from the rc3 shell
+// (distanceNm and the preEntryOffset airway-walk are post-rc3 additions).
+
+import { nearestResolvableIdx } from "./route";
 
 export function parseDMS(str: string) {
   const m = str.match(
@@ -37,8 +40,19 @@ export function destinationPoint(lat: number, lon: number, brg: number, nm: numb
     θ = (brg * Math.PI) / 180;
   const φ2 = Math.asin(Math.sin(φ1) * Math.cos(d) + Math.cos(φ1) * Math.sin(d) * Math.cos(θ));
   const λ2 =
-    λ1 + Math.atan2(Math.sin(θ) * Math.sin(d) * Math.cos(φ1), Math.cos(d) - Math.sin(φ1) * Math.sin(φ2));
-  return { lat: (φ2 * 180) / Math.PI, lon: ((λ2 * 180) / Math.PI + 540) % 360 - 180 };
+    λ1 +
+    Math.atan2(Math.sin(θ) * Math.sin(d) * Math.cos(φ1), Math.cos(d) - Math.sin(φ1) * Math.sin(φ2));
+  return { lat: (φ2 * 180) / Math.PI, lon: (((λ2 * 180) / Math.PI + 540) % 360) - 180 };
+}
+
+export function distanceNm(la1: number, lo1: number, la2: number, lo2: number) {
+  const R = 3440.065,
+    φ1 = (la1 * Math.PI) / 180,
+    φ2 = (la2 * Math.PI) / 180,
+    Δφ = ((la2 - la1) * Math.PI) / 180,
+    Δλ = ((lo2 - lo1) * Math.PI) / 180;
+  const a = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 // preEntryOffset: place the aircraft `nm` NM upstream from `wptName`.
@@ -63,23 +77,30 @@ export function preEntryOffset(
       .filter(Boolean)
       .map((t) => t.split("/")[0].toUpperCase());
   const target = wptName.toUpperCase();
-  let brg: number | undefined,
-    fallback: number | undefined;
+  let brg: number | undefined, fallback: number | undefined;
   for (const route of [simRoute, fpRoute, starRoute]) {
     if (!route) continue;
     const toks = tok(route);
     const idx = toks.findIndex((t) => t === target);
     if (idx < 0) continue;
+    // Walk past airway designators (UN858, UT191…) — real filed routes
+    // interleave them with fixes and they never resolve in navdata. When the
+    // immediate neighbour resolves (all golden fixtures) the walk lands on the
+    // same token, so legacy output is byte-identical.
     if (idx > 0) {
-      const p = wpts.find((w) => w.name === toks[idx - 1]);
-      if (p) {
+      const pi = nearestResolvableIdx(toks, idx - 1, -1, wpts);
+      if (pi >= 0) {
+        const p = wpts.find((w) => w.name === toks[pi]);
         brg = bearingBetween(p.lat, p.lon, wp.lat, wp.lon);
         break;
       }
     }
     if (fallback === undefined && idx < toks.length - 1) {
-      const n = wpts.find((w) => w.name === toks[idx + 1]);
-      if (n) fallback = bearingBetween(wp.lat, wp.lon, n.lat, n.lon);
+      const ni = nearestResolvableIdx(toks, idx + 1, 1, wpts);
+      if (ni >= 0) {
+        const n = wpts.find((w) => w.name === toks[ni]);
+        fallback = bearingBetween(wp.lat, wp.lon, n.lat, n.lon);
+      }
     }
   }
   if (brg === undefined) brg = fallback;

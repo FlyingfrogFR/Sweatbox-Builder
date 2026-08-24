@@ -12,12 +12,12 @@ import { RuleEditor } from "./s3";
 const PLANE_D =
   "M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z";
 
-function produce(rule: any, waypoints: any[], pool: any[]) {
+function produce(rule: any, waypoints: any[], pool: any[], copx?: any[], boundaryFir?: string) {
   try {
-    const r = generateFromRule(rule, waypoints, new Set<string>(), pool);
-    return { aircraft: r.aircraft || [], error: r.error || null };
+    const r: any = generateFromRule(rule, waypoints, new Set<string>(), pool, copx, boundaryFir);
+    return { aircraft: r.aircraft || [], error: r.error || null, warning: r.warning || null };
   } catch (e: any) {
-    return { aircraft: [], error: String(e?.message || e) };
+    return { aircraft: [], error: String(e?.message || e), warning: null };
   }
 }
 
@@ -52,7 +52,17 @@ function Timeline({ times, color, maxT }: { times: number[]; color: string; maxT
   );
 }
 
-export function RuleWorkbench({ mode, scenario, onChange, waypoints, pool, stars, copx, runways, FullEditor }: any) {
+export function RuleWorkbench({
+  mode,
+  scenario,
+  onChange,
+  waypoints,
+  pool,
+  stars,
+  copx,
+  runways,
+  FullEditor,
+}: any) {
   const Editor = FullEditor || RuleEditor;
   const allRules = scenario.rules || [];
   const rules = allRules.filter((r: any) => r.mode === mode);
@@ -141,8 +151,11 @@ export function RuleWorkbench({ mode, scenario, onChange, waypoints, pool, stars
   // catches up a frame later with identical results.
   const deferredDraft = useDeferredValue(draft);
   const preview = useMemo(
-    () => (deferredDraft ? produce(deferredDraft, waypoints, pool) : { aircraft: [], error: null }),
-    [deferredDraft, waypoints, pool],
+    () =>
+      deferredDraft
+        ? produce(deferredDraft, waypoints, pool, copx, scenario.boundaryFir)
+        : { aircraft: [], error: null, warning: null },
+    [deferredDraft, waypoints, pool, copx, scenario.boundaryFir],
   );
 
   // Session overview: produce every saved rule of this mode, split by direction.
@@ -156,15 +169,36 @@ export function RuleWorkbench({ mode, scenario, onChange, waypoints, pool, stars
     let maxT = 0;
     const counts: Record<string, number> = {};
     for (const r of rules) {
-      const { aircraft } = produce(r, waypoints, pool);
+      const { aircraft } = produce(r, waypoints, pool, copx, scenario.boundaryFir);
       counts[r.id] = aircraft.length;
       maxT = Math.max(maxT, (+r.startOffset || 0) + (+r.duration || 0));
       for (const a of aircraft) (a.isDeparture ? dep : arr).push(+a.start || 0);
     }
     return { arr, dep, maxT: maxT || 45, counts, total: arr.length + dep.length };
-  }, [rulesKey, waypoints, pool]);
+  }, [rulesKey, waypoints, pool, copx, scenario.boundaryFir]);
 
   const ticks = [0, 0.3333, 0.6666, 1].map((f) => Math.round(session.maxT * f));
+
+  // C1 only: bind the SCENARIO (not the rules — rulesets stay FIR-agnostic and
+  // portable) to a FIR. Options = unique destination FIRs of the parsed
+  // FIR_COPX entries; auto-boundary rules spawn each aircraft at the gate
+  // where its own route enters this FIR.
+  const firs = useMemo(() => {
+    const s = new Set<string>();
+    for (const c of copx || []) if (c.kind === "fir" && c.toFir) s.add(c.toFir);
+    return [...s].sort();
+  }, [copx]);
+  const gateCount = useMemo(
+    () =>
+      scenario.boundaryFir
+        ? new Set(
+            (copx || [])
+              .filter((c: any) => c.kind === "fir" && c.toFir === scenario.boundaryFir)
+              .map((c: any) => c.fix),
+          ).size
+        : 0,
+    [copx, scenario.boundaryFir],
+  );
 
   const lb = "block text-[9.5px] tracking-[0.1em] text-tx7 mb-[5px]";
   const ip =
@@ -176,18 +210,64 @@ export function RuleWorkbench({ mode, scenario, onChange, waypoints, pool, stars
       <div className="px-[18px] py-[13px] bg-panel border-b border-bd1">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2.5">
-            <span className="text-[10.5px] font-semibold tracking-[0.16em] text-tx6">SESSION OVERVIEW</span>
+            <span className="text-[10.5px] font-semibold tracking-[0.16em] text-tx6">
+              SESSION OVERVIEW
+            </span>
             <span className="font-mono text-[10.5px] text-tx8">{mode} rules combined</span>
+            {mode === "C1" &&
+              (firs.length ? (
+                <span className="flex items-center gap-1.5 ml-2">
+                  <span className="text-[9.5px] font-semibold tracking-[0.12em] text-tx7">
+                    SCENARIO FIR
+                  </span>
+                  <select
+                    value={scenario.boundaryFir || ""}
+                    onChange={(e) =>
+                      onChange({ ...scenarioRef.current, boundaryFir: e.target.value })
+                    }
+                    className="bg-inset border border-bd3 rounded-md px-1.5 py-1 text-[11px] font-mono text-tx1 focus:border-cy-fg focus:outline-none"
+                    title="FIR this session is bound to — auto-boundary rules spawn each aircraft at the gate where its own route enters this FIR"
+                  >
+                    <option value="">— select —</option>
+                    {firs.map((f) => (
+                      <option key={f} value={f}>
+                        {f}
+                      </option>
+                    ))}
+                  </select>
+                  {scenario.boundaryFir && (
+                    <span className="font-mono text-[10.5px] text-tx7">
+                      · {gateCount} entry gates
+                    </span>
+                  )}
+                </span>
+              ) : (
+                <span className="ml-2 text-[10.5px] text-tx7">
+                  load an ESE with FIR_COPX to enable auto-boundary spawns
+                </span>
+              ))}
           </div>
           <div className="flex items-center gap-[15px] font-mono text-[11px] text-tx5">
             <span className="flex items-center gap-1.5 text-arr">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style={{ transform: "rotate(90deg)" }}>
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                style={{ transform: "rotate(90deg)" }}
+              >
                 <path d={PLANE_D} />
               </svg>
               ARR {session.arr.length}
             </span>
             <span className="flex items-center gap-1.5 text-dep">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style={{ transform: "rotate(90deg)" }}>
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                style={{ transform: "rotate(90deg)" }}
+              >
                 <path d={PLANE_D} />
               </svg>
               DEP {session.dep.length}
@@ -213,7 +293,10 @@ export function RuleWorkbench({ mode, scenario, onChange, waypoints, pool, stars
                     ? { left: 0 }
                     : i === ticks.length - 1
                       ? { right: 0 }
-                      : { left: `${(i / (ticks.length - 1)) * 100}%`, transform: "translateX(-50%)" }
+                      : {
+                          left: `${(i / (ticks.length - 1)) * 100}%`,
+                          transform: "translateX(-50%)",
+                        }
                 }
               >
                 T+{tk}
@@ -228,7 +311,9 @@ export function RuleWorkbench({ mode, scenario, onChange, waypoints, pool, stars
         {/* LIST */}
         <div className="border-r border-bd1 flex flex-col bg-rail min-h-0">
           <div className="flex items-center justify-between px-4 pt-[14px] pb-[11px]">
-            <span className="text-[10.5px] font-semibold tracking-[0.16em] text-tx6">RULES · {rules.length}</span>
+            <span className="text-[10.5px] font-semibold tracking-[0.16em] text-tx6">
+              RULES · {rules.length}
+            </span>
             <button
               onClick={newRule}
               className="flex items-center gap-1.5 text-[11px] text-tx3 bg-btn2 border border-bd4 hover:border-bdh rounded-md px-2.5 py-1.5"
@@ -244,22 +329,33 @@ export function RuleWorkbench({ mode, scenario, onChange, waypoints, pool, stars
               const badge = r.isDeparture
                 ? "text-dep bg-[rgb(111_158_239_/_0.13)]"
                 : "text-arr bg-[rgb(232_116_110_/_0.13)]";
-              const cadence = r.schedulingMode === "separation" ? `${r.nmSeparation || 10}NM` : `${r.rate}/hr`;
+              const cadence =
+                r.schedulingMode === "separation" ? `${r.nmSeparation || 10}NM` : `${r.rate}/hr`;
               return (
                 <button
                   key={r.id}
                   onClick={() => setSelectedId(r.id)}
                   className={`relative text-left rounded-[9px] px-3.5 py-3 ${
-                    sel ? "bg-cy-soft border border-cy-bd" : "bg-panel border border-bd2 hover:border-bd4"
+                    sel
+                      ? "bg-cy-soft border border-cy-bd"
+                      : "bg-panel border border-bd2 hover:border-bd4"
                   }`}
                 >
-                  {sel && <span className="absolute left-0 top-2.5 bottom-2.5 w-[3px] rounded-[2px] bg-cy-fg" />}
+                  {sel && (
+                    <span className="absolute left-0 top-2.5 bottom-2.5 w-[3px] rounded-[2px] bg-cy-fg" />
+                  )}
                   <div className="flex items-center gap-2 mb-[9px]">
                     <span className={dir}>
                       <Icon name="zap" size={13} />
                     </span>
-                    <span className={`text-[13px] font-semibold ${sel ? "text-tx1" : "text-tx2"} truncate`}>{r.name}</span>
-                    <span className={`ml-auto text-[10px] font-semibold rounded-[5px] px-[7px] py-0.5 ${badge}`}>
+                    <span
+                      className={`text-[13px] font-semibold ${sel ? "text-tx1" : "text-tx2"} truncate`}
+                    >
+                      {r.name}
+                    </span>
+                    <span
+                      className={`ml-auto text-[10px] font-semibold rounded-[5px] px-[7px] py-0.5 ${badge}`}
+                    >
                       {r.isDeparture ? "DEP" : "ARR"}
                     </span>
                   </div>
@@ -267,7 +363,9 @@ export function RuleWorkbench({ mode, scenario, onChange, waypoints, pool, stars
                     <span>
                       {r.rwyInUse || r.runway || "—"} · {cadence} · {r.duration}m
                     </span>
-                    <span className={sel ? "text-cy-fg" : "text-tx3"}>{session.counts[r.id] ?? 0} ac</span>
+                    <span className={sel ? "text-cy-fg" : "text-tx3"}>
+                      {session.counts[r.id] ?? 0} ac
+                    </span>
                   </div>
                 </button>
               );
@@ -285,7 +383,9 @@ export function RuleWorkbench({ mode, scenario, onChange, waypoints, pool, stars
             300ms debounce. */}
         <div className="overflow-auto p-[20px_22px] dotgrid min-h-0" onBlur={flushCommit}>
           {!draft ? (
-            <div className="text-[13px] text-tx7 text-center py-16">Select or create a rule to edit it.</div>
+            <div className="text-[13px] text-tx7 text-center py-16">
+              Select or create a rule to edit it.
+            </div>
           ) : (
             <>
               <div className="flex items-center gap-[11px] mb-4">
@@ -305,10 +405,16 @@ export function RuleWorkbench({ mode, scenario, onChange, waypoints, pool, stars
                   {draft.isDeparture ? "DEP" : "ARR"}
                 </span>
                 <div className="ml-auto flex gap-2">
-                  <button onClick={() => duplicate(selected)} className="text-[11.5px] text-tx3 bg-btn2 border border-bd4 hover:border-bdh rounded-md px-3 py-[7px]">
+                  <button
+                    onClick={() => duplicate(selected)}
+                    className="text-[11.5px] text-tx3 bg-btn2 border border-bd4 hover:border-bdh rounded-md px-3 py-[7px]"
+                  >
                     Duplicate
                   </button>
-                  <button onClick={() => remove(draft.id)} className="text-[11.5px] text-rd-fg bg-btn2 border border-bd4 hover:border-bdh rounded-md px-3 py-[7px]">
+                  <button
+                    onClick={() => remove(draft.id)}
+                    className="text-[11.5px] text-rd-fg bg-btn2 border border-bd4 hover:border-bdh rounded-md px-3 py-[7px]"
+                  >
                     Delete
                   </button>
                 </div>
@@ -318,11 +424,19 @@ export function RuleWorkbench({ mode, scenario, onChange, waypoints, pool, stars
               <div className="grid grid-cols-3 gap-3 mb-4">
                 <div>
                   <label className={lb}>RULE NAME</label>
-                  <input className={ip} value={draft.name} onChange={(e) => set("name", e.target.value)} />
+                  <input
+                    className={ip}
+                    value={draft.name}
+                    onChange={(e) => set("name", e.target.value)}
+                  />
                 </div>
                 <div>
                   <label className={lb}>ENTRY FIX</label>
-                  <input className={ip} value={draft.spawnWaypoint} onChange={(e) => set("spawnWaypoint", e.target.value.toUpperCase())} />
+                  <input
+                    className={ip}
+                    value={draft.spawnWaypoint}
+                    onChange={(e) => set("spawnWaypoint", e.target.value.toUpperCase())}
+                  />
                 </div>
                 <div>
                   <label className={lb}>HOME ICAO</label>
@@ -336,15 +450,29 @@ export function RuleWorkbench({ mode, scenario, onChange, waypoints, pool, stars
                 </div>
                 <div>
                   <label className={lb}>RUNWAY</label>
-                  <input className={ip} value={draft.rwyInUse} onChange={(e) => set("rwyInUse", e.target.value.toUpperCase())} />
+                  <input
+                    className={ip}
+                    value={draft.rwyInUse}
+                    onChange={(e) => set("rwyInUse", e.target.value.toUpperCase())}
+                  />
                 </div>
                 <div>
                   <label className={lb}>RATE /HR</label>
-                  <input type="number" className={ip} value={draft.rate} onChange={(e) => set("rate", +e.target.value)} />
+                  <input
+                    type="number"
+                    className={ip}
+                    value={draft.rate}
+                    onChange={(e) => set("rate", +e.target.value)}
+                  />
                 </div>
                 <div>
                   <label className={lb}>DURATION (min)</label>
-                  <input type="number" className={ip} value={draft.duration} onChange={(e) => set("duration", +e.target.value)} />
+                  <input
+                    type="number"
+                    className={ip}
+                    value={draft.duration}
+                    onChange={(e) => set("duration", +e.target.value)}
+                  />
                 </div>
                 <div>
                   <label className={lb}>TIMING</label>
@@ -353,7 +481,9 @@ export function RuleWorkbench({ mode, scenario, onChange, waypoints, pool, stars
                       onClick={() => set("timingMode", "regular", true)}
                       title="Evenly spaced across the window"
                       className={`flex-1 text-[10.5px] font-semibold px-2 py-2 rounded-md border ${
-                        draft.timingMode !== "random" ? "bg-cy-soft border-cy-bd text-cy-fg" : "bg-inset border-bd3 text-tx5 hover:text-tx3"
+                        draft.timingMode !== "random"
+                          ? "bg-cy-soft border-cy-bd text-cy-fg"
+                          : "bg-inset border-bd3 text-tx5 hover:text-tx3"
                       }`}
                     >
                       REGULAR
@@ -362,7 +492,9 @@ export function RuleWorkbench({ mode, scenario, onChange, waypoints, pool, stars
                       onClick={() => set("timingMode", "random", true)}
                       title="Same aircraft count, random spawn times — never under 2 min apart"
                       className={`flex-1 text-[10.5px] font-semibold px-2 py-2 rounded-md border ${
-                        draft.timingMode === "random" ? "bg-cy-soft border-cy-bd text-cy-fg" : "bg-inset border-bd3 text-tx5 hover:text-tx3"
+                        draft.timingMode === "random"
+                          ? "bg-cy-soft border-cy-bd text-cy-fg"
+                          : "bg-inset border-bd3 text-tx5 hover:text-tx3"
                       }`}
                     >
                       RANDOM ≥2′
@@ -371,17 +503,28 @@ export function RuleWorkbench({ mode, scenario, onChange, waypoints, pool, stars
                 </div>
                 <div>
                   <label className={lb}>SEPARATION (NM)</label>
-                  <input type="number" className={ip} value={draft.nmSeparation} onChange={(e) => set("nmSeparation", +e.target.value)} />
+                  <input
+                    type="number"
+                    className={ip}
+                    value={draft.nmSeparation}
+                    onChange={(e) => set("nmSeparation", +e.target.value)}
+                  />
                 </div>
                 <div className="col-span-3">
                   <label className={lb}>TYPES</label>
-                  <input className={ip} value={draft.typePool} onChange={(e) => set("typePool", e.target.value)} />
+                  <input
+                    className={ip}
+                    value={draft.typePool}
+                    onChange={(e) => set("typePool", e.target.value)}
+                  />
                 </div>
               </div>
 
               {/* produced aircraft */}
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] font-semibold tracking-[0.14em] text-tx6">PRODUCED AIRCRAFT</span>
+                <span className="text-[10px] font-semibold tracking-[0.14em] text-tx6">
+                  PRODUCED AIRCRAFT
+                </span>
                 <button
                   onClick={() => {
                     flushCommit();
@@ -393,6 +536,11 @@ export function RuleWorkbench({ mode, scenario, onChange, waypoints, pool, stars
                   Edit all fields →
                 </button>
               </div>
+              {preview.warning && !preview.error && (
+                <div className="text-[11px] text-am-fg bg-am-bg border border-am-bd rounded-lg px-3 py-2 font-mono mb-2">
+                  {preview.warning}
+                </div>
+              )}
               {preview.error ? (
                 <div className="text-[11.5px] text-am-fg bg-am-bg border border-am-bd rounded-lg p-3 font-mono">
                   {preview.error}
@@ -422,7 +570,9 @@ export function RuleWorkbench({ mode, scenario, onChange, waypoints, pool, stars
                     </div>
                   )}
                   {!preview.aircraft.length && (
-                    <div className="px-[13px] py-3 text-center text-[11.5px] text-tx7">No aircraft produced</div>
+                    <div className="px-[13px] py-3 text-center text-[11.5px] text-tx7">
+                      No aircraft produced
+                    </div>
                   )}
                 </div>
               )}
@@ -464,9 +614,9 @@ export function RuleWorkbench({ mode, scenario, onChange, waypoints, pool, stars
           scenarioIls={scenario.ils}
           onSave={saveFull}
           onCancel={() => {
-              editingFullRef.current = null;
-              setEditingFull(null);
-            }}
+            editingFullRef.current = null;
+            setEditingFull(null);
+          }}
         />
       ) : null}
     </div>

@@ -9,6 +9,7 @@
 // optional REQALT:<wpt>:<alt>, and optional INITIALPSEUDOPILOT.
 
 import { preEntryOffset, bearingBetween } from "./geo";
+import { nearestResolvableIdx } from "./route";
 
 export function generateSweatbox(s: any, waypoints: any[] = [], opts: any = {}) {
   const initPP = (opts.initPseudoPilot || "").trim();
@@ -28,11 +29,13 @@ export function generateSweatbox(s: any, waypoints: any[] = [], opts: any = {}) 
   for (const a of s.aircraft) {
     let sLat = +a.lat,
       sLon = +a.lon;
+    let offsetApplied = false;
     if ((+a.preEntryNm || 0) > 0 && a.spawnWaypoint && waypoints.length > 0) {
       const off = preEntryOffset(a.spawnWaypoint, a.simRoute, +a.preEntryNm, waypoints, a.fpRoute);
       if (off) {
         sLat = off.lat;
         sLon = off.lon;
+        offsetApplied = true;
       }
     }
     // Initial heading — encoded into @N's 9th field per EuroScope's
@@ -48,30 +51,62 @@ export function generateSweatbox(s: any, waypoints: any[] = [], opts: any = {}) 
     // encoded heading: gs of 0–280 decodes to 0°–26°, which is exactly
     // the "every aircraft spawns pointing north" symptom we started from.
     //
-    // Heading computation:
-    // - Primary: bearing from the (post-offset) spawn position to the
-    //   immediate next route token. Walking further when it's not in
-    //   navdata can pick a far waypoint in a misleading direction.
-    // - Departure fallback: runway heading × 10 when the next-token
-    //   lookup fails. SIDs typically hold runway heading on the first
-    //   leg, so this beats defaulting to 0.
+    // Heading computation, in priority order:
+    // - Primary (parity-locked): bearing from the (post-offset) spawn position
+    //   to the immediate next route token — unchanged from rc3 so the golden
+    //   fixtures (pure fix chains) serialize byte-identically.
+    // - When the immediate token doesn't resolve (real filed routes interleave
+    //   airway designators like UN858 that are never in navdata):
+    //   1. If a pre-entry offset was applied, target the spawn waypoint itself —
+    //      the aircraft sits on its inbound leg, so this IS the leg heading.
+    //      (The old "walking can pick a misleading direction" argument no
+    //      longer holds once the offset places the spawn on the correct leg.)
+    //   2. Otherwise walk forward past airway tokens to the nearest
+    //      resolvable fix.
+    //   3. Departure fallback: runway heading × 10 (SIDs typically hold runway
+    //      heading on the first leg).
+    //   4. Bearing toward the spawn waypoint (covers auto-boundary last-resort
+    //      radial spawns; degenerates to the old 0 when sitting on the fix).
     let hdg: number | null = null;
+    let toks: string[] = [];
+    const spawnWpt = (a.spawnWaypoint || "").toUpperCase();
     if (a.simRoute && waypoints.length > 0) {
-      const toks = String(a.simRoute)
+      toks = String(a.simRoute)
         .trim()
         .split(/\s+/)
         .filter(Boolean)
         .map((t) => t.split("/")[0].toUpperCase());
-      const spawnWpt = (a.spawnWaypoint || "").toUpperCase();
       const targetIdx = toks[0] === spawnWpt ? 1 : 0;
       if (targetIdx < toks.length) {
         const target = waypoints.find((w) => w.name === toks[targetIdx]);
         if (target) hdg = Math.round(bearingBetween(sLat, sLon, target.lat, target.lon));
       }
     }
+    // The airway-aware fallbacks only run for aircraft that carry the
+    // post-rc3 spawnMode marker (rules that went through the app's
+    // create/import paths). Legacy aircraft — including one golden fixture
+    // whose oracle output literally encodes the north-pointing bug — keep the
+    // rc3 chain byte-for-byte: primary → runway → 0.
+    const newSpawn = a.spawnMode !== undefined;
+    const spawnWp =
+      spawnWpt && waypoints.length > 0 ? waypoints.find((w) => w.name === spawnWpt) : null;
+    if (hdg === null && newSpawn && offsetApplied && spawnWp) {
+      hdg = Math.round(bearingBetween(sLat, sLon, spawnWp.lat, spawnWp.lon));
+    }
+    if (hdg === null && newSpawn && toks.length > 0) {
+      const from = toks[0] === spawnWpt ? 1 : 0;
+      const ni = nearestResolvableIdx(toks, from, 1, waypoints);
+      if (ni >= 0) {
+        const target = waypoints.find((w) => w.name === toks[ni]);
+        if (target) hdg = Math.round(bearingBetween(sLat, sLon, target.lat, target.lon));
+      }
+    }
     if (hdg === null && a.isDeparture && a.runway) {
       const m = String(a.runway).match(/^(\d{1,2})/);
       if (m) hdg = +m[1] * 10;
+    }
+    if (hdg === null && newSpawn && spawnWp) {
+      hdg = Math.round(bearingBetween(sLat, sLon, spawnWp.lat, spawnWp.lon));
     }
     if (hdg === null) hdg = 0;
     const encodedHdg = Math.round(hdg * 2.88) * 4;

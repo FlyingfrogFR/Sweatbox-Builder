@@ -1,4 +1,21 @@
 // route.ts — route/string helpers, copied VERBATIM from the rc3 shell.
+// (nearestResolvableIdx is a post-rc3 addition: real filed routes interleave
+// fixes with airway designators that never resolve in navdata, so neighbour
+// lookups must walk past them.)
+
+// First token at or beyond `from` (stepping by `dir` = +1 / -1) that resolves
+// in `wpts`. Returns its index, or -1.
+export function nearestResolvableIdx(
+  toks: string[],
+  from: number,
+  dir: 1 | -1,
+  wpts: any[],
+): number {
+  for (let i = from; i >= 0 && i < toks.length; i += dir) {
+    if (wpts.some((w) => w.name === toks[i])) return i;
+  }
+  return -1;
+}
 
 export function trimRoute(route: string, wpt: string) {
   if (!route || !wpt) return route || "";
@@ -8,7 +25,10 @@ export function trimRoute(route: string, wpt: string) {
 }
 
 export function pickPool(csv: string, i: number) {
-  const a = (csv || "").split(",").map((s) => s.trim()).filter(Boolean);
+  const a = (csv || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
   return a.length ? a[i % a.length] : "";
 }
 

@@ -16,7 +16,13 @@ import { generateFromRule } from "../src/core/generateFromRule";
 import { emptyRule } from "../src/core/model";
 import { machToTas } from "../src/core/speed";
 
-const WPTS = [{ name: "RENSA", lat: 49.6, lon: 3.4, type: "FIXES" }];
+// OKABO gives every route a resolvable downstream fix — app-shaped rules
+// (spawnMode present) enforce the never-on-fix invariant and exclude aircraft
+// whose inbound leg can't be derived at all.
+const WPTS = [
+  { name: "RENSA", lat: 49.6, lon: 3.4, type: "FIXES" },
+  { name: "OKABO", lat: 49.05, lon: 2.7, type: "FIXES" },
+];
 
 const POOL = [
   {
@@ -24,7 +30,7 @@ const POOL = [
     type: "B738",
     origin: "EHAM",
     dest: "LIRF",
-    route: "EHAM RENSA LIRF",
+    route: "EHAM RENSA OKABO LIRF",
     cruiseFL: 340,
     squawk: "1000",
   },
@@ -33,7 +39,7 @@ const POOL = [
     type: "A320",
     origin: "EGLL",
     dest: "LIRF",
-    route: "EGLL RENSA LIRF",
+    route: "EGLL RENSA OKABO LIRF",
     cruiseFL: 360,
     squawk: "1000",
   },
@@ -42,7 +48,7 @@ const POOL = [
     type: "A359",
     origin: "EDDF",
     dest: "LIRF",
-    route: "EDDF RENSA LIRF",
+    route: "EDDF RENSA OKABO LIRF",
     cruiseFL: 380,
     squawk: "1000",
   },
@@ -121,6 +127,7 @@ describe("P2 — blank homeIcao draws both ends from pools (overflight)", () => 
     spawnWaypoint: "RENSA",
     originPool: "EGLL",
     destPool: "LIRF",
+    fpRouteTemplate: "EGLL RENSA OKABO LIRF",
     rate: 8,
     duration: 30,
     ...over,
