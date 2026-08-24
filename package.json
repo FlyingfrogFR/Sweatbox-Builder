@@ -15,7 +15,8 @@
     "test:watch": "vitest",
     "fixtures": "node tests/oracle/buildGolden.mjs",
     "lint": "eslint . --ext .ts,.tsx,.mjs",
-    "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"tests/**/*.{ts,mjs}\""
+    "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"tests/**/*.{ts,mjs}\"",
+    "check:version": "node scripts/check-version-sync.mjs"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.2.7",

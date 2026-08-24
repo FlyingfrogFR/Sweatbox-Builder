@@ -26,6 +26,7 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      - run: node scripts/check-version-sync.mjs
       - run: npx tsc --noEmit
       - run: npm run lint
       - run: npm test
