@@ -323,8 +323,9 @@ export function RuleEditor({
                   <option value="dep">Departure</option>
                 </select>
               </div>
-              {/* C1 enroute rules never use a runway — approach-only field */}
-              {r.mode !== "C1" && (
+              {/* C1 enroute rules never use a runway — approach-only field,
+                  except when arrivals are being joined onto a STAR */}
+              {(r.mode !== "C1" || r.appendStar) && (
                 <div className="col-span-3">
                   <label className={lb}>Runway in use</label>
                   {rwyOptions.length > 0 ? (
@@ -468,6 +469,23 @@ export function RuleEditor({
                         </div>
                       )}
                     </div>
+                  </div>
+                )}
+                {!r.isDeparture && (
+                  <div>
+                    <label className={lb}>Arrival routing</label>
+                    <button
+                      onClick={() => update("appendStar", !r.appendStar)}
+                      className={`px-3 py-1.5 rounded text-xs font-medium ${r.appendStar ? "bg-sky-700 text-white" : "bg-slate-800 text-slate-400 hover:text-slate-200"}`}
+                    >
+                      Continue on STAR to runway
+                    </button>
+                    {r.appendStar && (
+                      <p className="text-xs text-slate-500 mt-1">
+                        appends the ESE STAR after its initial fix — the filed route is not
+                        truncated{!r.rwyInUse && " (set a runway in use above)"}
+                      </p>
+                    )}
                   </div>
                 )}
                 {!autoB && (

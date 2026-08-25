@@ -574,8 +574,9 @@ export function RuleEditorSection({
             </div>
 
             <div className="flex flex-wrap items-start gap-3">
-              {/* C1 enroute rules never use a runway — approach-only field */}
-              {d.mode !== "C1" && (
+              {/* C1 enroute rules never use a runway — approach-only field,
+                  except when arrivals are being joined onto a STAR */}
+              {(d.mode !== "C1" || d.appendStar) && (
                 <div>
                   <label className={LABEL}>RUNWAY IN USE</label>
                   <div className="flex gap-1.5">
@@ -693,6 +694,19 @@ export function RuleEditorSection({
                       </Latch>
                     </div>
                   </div>
+                  {!d.isDeparture && (
+                    <div>
+                      <label className={LABEL}>ARRIVAL ROUTING</label>
+                      <Latch
+                        size="md"
+                        on={!!d.appendStar}
+                        onClick={() => up("appendStar", !d.appendStar)}
+                        title="Continue the sim route onto the ESE STAR for the runway in use — the filed route is kept up to where it meets the STAR"
+                      >
+                        CONTINUE ON STAR
+                      </Latch>
+                    </div>
+                  )}
                   {!autoB && (
                     <div className="flex-1 min-w-[160px]">
                       <label className={LABEL}>ROUTE MUST CONTAIN (CSV)</label>
@@ -705,6 +719,15 @@ export function RuleEditorSection({
                     </div>
                   )}
                 </div>
+                {d.appendStar && !d.isDeparture && (
+                  <p className="text-[10.5px] text-tx7 leading-snug">
+                    STAR join: the sim route follows the filed route to the first fix that opens a{" "}
+                    <b className="font-mono text-tx4">{d.rwyInUse || "—"}</b> STAR into each
+                    aircraft's destination, then continues down the STAR to the runway. The filed
+                    route is not truncated and FP RTE is untouched.
+                    {!d.rwyInUse && " Set a runway in use above."}
+                  </p>
+                )}
                 {autoB ? (
                   <>
                     <p className="text-[10.5px] text-tx7 leading-snug">

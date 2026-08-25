@@ -646,3 +646,138 @@ describe("P9 — level bands (v5): FIR boundaries are level-dependent", () => {
     expect(distanceNm((low.aircraft[0] as any).lat, 3.0, 49.5, 3.0)).toBeCloseTo(5, 0);
   });
 });
+
+describe("P10 — join arrivals onto the ESE STAR (v6)", () => {
+  // ESE STARs are full expansions with transition-encoded names; two
+  // transitions share the NARAK initial fix.
+  const STARS = [
+    {
+      airport: "LFBO",
+      runway: "32L",
+      name: "NARAK8NxFUZAP",
+      waypoints: ["NARAK", "FUZAP", "BO608", "IO32L", "FF32L"],
+      iaf: "NARAK",
+    },
+    {
+      airport: "LFBO",
+      runway: "32L",
+      name: "NARAK8NxOTHER",
+      waypoints: ["NARAK", "OTHER", "BX1", "IO32L", "FF32L"],
+      iaf: "NARAK",
+    },
+    {
+      airport: "LFBO",
+      runway: "14R",
+      name: "NARAK8SxFUZAP",
+      waypoints: ["NARAK", "FUZAP", "BO214", "IO14R", "FF14R"],
+      iaf: "NARAK",
+    },
+  ];
+  const STAR_WPTS = [
+    { name: "EVPOK", lat: 45.0, lon: 1.0, type: "FIXES" },
+    { name: "NARAK", lat: 44.3, lon: 1.2, type: "FIXES" },
+    { name: "FUZAP", lat: 44.0, lon: 1.3, type: "FIXES" },
+  ];
+  const starRule = (over: any = {}) =>
+    poolRule({
+      spawnWaypoint: "EVPOK",
+      appendStar: true,
+      rwyInUse: "32L",
+      poolArr: "LFBO",
+      ...over,
+    });
+  const arrival = (route: string) => [entry("AFR1", route, "LFBO")];
+
+  it("follows the filed route in, then continues down the matching transition", () => {
+    const r = generateFromRule(
+      starRule(),
+      STAR_WPTS,
+      new Set(),
+      arrival("EVPOK NARAK FUZAP"),
+      [],
+      "",
+      {},
+      STARS,
+    );
+    expect(r.error).toBeNull();
+    const ac: any = r.aircraft[0];
+    expect(ac.simRoute).toBe("EVPOK NARAK FUZAP BO608 IO32L FF32L");
+    expect(ac.fpRoute).toBe("EVPOK NARAK FUZAP"); // FP RTE untouched
+  });
+
+  it("picks the transition that follows the filed route furthest", () => {
+    const r = generateFromRule(
+      starRule(),
+      STAR_WPTS,
+      new Set(),
+      arrival("EVPOK NARAK OTHER"),
+      [],
+      "",
+      {},
+      STARS,
+    );
+    expect((r.aircraft[0] as any).simRoute).toBe("EVPOK NARAK OTHER BX1 IO32L FF32L");
+  });
+
+  it("joins at the STAR's initial fix when the filed route stops there", () => {
+    const r = generateFromRule(
+      starRule(),
+      STAR_WPTS,
+      new Set(),
+      arrival("EVPOK NARAK"),
+      [],
+      "",
+      {},
+      STARS,
+    );
+    // no transition preference available — first parsed wins
+    expect((r.aircraft[0] as any).simRoute).toBe("EVPOK NARAK FUZAP BO608 IO32L FF32L");
+  });
+
+  it("changing the runway re-joins the same traffic onto that runway's STAR", () => {
+    const r = generateFromRule(
+      starRule({ rwyInUse: "14R" }),
+      STAR_WPTS,
+      new Set(),
+      arrival("EVPOK NARAK FUZAP"),
+      [],
+      "",
+      {},
+      STARS,
+    );
+    expect((r.aircraft[0] as any).simRoute).toBe("EVPOK NARAK FUZAP BO214 IO14R FF14R");
+  });
+
+  it("no joinable STAR leaves the route alone and says so", () => {
+    const r: any = generateFromRule(
+      starRule(),
+      STAR_WPTS,
+      new Set(),
+      arrival("EVPOK FUZAP"), // never passes NARAK
+      [],
+      "",
+      {},
+      STARS,
+    );
+    expect((r.aircraft[0] as any).simRoute).toBe("EVPOK FUZAP");
+    expect(r.warning).toMatch(/no 32L STAR/);
+  });
+
+  it("appendStar off, or a legacy call, produces the untouched route", () => {
+    const off = generateFromRule(
+      starRule({ appendStar: false }),
+      STAR_WPTS,
+      new Set(),
+      arrival("EVPOK NARAK FUZAP"),
+      [],
+      "",
+      {},
+      STARS,
+    );
+    expect((off.aircraft[0] as any).simRoute).toBe("EVPOK NARAK FUZAP");
+    const legacy: any = { ...starRule() };
+    delete legacy.appendStar;
+    const l = generateFromRule(legacy, STAR_WPTS, new Set(), arrival("EVPOK NARAK FUZAP"));
+    expect((l.aircraft[0] as any).simRoute).toBe("EVPOK NARAK FUZAP");
+  });
+});

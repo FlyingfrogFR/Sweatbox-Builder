@@ -99,6 +99,57 @@ const BAND_SLACK = 2000;
 const inBand = (ft: number, lower: number, upper: number) =>
   ft >= lower - BAND_SLACK && ft <= upper + BAND_SLACK;
 
+/**
+ * Continue an arrival's sim route onto the ESE STAR for the runway in use.
+ *
+ * ESE STAR lines are full expansions with transition-encoded names
+ * ("STAR:LFBO:32L:NARAK8NxFUZAP:NARAK FUZAP BO608 … IO32L FF32L"), so joining
+ * means finding where the filed route meets the STAR's own first fix and then
+ * following the STAR from there. The filed route is NOT truncated before that
+ * point — the aircraft flies its own route in and only the tail is replaced.
+ *
+ * Returns the new route, or null when nothing joins.
+ */
+function joinStar(simRoute: string, dest: string, rwy: string, stars: any[]) {
+  const toks = String(simRoute || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((t) => t.split("/")[0].toUpperCase());
+  if (!toks.length) return null;
+  const cands = (stars || []).filter(
+    (s: any) =>
+      String(s.airport || "").toUpperCase() === String(dest || "").toUpperCase() &&
+      String(s.runway || "").toUpperCase() === String(rwy || "").toUpperCase() &&
+      (s.waypoints || []).length > 1,
+  );
+  if (!cands.length) return null;
+  const firstFix = (s: any) => String(s.waypoints[0]).toUpperCase();
+  // Scan BACKWARD: an early coincidental match (a fix that also opens a STAR
+  // but is nowhere near the arrival) must not capture the join.
+  for (let j = toks.length - 1; j >= 0; j--) {
+    const here = cands.filter((s: any) => firstFix(s) === toks[j]);
+    if (!here.length) continue;
+    // Several transitions can share an initial fix — take the one that follows
+    // the filed route furthest ("… NARAK FUZAP" picks NARAK8NxFUZAP).
+    let best = here[0];
+    let bestLen = 1;
+    for (const s of here) {
+      const w = (s.waypoints || []).map((x: string) => String(x).toUpperCase());
+      let n = 0;
+      while (n < w.length && j + n < toks.length && w[n] === toks[j + n]) n++;
+      if (n > bestLen) {
+        bestLen = n;
+        best = s;
+      }
+    }
+    const tail = (best.waypoints || []).slice(bestLen);
+    const joined = [...toks.slice(0, j + bestLen), ...tail].join(" ");
+    return joined === toks.join(" ") ? null : joined;
+  }
+  return null;
+}
+
 const OCTANTS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
 const octantOf = (brg: number) => OCTANTS[Math.round((((brg % 360) + 360) % 360) / 45) % 8];
 
@@ -110,10 +161,14 @@ export function generateFromRule(
   copx?: any[],
   boundaryFir?: string,
   firBounds?: Record<string, number[][]>,
+  starsIn?: any[],
 ) {
   // autoBoundary (pool rules only): each aircraft spawns where ITS OWN filed
   // route crosses the scenario FIR boundary — no rule-level spawn waypoint.
   const autoBoundary = rule.spawnMode === "autoBoundary" && !!rule.poolSource;
+  // STARs come from the same mirror the excludeNonRouting filter already reads,
+  // so no new plumbing is needed; tests can pass them explicitly.
+  const starList = starsIn || getStars() || [];
   // The presence of the (post-rc3) spawnMode key arms the never-on-fix
   // invariant: min 1 NM pre-entry offset, and no silent on-fix placement when
   // no inbound bearing is derivable. Raw legacy rules without the key (the
@@ -400,6 +455,7 @@ export function generateFromRule(
     const anchorPrior = rule.spawnAnchor === "priorFix";
     const priorMax = +rule.priorFixMaxNm || 80;
     let excluded = 0;
+    let noStar = 0;
     const out = [];
     for (let i = 0; i < Math.min(count, matches.length); i++) {
       const tmpl = matches[i];
@@ -488,6 +544,15 @@ export function generateFromRule(
           continue;
         }
       }
+      // Continue onto the ESE STAR for the runway in use — the filed route is
+      // kept up to where it meets the STAR, and the STAR takes over from there
+      // (S3-style arrivals without truncating the enroute portion).
+      if (rule.appendStar && rule.rwyInUse && !rule.isDeparture) {
+        const joined = joinStar(simR, tmpl.dest, rule.rwyInUse, starList);
+        if (joined) simR = joined;
+        else noStar++;
+      }
+
       // spawnAltMode "poolCruise": each aircraft spawns at its own filed
       // cruise level (FP/level coherence for overflight bands). Absent or
       // "fixed" reproduces the original rule-level spawnAlt exactly. Note the
@@ -548,7 +613,14 @@ export function generateFromRule(
       aircraft: out,
       error: null,
       warning:
-        bandFallbackNote ||
+        [
+          bandFallbackNote,
+          noStar > 0
+            ? `${noStar} aircraft kept their filed route — no ${rule.rwyInUse} STAR into their destination joins it`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" · ") ||
         (excluded > 0
           ? `${excluded} aircraft skipped — no resolvable fix to derive the inbound leg (they would spawn exactly on ${rule.spawnWaypoint})`
           : null),
