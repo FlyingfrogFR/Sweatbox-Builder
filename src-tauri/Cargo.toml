@@ -1,6 +1,6 @@
 [package]
 name = "sweatbox-builder"
-version = "7.0.2"
+version = "7.1.0"
 description = "Sweatbox Builder for EuroScope"
 authors = ["ZeFlyingFrog"]
 edition = "2021"

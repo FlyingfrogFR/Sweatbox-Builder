@@ -43,7 +43,7 @@ It's a real desktop app — double-click and go. No browser, no setup server.
   - **C1 auto-boundary spawns** — bind the scenario to a FIR and each aircraft appears exactly where *its own* filed route crosses that FIR's edge, flying its real route in. The boundary is traced from the ESE's sector geometry, so it works with any file and any AIRAC (published `FIR_COPX` gates are used as a fallback)
   - **S2 Tower** — coming later (placeholder for now)
 - **Bring your own navdata** — drop in EuroScope `.sct` / `.ese` files (waypoints, runways, STARs, gates), plus optional vaCC France RampAgent stand data for gate-fit-aware parking
-- **Pull real flight plans** — grab routes from **SimBrief** and **VATSIM live** right into an aircraft pool (works straight away — no CORS proxy to babysit)
+- **Pull real flight plans** — grab routes from **SimBrief** and **VATSIM live** right into an aircraft pool (works straight away — no CORS proxy to babysit). VATSIM filters on one airport's arrivals/departures, or on a **city pair** where either end can be a single airport or a whole country (`LE** — Spain` → `LF** — France`)
 - **EuroScope-correct output** — the heading encoding, squawk modes (including `56XX` and Mode-S fallbacks), holdings, altitude requests, pre-entry offsets and ground-speed handling all match what EuroScope expects
 - **Native save** — writes your scenario `.txt` and ruleset `.json` straight to disk, auto-named `ICAO_X.Y_CONFIGYY`
 - **Looks the part** — light/dark themes, clean typography, fully offline

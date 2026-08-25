@@ -4,9 +4,12 @@
 // native requests that bypass CORS in dev and prod, so no proxy is needed.
 
 import { httpFetch } from "./http";
+import { matchesEndpoint } from "../core/icaoRegions";
 
 export async function fetchSimbrief(u: string) {
-  const p = /^\d+$/.test(u.trim()) ? `userid=${u.trim()}` : `username=${encodeURIComponent(u.trim())}`;
+  const p = /^\d+$/.test(u.trim())
+    ? `userid=${u.trim()}`
+    : `username=${encodeURIComponent(u.trim())}`;
   const r = await httpFetch(`https://www.simbrief.com/api/xml.fetcher.php?${p}&json=1`);
   if (!r.ok) throw new Error(`SimBrief ${r.status}`);
   return r.json();
@@ -22,7 +25,10 @@ export function parseSimbriefOFP(d: any) {
   ).toUpperCase();
   const type = (d.aircraft?.icaocode || d.aircraft?.base_type || "").toUpperCase();
   const cruiseFL = Math.round((+d.general?.initial_altitude || 35000) / 100);
-  const route = (d.atc?.route || d.general?.route || "").replace(origin, "").replace(dest, "").trim();
+  const route = (d.atc?.route || d.general?.route || "")
+    .replace(origin, "")
+    .replace(dest, "")
+    .trim();
   return {
     origin,
     dest,
@@ -42,13 +48,32 @@ export async function fetchVatsimData() {
 
 export function filterVatsimPilots(data: any, icao: string, mode: string) {
   const uc = icao.toUpperCase();
+  return vatsimRows(data, (fp) => {
+    if (mode === "dep") return fp.departure === uc;
+    if (mode === "arr") return fp.arrival === uc;
+    return fp.departure === uc || fp.arrival === uc;
+  });
+}
+
+/**
+ * Live traffic on a city pair, where either end may be a single airport
+ * ("LFPG"), a whole country ("LE**" / "LE") or anywhere (""). Lets a session be
+ * stocked with, say, everything Spain → France rather than one airport's
+ * arrivals.
+ */
+export function filterVatsimRoutes(data: any, from: string, to: string) {
+  return vatsimRows(
+    data,
+    (fp) => matchesEndpoint(fp.departure, from) && matchesEndpoint(fp.arrival, to),
+  );
+}
+
+function vatsimRows(data: any, keep: (fp: any) => boolean) {
   return [...(data.pilots || []), ...(data.prefiles || [])]
     .filter((p) => {
       const fp = p.flight_plan;
       if (!fp) return false;
-      if (mode === "dep") return fp.departure === uc;
-      if (mode === "arr") return fp.arrival === uc;
-      return fp.departure === uc || fp.arrival === uc;
+      return keep(fp);
     })
     .map((p) => ({
       callsign: p.callsign,

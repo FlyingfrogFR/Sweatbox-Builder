@@ -9,7 +9,14 @@ import { Tray } from "../Tray";
 import { DeckKey, HoldKey, Latch } from "../ui";
 import { Icon } from "../../ui/Icon";
 import { storage, KEYS } from "../../state/storage";
-import { fetchSimbrief, parseSimbriefOFP, fetchVatsimData, filterVatsimPilots } from "../../net/apis";
+import {
+  fetchSimbrief,
+  parseSimbriefOFP,
+  fetchVatsimData,
+  filterVatsimPilots,
+  filterVatsimRoutes,
+} from "../../net/apis";
+import { ICAO_REGIONS, regionLabel, regionValue, endpointLabel } from "../../core/icaoRegions";
 import { downloadJsonBundle, readJsonFile } from "../../io/bundles";
 import { wrongKindMessage } from "../../state/bundleKind";
 
@@ -21,7 +28,8 @@ const SRC: Record<string, { label: string; cls: string }> = {
   simbrief: { label: "SIMBRIEF", cls: "text-cy-fg bg-cy-soft border-cy-bd" },
   manual: { label: "MANUAL", cls: "text-tx5 bg-inset border-bd3" },
 };
-const srcOf = (s: string) => SRC[s] || { label: (s || "?").toUpperCase(), cls: "text-tx5 bg-inset border-bd3" };
+const srcOf = (s: string) =>
+  SRC[s] || { label: (s || "?").toUpperCase(), cls: "text-tx5 bg-inset border-bd3" };
 
 const INPUT =
   "h-8 bg-inset border border-bd3 rounded-md px-2.5 font-mono text-[12px] text-tx1 outline-none focus:border-cy-fg";
@@ -66,11 +74,16 @@ function SimbriefBody({ cache, setCache, busyRef }: any) {
     storage.set(KEYS.sbUser, username.trim());
     try {
       const data = await fetchSimbrief(username);
-      if (data.fetch?.status === "Error" || data.error) throw new Error(data.fetch?.message || "SimBrief error");
+      if (data.fetch?.status === "Error" || data.error)
+        throw new Error(data.fetch?.message || "SimBrief error");
       setCache({ ofp: parseSimbriefOFP(data) });
     } catch (e: any) {
       const m = String(e.message || e);
-      setError(m.includes("Failed to fetch") || m.includes("CORS") ? "Network error fetching SimBrief." : m);
+      setError(
+        m.includes("Failed to fetch") || m.includes("CORS")
+          ? "Network error fetching SimBrief."
+          : m,
+      );
     } finally {
       setLoading(false);
     }
@@ -96,7 +109,12 @@ function SimbriefBody({ cache, setCache, busyRef }: any) {
             className={`${INPUT} w-[240px]`}
           />
         </div>
-        <DeckKey size="sm" onClick={doFetch} disabled={loading} title="Fetch your latest SimBrief OFP">
+        <DeckKey
+          size="sm"
+          onClick={doFetch}
+          disabled={loading}
+          title="Fetch your latest SimBrief OFP"
+        >
           {loading ? (
             <>
               <span className="inline-block w-3 h-3 rounded-full border-2 border-cy-fg/30 border-t-cy-fg animate-spin" />
@@ -109,7 +127,9 @@ function SimbriefBody({ cache, setCache, busyRef }: any) {
             </>
           )}
         </DeckKey>
-        <span className="text-[10.5px] text-tx7 pb-2">pulls the most recent flight plan on your account</span>
+        <span className="text-[10.5px] text-tx7 pb-2">
+          pulls the most recent flight plan on your account
+        </span>
       </div>
 
       {error && <ErrorNote>{error}</ErrorNote>}
@@ -117,7 +137,9 @@ function SimbriefBody({ cache, setCache, busyRef }: any) {
       {ofp ? (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
           <Cell label="FLIGHT">
-            <div className="font-mono text-[13px] font-semibold text-cy-fg">{ofp.callsign || "—"}</div>
+            <div className="font-mono text-[13px] font-semibold text-cy-fg">
+              {ofp.callsign || "—"}
+            </div>
             <div className="font-mono text-[11px] text-tx5">
               {ofp.origin} → {ofp.dest}
             </div>
@@ -149,24 +171,90 @@ function SimbriefBody({ cache, setCache, busyRef }: any) {
 }
 
 /* ============================= VATSIM ============================= */
+/** One end of a city pair: type an ICAO, or pick a whole country from the list
+ *  (which writes the "LE**" wildcard the filter understands). Empty = anywhere. */
+function Endpoint({ label, value, onChange, onEnter, tone }: any) {
+  return (
+    <div>
+      <label className={LABEL}>{label}</label>
+      <div className="flex gap-1.5">
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value.toUpperCase())}
+          onKeyDown={(e) => e.key === "Enter" && onEnter?.()}
+          placeholder="anywhere"
+          maxLength={4}
+          className={`${INPUT} w-[104px]`}
+          title="An airport (LFPG), a country wildcard (LE**), or blank for anywhere"
+        />
+        <select
+          value=""
+          onChange={(e) => e.target.value && onChange(regionValue(e.target.value))}
+          className={`${INPUT} w-[132px]`}
+          title="Pick a whole country"
+        >
+          <option value="">country…</option>
+          {ICAO_REGIONS.map((r) => (
+            <option key={r.prefix} value={r.prefix}>
+              {regionLabel(r.prefix)}
+            </option>
+          ))}
+        </select>
+        {value && (
+          <DeckKey size="sm" onClick={() => onChange("")} title="Clear this end">
+            <Icon name="x" size={12} />
+          </DeckKey>
+        )}
+      </div>
+      <p className={`mt-1 text-[10.5px] ${value ? tone || "text-tx5" : "text-tx7"}`}>
+        {endpointLabel(value)}
+      </p>
+    </div>
+  );
+}
+
 function VatsimBody({ cache, setCache, sel, setSel, busyRef }: any) {
   const [icao, setIcao] = useState(cache.icao || "");
   const [mode, setMode] = useState(cache.mode || "arr");
+  // PAIRING mode: either end can be one airport ("LFPG"), a whole country
+  // ("LE**", picked from the country list) or left blank for anywhere.
+  const [from, setFrom] = useState(cache.from || "");
+  const [to, setTo] = useState(cache.to || "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const pilots = cache.pilots || [];
   busyRef.current.vatsimFetch = doFetch;
 
+  const pairing = mode === "pair";
+  const pairLabel = `${endpointLabel(from)} → ${endpointLabel(to)}`;
+
   async function doFetch() {
-    if (!icao.trim()) return setError("Enter an airport ICAO.");
+    if (pairing && !from.trim() && !to.trim())
+      return setError("Set at least one end of the pairing — an airport, or a country.");
+    if (!pairing && !icao.trim()) return setError("Enter an airport ICAO.");
     setError("");
     setLoading(true);
     setSel(new Set());
     try {
       const data = await fetchVatsimData();
-      const filtered = filterVatsimPilots(data, icao, mode);
-      setCache({ pilots: filtered, icao: icao.toUpperCase(), mode, fetchedAt: new Date().toLocaleTimeString() });
-      if (!filtered.length) setError(`No ${mode === "both" ? "traffic" : mode} found for ${icao.toUpperCase()} right now.`);
+      const filtered = pairing
+        ? filterVatsimRoutes(data, from, to)
+        : filterVatsimPilots(data, icao, mode);
+      setCache({
+        pilots: filtered,
+        icao: icao.toUpperCase(),
+        mode,
+        from: from.toUpperCase(),
+        to: to.toUpperCase(),
+        label: pairing ? pairLabel : icao.toUpperCase(),
+        fetchedAt: new Date().toLocaleTimeString(),
+      });
+      if (!filtered.length)
+        setError(
+          pairing
+            ? `Nothing flying ${pairLabel} right now.`
+            : `No ${mode === "both" ? "traffic" : mode} found for ${icao.toUpperCase()} right now.`,
+        );
     } catch (e: any) {
       setError(String(e.message || e));
     } finally {
@@ -184,17 +272,31 @@ function VatsimBody({ cache, setCache, sel, setSel, busyRef }: any) {
     <div className="flex flex-col h-full min-h-0">
       <div className="p-4 flex flex-col gap-3 flex-none">
         <div className="flex items-end gap-2 flex-wrap">
-          <div>
-            <label className={LABEL}>AIRPORT ICAO</label>
-            <input
-              value={icao}
-              onChange={(e) => setIcao(e.target.value.toUpperCase())}
-              onKeyDown={(e) => e.key === "Enter" && doFetch()}
-              placeholder="LFPG"
-              maxLength={4}
-              className={`${INPUT} w-[96px]`}
-            />
-          </div>
+          {pairing ? (
+            <>
+              <Endpoint
+                label="FROM"
+                value={from}
+                onChange={setFrom}
+                onEnter={doFetch}
+                tone="text-dep"
+              />
+              <span className="text-tx6 pb-6 select-none">→</span>
+              <Endpoint label="TO" value={to} onChange={setTo} onEnter={doFetch} tone="text-arr" />
+            </>
+          ) : (
+            <div>
+              <label className={LABEL}>AIRPORT ICAO</label>
+              <input
+                value={icao}
+                onChange={(e) => setIcao(e.target.value.toUpperCase())}
+                onKeyDown={(e) => e.key === "Enter" && doFetch()}
+                placeholder="LFPG"
+                maxLength={4}
+                className={`${INPUT} w-[96px]`}
+              />
+            </div>
+          )}
           <div>
             <label className={LABEL}>SHOW</label>
             <div className="flex gap-1">
@@ -207,9 +309,22 @@ function VatsimBody({ cache, setCache, sel, setSel, busyRef }: any) {
               <Latch size="md" on={mode === "both"} onClick={() => setMode("both")}>
                 BOTH
               </Latch>
+              <Latch
+                size="md"
+                on={pairing}
+                onClick={() => setMode("pair")}
+                title="Filter on a city pair — airport to airport, country to country, or any mix"
+              >
+                PAIRING
+              </Latch>
             </div>
           </div>
-          <DeckKey size="sm" onClick={doFetch} disabled={loading} title="Snapshot live VATSIM traffic for this airport">
+          <DeckKey
+            size="sm"
+            onClick={doFetch}
+            disabled={loading}
+            title="Snapshot live VATSIM traffic for this airport"
+          >
             {loading ? (
               <>
                 <span className="inline-block w-3 h-3 rounded-full border-2 border-cy-fg/30 border-t-cy-fg animate-spin" />
@@ -224,7 +339,7 @@ function VatsimBody({ cache, setCache, sel, setSel, busyRef }: any) {
           </DeckKey>
           {cache.fetchedAt && (
             <span className="font-mono text-[10.5px] text-tx7 pb-2">
-              {cache.icao} · {pilots.length} found · {cache.fetchedAt}
+              {cache.label || cache.icao} · {pilots.length} found · {cache.fetchedAt}
             </span>
           )}
         </div>
@@ -275,11 +390,15 @@ function VatsimBody({ cache, setCache, sel, setSel, busyRef }: any) {
                       <td className="px-3 py-1.5 text-tx3">{p.type || "—"}</td>
                       <td className="px-3 py-1.5 text-tx5">{p.dep}</td>
                       <td className="px-3 py-1.5 text-tx5">{p.arr}</td>
-                      <td className="px-3 py-1.5 text-tx5">{p.cruiseFL ? `FL${p.cruiseFL}` : "—"}</td>
+                      <td className="px-3 py-1.5 text-tx5">
+                        {p.cruiseFL ? `FL${p.cruiseFL}` : "—"}
+                      </td>
                       <td className="px-3 py-1.5">
                         <span
                           className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${
-                            p.isPrefiled ? "text-am-fg bg-am-bg border-am-bd" : "text-gn-fg bg-gn-bg border-gn-bd"
+                            p.isPrefiled
+                              ? "text-am-fg bg-am-bg border-am-bd"
+                              : "text-gn-fg bg-gn-bg border-gn-bd"
                           }`}
                         >
                           {p.isPrefiled ? "PRE" : "LIVE"}
@@ -306,7 +425,15 @@ function VatsimBody({ cache, setCache, sel, setSel, busyRef }: any) {
 }
 
 /* ============================== POOL ============================== */
-const PoolRow = memo(function PoolRow({ p, selected, routePreview, addedStr, onToggle, onDeleteOne, zebra }: any) {
+const PoolRow = memo(function PoolRow({
+  p,
+  selected,
+  routePreview,
+  addedStr,
+  onToggle,
+  onDeleteOne,
+  zebra,
+}: any) {
   const s = srcOf(p.source);
   return (
     <tr
@@ -327,11 +454,17 @@ const PoolRow = memo(function PoolRow({ p, selected, routePreview, addedStr, onT
       <td className="px-3 py-1.5 text-tx5">{p.cruiseFL ? `FL${p.cruiseFL}` : "—"}</td>
       <td className="px-3 py-1.5 text-tx6 max-w-[260px] truncate">{routePreview}</td>
       <td className="px-3 py-1.5">
-        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${s.cls}`}>{s.label}</span>
+        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${s.cls}`}>
+          {s.label}
+        </span>
       </td>
       <td className="px-3 py-1.5 text-tx7">{addedStr}</td>
       <td className="px-3 py-1.5 text-right" onClick={(e) => e.stopPropagation()}>
-        <button onClick={() => onDeleteOne(p.id)} title="Remove from pool" className="text-tx8 hover:text-rd-fg">
+        <button
+          onClick={() => onDeleteOne(p.id)}
+          title="Remove from pool"
+          className="text-tx8 hover:text-rd-fg"
+        >
           <Icon name="trash" size={13} />
         </button>
       </td>
@@ -339,7 +472,23 @@ const PoolRow = memo(function PoolRow({ p, selected, routePreview, addedStr, onT
   );
 });
 
-function PoolBody({ pool, onDelete, airac, onSetAirac, sel, setSel, filtered, fQ, setFQ, fDep, setFDep, fArr, setFArr, fSrc, setFSrc }: any) {
+function PoolBody({
+  pool,
+  onDelete,
+  airac,
+  onSetAirac,
+  sel,
+  setSel,
+  filtered,
+  fQ,
+  setFQ,
+  fDep,
+  setFDep,
+  fArr,
+  setFArr,
+  fSrc,
+  setFSrc,
+}: any) {
   const [airacInput, setAiracInput] = useState(airac || "");
   useEffect(() => setAiracInput(airac || ""), [airac]);
   const toggleSel = useCallback(
@@ -358,7 +507,9 @@ function PoolBody({ pool, onDelete, airac, onSetAirac, sel, setSel, filtered, fQ
       const toks = (p.route || "").split(" ");
       m.set(p.id, {
         routePreview: toks.slice(0, 5).join(" ") + (toks.length > 5 ? "…" : ""),
-        addedStr: p.addedAt ? new Date(p.addedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "",
+        addedStr: p.addedAt
+          ? new Date(p.addedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+          : "",
       });
     }
     return m;
@@ -393,7 +544,10 @@ function PoolBody({ pool, onDelete, airac, onSetAirac, sel, setSel, filtered, fQ
         {Object.entries(counts).map(([src, n]: any) => {
           const s = srcOf(src);
           return (
-            <span key={src} className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${s.cls}`}>
+            <span
+              key={src}
+              className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${s.cls}`}
+            >
               {s.label} {n}
             </span>
           );
@@ -403,11 +557,30 @@ function PoolBody({ pool, onDelete, airac, onSetAirac, sel, setSel, filtered, fQ
           <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-tx8 pointer-events-none">
             <Icon name="search" size={12} />
           </span>
-          <input value={fQ} onChange={(e) => setFQ(e.target.value)} placeholder="Callsign" className={`${INPUT} pl-7 w-[130px]`} />
+          <input
+            value={fQ}
+            onChange={(e) => setFQ(e.target.value)}
+            placeholder="Callsign"
+            className={`${INPUT} pl-7 w-[130px]`}
+          />
         </div>
-        <input value={fDep} onChange={(e) => setFDep(e.target.value.toUpperCase())} placeholder="DEP" className={`${INPUT} w-[70px]`} />
-        <input value={fArr} onChange={(e) => setFArr(e.target.value.toUpperCase())} placeholder="ARR" className={`${INPUT} w-[70px]`} />
-        <select value={fSrc} onChange={(e) => setFSrc(e.target.value)} className={`${INPUT} w-[120px]`}>
+        <input
+          value={fDep}
+          onChange={(e) => setFDep(e.target.value.toUpperCase())}
+          placeholder="DEP"
+          className={`${INPUT} w-[70px]`}
+        />
+        <input
+          value={fArr}
+          onChange={(e) => setFArr(e.target.value.toUpperCase())}
+          placeholder="ARR"
+          className={`${INPUT} w-[70px]`}
+        />
+        <select
+          value={fSrc}
+          onChange={(e) => setFSrc(e.target.value)}
+          className={`${INPUT} w-[120px]`}
+        >
           <option value="">All sources</option>
           {Object.keys(SRC).map((s) => (
             <option key={s} value={s}>
@@ -605,9 +778,16 @@ export function FplnPoolTray(props: any) {
   const footer =
     section === "simbrief" ? (
       <>
-        <span className="text-[10.5px] text-tx7">{ofp ? "Plan ready to stage" : "Fetch a plan to continue"}</span>
+        <span className="text-[10.5px] text-tx7">
+          {ofp ? "Plan ready to stage" : "Fetch a plan to continue"}
+        </span>
         <span className="flex-1" />
-        <DeckKey size="lever" variant={ofp ? "primary" : "default"} disabled={!ofp} onClick={sbToPool}>
+        <DeckKey
+          size="lever"
+          variant={ofp ? "primary" : "default"}
+          disabled={!ofp}
+          onClick={sbToPool}
+        >
           <Icon name="plus" size={14} />
           ADD TO POOL
         </DeckKey>
@@ -615,21 +795,38 @@ export function FplnPoolTray(props: any) {
     ) : section === "vatsim" ? (
       <>
         <span className="text-[10.5px] text-tx7">
-          {vsPilots.length ? `${vsSel.size} of ${vsPilots.length} selected` : "Fetch an airport to continue"}
+          {vsPilots.length
+            ? `${vsSel.size} of ${vsPilots.length} selected`
+            : "Fetch an airport to continue"}
         </span>
         <span className="flex-1" />
-        <DeckKey size="lever" variant={vsSel.size ? "primary" : "default"} disabled={!vsSel.size} onClick={vsToPool}>
+        <DeckKey
+          size="lever"
+          variant={vsSel.size ? "primary" : "default"}
+          disabled={!vsSel.size}
+          onClick={vsToPool}
+        >
           <Icon name="plus" size={14} />
           ADD {vsSel.size || ""} TO POOL
         </DeckKey>
       </>
     ) : (
       <>
-        <DeckKey size="sm" tone="cy" onClick={() => importRef.current?.click()} title="Load a previously exported pool.json">
+        <DeckKey
+          size="sm"
+          tone="cy"
+          onClick={() => importRef.current?.click()}
+          title="Load a previously exported pool.json"
+        >
           <Icon name="upload" size={12} />
           IMPORT POOL
         </DeckKey>
-        <DeckKey size="sm" onClick={exportPool} disabled={!pool.length} title="Save the whole pool as pool.json">
+        <DeckKey
+          size="sm"
+          onClick={exportPool}
+          disabled={!pool.length}
+          title="Save the whole pool as pool.json"
+        >
           <Icon name="download" size={12} />
           EXPORT POOL
         </DeckKey>
@@ -676,25 +873,51 @@ export function FplnPoolTray(props: any) {
       onDone={close}
       headExtra={
         <span className="flex items-center gap-1.5 ml-1.5">
-          <Latch on={section === "simbrief"} onClick={() => setSection("simbrief")} title="Fetch a SimBrief OFP">
+          <Latch
+            on={section === "simbrief"}
+            onClick={() => setSection("simbrief")}
+            title="Fetch a SimBrief OFP"
+          >
             SIMBRIEF
           </Latch>
-          <Latch on={section === "vatsim"} onClick={() => setSection("vatsim")} title="Snapshot live VATSIM traffic">
+          <Latch
+            on={section === "vatsim"}
+            onClick={() => setSection("vatsim")}
+            title="Snapshot live VATSIM traffic"
+          >
             VATSIM
           </Latch>
           <span className="w-px self-stretch bg-bd1 mx-1" />
-          <Latch on={section === "pool"} onClick={() => setSection("pool")} title="Staged flight plans">
+          <Latch
+            on={section === "pool"}
+            onClick={() => setSection("pool")}
+            title="Staged flight plans"
+          >
             POOL {(pool || []).length > 0 && <b className="font-mono">{(pool || []).length}</b>}
           </Latch>
         </span>
       }
       footer={footer}
     >
-      <input ref={importRef} type="file" accept=".json,application/json" className="hidden" onChange={importPool} />
+      <input
+        ref={importRef}
+        type="file"
+        accept=".json,application/json"
+        className="hidden"
+        onChange={importPool}
+      />
       <div className="h-full min-h-0">
-        {section === "simbrief" && <SimbriefBody cache={simbriefCache} setCache={setSimbriefCache} busyRef={busyRef} />}
+        {section === "simbrief" && (
+          <SimbriefBody cache={simbriefCache} setCache={setSimbriefCache} busyRef={busyRef} />
+        )}
         {section === "vatsim" && (
-          <VatsimBody cache={vatsimCache} setCache={setVatsimCache} sel={vsSel} setSel={setVsSel} busyRef={busyRef} />
+          <VatsimBody
+            cache={vatsimCache}
+            setCache={setVatsimCache}
+            sel={vsSel}
+            setSel={setVsSel}
+            busyRef={busyRef}
+          />
         )}
         {section === "pool" && (
           <PoolBody
