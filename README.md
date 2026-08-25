@@ -40,6 +40,7 @@ It's a real desktop app — double-click and go. No browser, no setup server.
 - **Generate traffic from rules**
   - **S1 Ground** — single-airport ground scenarios with smart stand assignment (RampAgent / ESE gates), departures, arrivals and VFR
   - **S3 Approach** & **C1 Enroute** — rule-driven terminal/enroute traffic in a tidy workbench: a session timeline, your rule list, a live preview of what each rule produces, and an inline editor
+  - **Each flight plan used once** — rules take from the pool in list order, so a plan claimed by a departure rule is never re-emitted at cruise by a transit rule below it
   - **Arrivals joined onto the STAR** — pool arrivals fly their own filed route in and then continue down the ESE STAR for the runway in use, all the way to the threshold; the filed route is never truncated and the FP is untouched
   - **C1 auto-boundary spawns** — bind the scenario to a FIR and each aircraft appears exactly where *its own* filed route crosses that FIR's edge, flying its real route in. The boundary is traced from the ESE's sector geometry, so it works with any file and any AIRAC (published `FIR_COPX` gates are used as a fallback)
   - **S2 Tower** — coming later (placeholder for now)

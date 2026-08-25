@@ -19,6 +19,7 @@ function produce(
   copx?: any[],
   boundaryFir?: string,
   firBounds?: any,
+  claimed?: Set<string>,
 ) {
   try {
     const r: any = generateFromRule(
@@ -29,6 +30,8 @@ function produce(
       copx,
       boundaryFir,
       firBounds,
+      undefined,
+      claimed,
     );
     return { aircraft: r.aircraft || [], error: r.error || null, warning: r.warning || null };
   } catch (e: any) {
@@ -165,27 +168,45 @@ export function RuleWorkbench({
   // so each keystroke in the detail inputs doesn't synchronously re-run
   // generateFromRule (linear navdata scan + pool filtering) — the preview
   // catches up a frame later with identical results.
+  // Content key for every rule of this mode — any saved field can change what
+  // a rule produces, so previews and the session overview both key on it.
+  const rulesKey = JSON.stringify(rules);
+
   const deferredDraft = useDeferredValue(draft);
-  const preview = useMemo(
-    () =>
-      deferredDraft
-        ? produce(deferredDraft, waypoints, pool, copx, scenario.boundaryFir, firBounds)
-        : { aircraft: [], error: null, warning: null },
-    [deferredDraft, waypoints, pool, copx, scenario.boundaryFir, firBounds],
-  );
+  const preview = useMemo(() => {
+    if (!deferredDraft) return { aircraft: [], error: null, warning: null };
+    // Each flight plan is used once and rules take from the pool in list order,
+    // so the preview must first let the rules ABOVE this one claim theirs —
+    // otherwise it promises aircraft this rule will never get.
+    const claimed = new Set<string>();
+    for (const r of rules) {
+      if (r.id === deferredDraft.id) break;
+      produce(r, waypoints, pool, copx, scenario.boundaryFir, firBounds, claimed);
+    }
+    return produce(deferredDraft, waypoints, pool, copx, scenario.boundaryFir, firBounds, claimed);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deferredDraft, rulesKey, waypoints, pool, copx, scenario.boundaryFir, firBounds]);
 
   // Session overview: produce every saved rule of this mode, split by direction.
   // Keyed on the full rule content — any saved field can change the produced
   // aircraft (direction, scheduling mode, pool filters, …), so a partial key
   // left the timeline and per-rule counts stale after some edits.
-  const rulesKey = JSON.stringify(rules);
   const session = useMemo(() => {
     const arr: number[] = [];
     const dep: number[] = [];
     let maxT = 0;
     const counts: Record<string, number> = {};
+    const claimed = new Set<string>(); // rules consume the pool in list order
     for (const r of rules) {
-      const { aircraft } = produce(r, waypoints, pool, copx, scenario.boundaryFir, firBounds);
+      const { aircraft } = produce(
+        r,
+        waypoints,
+        pool,
+        copx,
+        scenario.boundaryFir,
+        firBounds,
+        claimed,
+      );
       counts[r.id] = aircraft.length;
       maxT = Math.max(maxT, (+r.startOffset || 0) + (+r.duration || 0));
       for (const a of aircraft) (a.isDeparture ? dep : arr).push(+a.start || 0);
@@ -329,6 +350,14 @@ export function RuleWorkbench({
           <div className="flex items-center justify-between px-4 pt-[14px] pb-[11px]">
             <span className="text-[10.5px] font-semibold tracking-[0.16em] text-tx6">
               RULES · {rules.length}
+              {rules.some((r: any) => r.poolSource) && (
+                <span
+                  className="ml-2 font-normal tracking-normal text-tx8"
+                  title="Each flight plan is used once: rules take from the pool in this order, so a plan claimed by a rule above is never offered to the ones below."
+                >
+                  · higher rules get first pick of the pool
+                </span>
+              )}
             </span>
             <button
               onClick={newRule}

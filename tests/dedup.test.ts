@@ -103,6 +103,73 @@ describe("P1 — pool callsign dedup across overlapping rules", () => {
     expect(a.aircraft.map((x: any) => x.callsign)).toEqual(["KLM44", "BAW12", "DLH99"]);
   });
 
+  it("with a shared claim set, overlapping rules take DIFFERENT aircraft (v7)", () => {
+    // Claim-once is the real fix for overlapping rules: rather than emitting
+    // the same flight plans again under suffixed callsigns, the second rule
+    // finds them already taken and produces nothing.
+    const used = new Set<string>();
+    const claimed = new Set<string>();
+    const a: any = generateFromRule(
+      poolRule({ id: "r1" }),
+      WPTS,
+      used,
+      POOL,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      claimed,
+    );
+    const b: any = generateFromRule(
+      poolRule({ id: "r2" }),
+      WPTS,
+      used,
+      POOL,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      claimed,
+    );
+    expect(a.aircraft.map((x: any) => x.callsign)).toEqual(["KLM44", "BAW12", "DLH99"]);
+    expect(b.aircraft.length).toBe(0); // nothing left to claim
+    expect(b.error).toMatch(/No pool aircraft/); // nothing unclaimed reaches the filters
+    expect(claimed.size).toBe(3);
+  });
+
+  it("a claim set splits a pool across rules in list order", () => {
+    const used = new Set<string>();
+    const claimed = new Set<string>();
+    // rate 2/hr over 30 min -> 2 aircraft per rule
+    const first: any = generateFromRule(
+      poolRule({ id: "r1", rate: 2 }),
+      WPTS,
+      used,
+      POOL,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      claimed,
+    );
+    const second: any = generateFromRule(
+      poolRule({ id: "r2", rate: 2 }),
+      WPTS,
+      used,
+      POOL,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      claimed,
+    );
+    const csA = first.aircraft.map((x: any) => x.callsign);
+    const csB = second.aircraft.map((x: any) => x.callsign);
+    expect(csA).toEqual(["KLM44", "BAW12"]);
+    expect(csB).toEqual(["DLH99"]); // only the unclaimed one is left
+    expect(csA.some((c: string) => csB.includes(c))).toBe(false);
+  });
+
   it("beyond 26 collisions the numeric fallback still guarantees uniqueness", () => {
     const used = new Set<string>();
     const all: string[] = [];

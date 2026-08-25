@@ -781,3 +781,85 @@ describe("P10 — join arrivals onto the ESE STAR (v6)", () => {
     expect((l.aircraft[0] as any).simRoute).toBe("EVPOK NARAK FUZAP");
   });
 });
+
+describe("P11 — TVF50FL field regression (v7)", () => {
+  // The field report: an LFPO->LEBL flight at FL290 spawned ~1 NM short of
+  // ETAMO (past its gate, inside the FIR) pointing back up its own route, with
+  // "ETAMO/N0453F370" in $ROUTE. ERIXU north, ETAMO 15 NM south, VALKU 30 NM
+  // south — the flight goes south.
+  const TW = [
+    { name: "ERIXU", lat: 47.5, lon: 2.3, type: "FIXES" },
+    { name: "ETAMO", lat: 47.25, lon: 2.3, type: "FIXES" },
+    { name: "VALKU", lat: 47.0, lon: 2.3, type: "FIXES" },
+  ];
+  // ERIXU is published only for FL195-265, so an FL290 flight needs the band
+  // fallback to gate there at all.
+  const TGATES = [
+    {
+      fix: "ERIXU",
+      level: 26000,
+      destApt: "",
+      kind: "fir",
+      fromFir: "LFFF",
+      toFir: "LFBB",
+      fromLower: 19500,
+      fromUpper: 26500,
+    },
+  ];
+  const TROUTE = "ERIXU DCT ETAMO/N0453F370 DCT VALKU";
+  const tvf = (fl: number) => [
+    {
+      callsign: "TVF50FL",
+      type: "B738",
+      origin: "LFPO",
+      dest: "LEBL",
+      route: TROUTE,
+      cruiseFL: fl,
+      squawk: "1000",
+    },
+  ];
+  const tvfRule = () =>
+    poolRule({
+      spawnMode: "autoBoundary",
+      spawnWaypoint: "",
+      spawnAltMode: "poolCruise",
+      preEntryNm: 15,
+      excludeNonRouting: false,
+    });
+
+  for (const fl of [290, 210]) {
+    it(`FL${fl}: gates at ERIXU, spawns 15 NM upstream, heads along track, clean $ROUTE`, () => {
+      const r: any = generateFromRule(tvfRule(), TW, new Set(), tvf(fl), TGATES, "LFBB");
+      expect(r.error).toBeNull();
+      const a: any = r.aircraft[0];
+      expect(a.spawnWaypoint).toBe("ERIXU");
+      expect(a.simRoute).toBe("ERIXU DCT ETAMO DCT VALKU"); // suffix stripped
+      expect(a.fpRoute).toBe(TROUTE); // filed route untouched
+      if (fl === 290)
+        expect(r.warning).toMatch(/level-blind gate list/); // needed the fallback
+      else expect(r.warning).toBeNull();
+
+      const scn = generateSweatbox(
+        { name: "T", airportAlt: 0, ils: [], controllers: [], holdings: [], aircraft: r.aircraft },
+        TW,
+        {},
+      );
+      const atN = scn.split("\n").find((l: string) => l.startsWith("@N:TVF50FL"))!;
+      const lat = +atN.split(":")[4];
+      const lon = +atN.split(":")[5];
+      const hdg = +atN.split(":")[8] / 4 / 2.88;
+      expect(lat).toBeGreaterThan(47.5); // NORTH of ERIXU = upstream, outside
+      expect(distanceNm(lat, lon, 47.5, 2.3)).toBeCloseTo(15, 0);
+      const want = bearingBetween(lat, lon, 47.5, 2.3); // ERIXU-ward
+      expect(Math.abs(((hdg - want + 540) % 360) - 180)).toBeLessThan(5);
+      expect(scn).toContain("$ROUTE:ERIXU DCT ETAMO DCT VALKU");
+      expect(scn).not.toContain("/N0453F370\n"); // never in $ROUTE
+      expect(scn).toContain(`/v/:${TROUTE}`); // but still in $FP
+    });
+  }
+
+  it("records how each spawn was derived", () => {
+    const r: any = generateFromRule(tvfRule(), TW, new Set(), tvf(290), TGATES, "LFBB");
+    expect((r.aircraft[0] as any).spawnDebug).toMatch(/ERIXU · published-gate · band-fallback/);
+  });
+});

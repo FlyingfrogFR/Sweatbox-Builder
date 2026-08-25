@@ -35,6 +35,8 @@ export function GeneratorsPanel(props: any) {
     const myIds = new Set(rules.map((r: any) => r.id));
     let ac = scenario.aircraft.filter((a: any) => !a.ruleId || !myIds.has(a.ruleId));
     const used = new Set<string>(ac.map((a: any) => a.callsign).filter(Boolean));
+    // Claim-once: rules consume the pool in list order (see RuleWorkbench).
+    const claimed = new Set<string>();
     const warnings: string[] = [];
     for (const r of rules) {
       const {
@@ -49,6 +51,8 @@ export function GeneratorsPanel(props: any) {
         props.copx,
         scenario.boundaryFir,
         props.firBounds,
+        undefined,
+        claimed,
       );
       if (error) {
         alert(`${r.name}: ${error}`);

@@ -9,7 +9,7 @@
 // optional REQALT:<wpt>:<alt>, and optional INITIALPSEUDOPILOT.
 
 import { preEntryOffset, bearingBetween } from "./geo";
-import { nearestResolvableIdx } from "./route";
+import { nearestResolvableIdx, stripRouteSuffixes } from "./route";
 
 export function generateSweatbox(s: any, waypoints: any[] = [], opts: any = {}) {
   const initPP = (opts.initPseudoPilot || "").trim();
@@ -76,7 +76,14 @@ export function generateSweatbox(s: any, waypoints: any[] = [], opts: any = {}) 
         .split(/\s+/)
         .filter(Boolean)
         .map((t) => t.split("/")[0].toUpperCase());
-      const targetIdx = toks[0] === spawnWpt ? 1 : 0;
+      // Target the first resolvable fix AFTER the spawn fix wherever it sits in
+      // the route — an aircraft whose sim route was not trimmed to its spawn
+      // fix used to aim at token 0, i.e. back up its own track. Legacy aircraft
+      // keep the rc3 rule (token 1 if it opens on the spawn fix, else token 0);
+      // one golden fixture encodes exactly that.
+      const spawnIdx = toks.indexOf(spawnWpt);
+      const targetIdx =
+        a.spawnMode !== undefined && spawnIdx >= 0 ? spawnIdx + 1 : toks[0] === spawnWpt ? 1 : 0;
       if (targetIdx < toks.length) {
         const target = waypoints.find((w) => w.name === toks[targetIdx]);
         if (target) hdg = Math.round(bearingBetween(sLat, sLon, target.lat, target.lon));
@@ -118,7 +125,9 @@ export function generateSweatbox(s: any, waypoints: any[] = [], opts: any = {}) 
       `$FP${a.callsign}:*A:I:${a.type}:420:${a.origin}:0000:0000:${a.cruiseAlt}:${a.dest}:00:00:0:0::/v/:${a.fpRoute}`,
     );
     L.push(`SIMDATA:${a.callsign}:*:*:25:1:0.010:0.0`);
-    L.push(`$ROUTE:${a.simRoute}`);
+    // EuroScope skips a route token carrying a speed/level suffix, so $ROUTE
+    // is written with bare fixes ($FP above keeps the filed string verbatim).
+    L.push(`$ROUTE:${newSpawn ? stripRouteSuffixes(a.simRoute) : a.simRoute}`);
     if (a.start !== "" && a.start != null && +a.start > 0) L.push(`START:${a.start}`);
     L.push("DELAY:3:7");
     if (a.reqAltWpt && a.reqAltVal) L.push(`REQALT:${a.reqAltWpt}:${a.reqAltVal}`);

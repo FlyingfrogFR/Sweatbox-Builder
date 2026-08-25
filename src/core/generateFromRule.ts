@@ -16,7 +16,7 @@
 
 import { computeSpawnGs } from "./speed";
 import { GS_BY_WTC } from "./tables";
-import { trimRoute, pickPool, expandCS, nearestResolvableIdx } from "./route";
+import { trimRoute, pickPool, expandCS, nearestResolvableIdx, stripRouteSuffixes } from "./route";
 import { preEntryOffset, bearingBetween, destinationPoint, distanceNm } from "./geo";
 import { genCS } from "./callsign";
 import { assignSquawk } from "./squawk";
@@ -150,6 +150,12 @@ function joinStar(simRoute: string, dest: string, rwy: string, stars: any[]) {
   return null;
 }
 
+// Identity of a pool entry for claim-once generation. Pool entries minted by
+// the app carry an id; synthetic ones (tests, hand-built pools) fall back to
+// the flight's identity.
+const claimKey = (p: any) =>
+  String(p?.id || [p?.callsign, p?.origin, p?.dest].join("|")).toUpperCase();
+
 const OCTANTS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
 const octantOf = (brg: number) => OCTANTS[Math.round((((brg % 360) + 360) % 360) / 45) % 8];
 
@@ -162,6 +168,7 @@ export function generateFromRule(
   boundaryFir?: string,
   firBounds?: Record<string, number[][]>,
   starsIn?: any[],
+  claimedSet?: Set<string>,
 ) {
   // autoBoundary (pool rules only): each aircraft spawns where ITS OWN filed
   // route crosses the scenario FIR boundary — no rule-level spawn waypoint.
@@ -221,6 +228,12 @@ export function generateFromRule(
       .map((s: string) => s.trim())
       .filter(Boolean);
     let matches = pool.filter((p) => {
+      // Claim-once: a flight plan belongs to whichever rule emits it first, so
+      // an LFPO->LEBL plan taken by the LFPO departure rule cannot also be
+      // emitted at cruise by an LEBL transit rule. Rules consume the pool in
+      // list order. Absent the set (legacy callers, golden harness) nothing is
+      // claimed and behaviour is exactly as before.
+      if (claimedSet && claimedSet.has(claimKey(p))) return false;
       if (dDepList.length && !dDepList.includes(p.origin)) return false;
       if (dArrList.length && !dArrList.includes(p.dest)) return false;
       if (rcList.length) {
@@ -251,6 +264,7 @@ export function generateFromRule(
       rule.spawnAltMode === "poolCruise" ? (tmpl.cruiseFL || 350) * 100 : +rule.spawnAlt || 18000;
 
     let bandFallbackNote: string | null = null;
+    const bandFallbackSet = new Set<any>();
     const spawnPlan = new Map<
       any,
       { fixName: string; fixWp: any; at?: { lat: number; lon: number }; brg?: number }
@@ -390,7 +404,10 @@ export function generateFromRule(
         }
         if (!plan) continue;
         nBoundary++;
-        if (!banded) nBandFallback++;
+        if (!banded) {
+          nBandFallback++;
+          bandFallbackSet.add(p);
+        }
         const at = plan.at || plan.fixWp;
         if (
           dirList.length &&
@@ -407,7 +424,7 @@ export function generateFromRule(
         };
       matches = survivors;
       if (nBandFallback)
-        bandFallbackNote = `${nBandFallback} aircraft matched no ${fir} boundary at their level — placed using the level-blind boundary instead`;
+        bandFallbackNote = `${nBandFallback} aircraft matched no ${fir} ${useGeometry ? "boundary" : "gate"} at their level — placed using the level-blind ${useGeometry ? "boundary" : "gate list"} instead`;
     }
 
     if (!autoBoundary && rule.excludeNonRouting !== false && rule.spawnWaypoint) {
@@ -472,10 +489,16 @@ export function generateFromRule(
       // the leg's inbound bearing. Set only when boundary geometry produced it.
       let crossAt: { lat: number; lon: number } | null = null;
       let crossBrg: number | null = null;
+      // How this aircraft's placement was arrived at — attached to the aircraft
+      // so a field report ("it spawned in the wrong place") is diagnosable from
+      // the saved scenario alone. Not serialized into the .scn.
+      const how: string[] = [];
       if (autoBoundary) {
         const plan = spawnPlan.get(tmpl)!;
         spawnName = plan.fixName;
         spawnWp = plan.fixWp;
+        how.push(plan.at ? "boundary-crossing" : "published-gate");
+        if (bandFallbackSet.has(tmpl)) how.push("band-fallback");
         if (plan.at && plan.brg !== undefined) {
           crossAt = plan.at;
           crossBrg = plan.brg;
@@ -501,6 +524,7 @@ export function generateFromRule(
             if (pw && entryWp && distanceNm(pw.lat, pw.lon, entryWp.lat, entryWp.lon) <= priorMax) {
               spawnName = toks[pi];
               spawnWp = pw;
+              how.push("prior-fix");
             }
           }
         }
@@ -523,6 +547,7 @@ export function generateFromRule(
         acLat = back.lat;
         acLon = back.lon;
         acPre = 0;
+        how.push("offset-at-crossing");
       } else if (hasNewFields) {
         // Never-on-fix invariant: predict the serializer's offset. When no
         // inbound bearing is derivable even after the airway walks:
@@ -530,6 +555,7 @@ export function generateFromRule(
         // gate on the centroid→gate radial, i.e. outside the FIR, heading
         // toward the gate); waypoint mode excludes the aircraft and reports it.
         const off = preEntryOffset(spawnName, simR, acPre, waypoints, fpR);
+        if (off) how.push("offset-upstream");
         if (!off && autoBoundary && ref && entryWp) {
           const radial = bearingBetween(ref.lat, ref.lon, entryWp.lat, entryWp.lon);
           const pos = destinationPoint(entryWp.lat, entryWp.lon, radial, effPre);
@@ -539,6 +565,7 @@ export function generateFromRule(
           acLat = pos.lat;
           acLon = pos.lon;
           acPre = 0; // position is already offset — the serializer must not re-offset
+          how.push("last-resort-radial");
         } else if (!off) {
           excluded++;
           continue;
@@ -547,6 +574,11 @@ export function generateFromRule(
       // Continue onto the ESE STAR for the runway in use — the filed route is
       // kept up to where it meets the STAR, and the STAR takes over from there
       // (S3-style arrivals without truncating the enroute portion).
+      // The sim route is what EuroScope flies: speed/level suffixes on a filed
+      // token ("ETAMO/N0453F370") make it skip the fix, so SIM RTE carries bare
+      // fixes. The filed $FP route keeps the original string.
+      if (hasNewFields) simR = stripRouteSuffixes(simR);
+
       if (rule.appendStar && rule.rwyInUse && !rule.isDeparture) {
         const joined = joinStar(simR, tmpl.dest, rule.rwyInUse, starList);
         if (joined) simR = joined;
@@ -576,6 +608,7 @@ export function generateFromRule(
         for (let n = 2; usedSet.has(cs); n++) cs = base + n;
       }
       usedSet.add(cs);
+      if (claimedSet) claimedSet.add(claimKey(tmpl));
       out.push({
         id: uid(),
         callsign: cs,
@@ -606,7 +639,12 @@ export function generateFromRule(
         ruleId: rule.id,
         // Marks aircraft whose spawn went through the never-on-fix invariant;
         // the serializer's airway-aware heading fallbacks key off this.
-        ...(hasNewFields ? { spawnMode: autoBoundary ? "autoBoundary" : "waypoint" } : {}),
+        ...(hasNewFields
+          ? {
+              spawnMode: autoBoundary ? "autoBoundary" : "waypoint",
+              spawnDebug: `${spawnName} · ${how.join(" · ") || "on-fix"} · ${acPre} NM`,
+            }
+          : {}),
       });
     }
     return {

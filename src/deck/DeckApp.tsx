@@ -353,6 +353,9 @@ export default function DeckApp() {
     const ids = new Set(rules.map((r: any) => r.id));
     let ac = sc.aircraft.filter((a: any) => !a.ruleId || !ids.has(a.ruleId));
     const used = new Set<string>(ac.map((a: any) => a.callsign).filter(Boolean));
+    // Claim-once: rules consume the flight-plan pool in list order, so a plan
+    // taken by one rule cannot be emitted again by a later one.
+    const claimed = new Set<string>();
     const fresh: any[] = [];
     const errors: string[] = [];
     const warnings: string[] = [];
@@ -361,7 +364,17 @@ export default function DeckApp() {
         aircraft: gen,
         error,
         warning,
-      }: any = generateFromRule(r, waypoints, used, pool, copx, sc.boundaryFir, firBounds);
+      }: any = generateFromRule(
+        r,
+        waypoints,
+        used,
+        pool,
+        copx,
+        sc.boundaryFir,
+        firBounds,
+        undefined,
+        claimed,
+      );
       if (error) {
         errors.push(`${r.name}: ${error}`);
         continue;

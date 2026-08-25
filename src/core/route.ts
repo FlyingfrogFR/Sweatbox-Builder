@@ -3,6 +3,26 @@
 // fixes with airway designators that never resolve in navdata, so neighbour
 // lookups must walk past them.)
 
+// Filed routes legally carry speed/level suffixes ("ETAMO/N0453F370") and any
+// case. Every comparison against navdata must be made on the bare fix, or the
+// token silently fails to resolve here — and EuroScope skips it in $ROUTE too.
+export function bareFix(tok: string) {
+  return String(tok || "")
+    .split("/")[0]
+    .trim()
+    .toUpperCase();
+}
+
+/** Route with every token reduced to its bare fix — for sim routes / $ROUTE. */
+export function stripRouteSuffixes(route: string) {
+  return String(route || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((t) => t.split("/")[0])
+    .join(" ");
+}
+
 // First token at or beyond `from` (stepping by `dir` = +1 / -1) that resolves
 // in `wpts`. Returns its index, or -1.
 export function nearestResolvableIdx(
@@ -12,7 +32,8 @@ export function nearestResolvableIdx(
   wpts: any[],
 ): number {
   for (let i = from; i >= 0 && i < toks.length; i += dir) {
-    if (wpts.some((w) => w.name === toks[i])) return i;
+    const t = bareFix(toks[i]);
+    if (wpts.some((w) => String(w.name).toUpperCase() === t)) return i;
   }
   return -1;
 }
@@ -20,7 +41,8 @@ export function nearestResolvableIdx(
 export function trimRoute(route: string, wpt: string) {
   if (!route || !wpt) return route || "";
   const toks = String(route).trim().split(/\s+/).filter(Boolean);
-  const idx = toks.findIndex((t) => t.toUpperCase() === wpt.toUpperCase());
+  const target = bareFix(wpt);
+  const idx = toks.findIndex((t) => bareFix(t) === target);
   return idx === -1 ? route : toks.slice(idx).join(" ");
 }
 
