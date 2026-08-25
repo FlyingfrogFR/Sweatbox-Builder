@@ -91,6 +91,14 @@ function firstBoundaryHit(
   return best;
 }
 
+// FIR boundaries are level-dependent, so every boundary test is made at the
+// level the aircraft will actually spawn at. ±2000 ft of slack absorbs
+// sector-stack edges (an FL360 flight between a 295–345 sector and a 365–660
+// one belongs to both for our purposes).
+const BAND_SLACK = 2000;
+const inBand = (ft: number, lower: number, upper: number) =>
+  ft >= lower - BAND_SLACK && ft <= upper + BAND_SLACK;
+
 const OCTANTS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
 const octantOf = (brg: number) => OCTANTS[Math.round((((brg % 360) + 360) % 360) / 45) % 8];
 
@@ -182,6 +190,12 @@ export function generateFromRule(
     //   2. FIR_COPX gates — the published crossing points, used when the file
     //      has no usable sector geometry.
     // spawnPlan[pool entry] = where and how that aircraft enters.
+    // The level this aircraft will spawn at — its own filed cruise under
+    // spawnAltMode "poolCruise", otherwise the rule's spawn altitude.
+    const levelOf = (tmpl: any) =>
+      rule.spawnAltMode === "poolCruise" ? (tmpl.cruiseFL || 350) * 100 : +rule.spawnAlt || 18000;
+
+    let bandFallbackNote: string | null = null;
     const spawnPlan = new Map<
       any,
       { fixName: string; fixWp: any; at?: { lat: number; lon: number }; brg?: number }
@@ -196,15 +210,23 @@ export function generateFromRule(
       // Gates INTO the session FIR only (toFir filter): a route may cross a
       // neighbouring FIR first, and its first boundary fix overall would
       // spawn it a whole FIR too early.
-      const gateApts = new Map<string, Set<string>>(); // fix -> destApts on its FIR_COPX lines
+      // fix -> the into-FIR entries published for it, each with the band of the
+      // sector the traffic is arriving OUT of (the correct discriminator: it is
+      // the airspace the aircraft is in when it reaches the fix).
+      const gateEntries = new Map<string, { destApt: string; lower: number; upper: number }[]>();
       for (const c of copx || []) {
         if (c.kind !== "fir" || String(c.toFir || "").toUpperCase() !== fir) continue;
         const f = String(c.fix || "").toUpperCase();
         if (!wpByName.has(f)) continue;
-        if (!gateApts.has(f)) gateApts.set(f, new Set());
-        if (c.destApt) gateApts.get(f)!.add(String(c.destApt).toUpperCase());
+        if (!gateEntries.has(f)) gateEntries.set(f, []);
+        gateEntries.get(f)!.push({
+          destApt: String(c.destApt || "").toUpperCase(),
+          lower: +c.fromLower || 0,
+          upper: c.fromUpper === undefined ? Infinity : +c.fromUpper,
+        });
       }
-      if (!fir || (!useGeometry && gateApts.size === 0))
+      const gateApts = gateEntries;
+      if (!fir || (!useGeometry && gateEntries.size === 0))
         return {
           aircraft: [],
           error: !fir
@@ -224,12 +246,12 @@ export function generateFromRule(
       } else {
         let sLat = 0,
           sLon = 0;
-        for (const f of gateApts.keys()) {
+        for (const f of gateEntries.keys()) {
           const w = wpByName.get(f)!;
           sLat += w.lat;
           sLon += w.lon;
         }
-        ref = { lat: sLat / gateApts.size, lon: sLon / gateApts.size };
+        ref = { lat: sLat / gateEntries.size, lon: sLon / gateEntries.size };
       }
 
       const dirList = (rule.entryDirection || "")
@@ -239,6 +261,7 @@ export function generateFromRule(
         .filter(Boolean);
       const nDepArr = matches.length;
       let nBoundary = 0;
+      let nBandFallback = 0;
       const survivors: any[] = [];
       for (const p of matches) {
         const toks = (p.route || "")
@@ -253,35 +276,66 @@ export function generateFromRule(
           brg?: number;
         } | null = null;
 
+        const level = levelOf(p);
+        let banded = true;
+
         if (useGeometry) {
-          // Walk consecutive resolvable fixes and take the first leg that
-          // crosses the boundary; the leg's downstream fix is the first fix
-          // inside the FIR, and the crossing point is where it enters.
+          // Only the boundary that exists at THIS aircraft's level: most
+          // sectorlines are low-level TMA/CTR edges deep inside the FIR, and a
+          // UAC-level flight must not "enter" the FIR across one of those.
+          const atLevel = segs.filter((sg) => sg.length < 6 || inBand(level, sg[4], sg[5]));
           const legs = toks.map((t: string) => wpByName.get(t)).filter(Boolean) as any[];
           const names = toks.filter((t: string) => wpByName.has(t));
-          for (let i = 0; i < legs.length - 1 && !plan; i++) {
-            const hit = firstBoundaryHit(legs[i], legs[i + 1], segs);
-            if (!hit) continue;
-            plan = {
-              fixName: names[i + 1],
-              fixWp: legs[i + 1],
-              at: { lat: hit.lat, lon: hit.lon },
-              brg: bearingBetween(legs[i].lat, legs[i].lon, legs[i + 1].lat, legs[i + 1].lon),
-            };
+          const scan = (use: number[][]) => {
+            for (let i = 0; i < legs.length - 1; i++) {
+              const hit = firstBoundaryHit(legs[i], legs[i + 1], use);
+              if (!hit) continue;
+              return {
+                fixName: names[i + 1],
+                fixWp: legs[i + 1],
+                at: { lat: hit.lat, lon: hit.lon },
+                brg: bearingBetween(legs[i].lat, legs[i].lon, legs[i + 1].lat, legs[i + 1].lon),
+              };
+            }
+            return null;
+          };
+          plan = scan(atLevel);
+          // Rather than drop the aircraft, fall back to the level-blind
+          // boundary and say so — a band that excludes everything usually means
+          // unusual sector altitudes in the file, not that the flight stays out.
+          if (!plan) {
+            plan = scan(segs);
+            if (plan) banded = false;
           }
         }
-        if (!plan && gateApts.size) {
-          // Published-gate fallback: first route token that is a gate, preferring
-          // the earliest whose FIR_COPX destApt matches this aircraft's destination.
-          const cands = toks.filter((t: string) => gateApts.has(t));
-          if (cands.length) {
-            const dest = String(p.dest || "").toUpperCase();
-            const fixName = cands.find((f: string) => gateApts.get(f)!.has(dest)) || cands[0];
-            plan = { fixName, fixWp: wpByName.get(fixName)! };
+        if (!plan && gateEntries.size) {
+          // Published gates: a route token counts as this aircraft's entry only
+          // when one of its into-FIR entries is published for the band the
+          // aircraft is in. The FROM sector's band is the discriminator — that
+          // is the airspace the aircraft occupies on the way in. Without it an
+          // FL360 flight on "DEKOD UN857 DISAK" gates at DEKOD (published
+          // FL195-265) and spawns well inside the upper-level boundary.
+          const dest = String(p.dest || "").toUpperCase();
+          const pick = (bandAware: boolean) => {
+            const fits = (e: { lower: number; upper: number }) =>
+              !bandAware || inBand(level, e.lower, e.upper);
+            const cands = toks.filter((t: string) => (gateEntries.get(t) || []).some(fits));
+            if (!cands.length) return null;
+            const fixName =
+              cands.find((f: string) =>
+                (gateEntries.get(f) || []).some((e) => e.destApt === dest && fits(e)),
+              ) || cands[0];
+            return { fixName, fixWp: wpByName.get(fixName)! };
+          };
+          plan = pick(true);
+          if (!plan) {
+            plan = pick(false);
+            if (plan) banded = false;
           }
         }
         if (!plan) continue;
         nBoundary++;
+        if (!banded) nBandFallback++;
         const at = plan.at || plan.fixWp;
         if (
           dirList.length &&
@@ -294,9 +348,11 @@ export function generateFromRule(
       if (!survivors.length)
         return {
           aircraft: [],
-          error: `Auto-boundary (${useGeometry ? `${fir} boundary geometry` : `${fir} published gates`}): ${nDepArr} matched DEP/ARR · ${nBoundary} enter the FIR · 0 match direction [${dirList.join(",") || "any"}]`,
+          error: `Auto-boundary (${useGeometry ? `${fir} boundary geometry` : `${fir} published gates`}): ${nDepArr} matched DEP/ARR · ${nBoundary} enter the FIR${nBandFallback ? ` (${nBandFallback} via band fallback)` : ""} · 0 match direction [${dirList.join(",") || "any"}]`,
         };
       matches = survivors;
+      if (nBandFallback)
+        bandFallbackNote = `${nBandFallback} aircraft matched no ${fir} boundary at their level — placed using the level-blind boundary instead`;
     }
 
     if (!autoBoundary && rule.excludeNonRouting !== false && rule.spawnWaypoint) {
@@ -492,9 +548,10 @@ export function generateFromRule(
       aircraft: out,
       error: null,
       warning:
-        excluded > 0
+        bandFallbackNote ||
+        (excluded > 0
           ? `${excluded} aircraft skipped — no resolvable fix to derive the inbound leg (they would spawn exactly on ${rule.spawnWaypoint})`
-          : null,
+          : null),
     };
   }
 

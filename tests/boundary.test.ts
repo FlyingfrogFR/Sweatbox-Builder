@@ -354,13 +354,18 @@ describe("P7 — ESE parser ingests FIR_COPX", () => {
     });
   });
 
-  it("skips lines with no named crossing point and no level", () => {
+  it("skips lines with no named crossing point, but keeps gates that publish no level", () => {
     const ese = [
       "[AIRSPACE]",
+      // no COP in either slot (the arrival slot holds an airport) — nothing to gate on
       "COPX:*:*:*:LFRL:*:LFRR·JS UAC·195·325:LFRR·KS UAC·195·355:*:28000:TFL",
-      "FIR_COPX:*:*:BOKNO:*:*:LFRR·N·128.1·1:EGTT·S·132.2·1:*:*:no level",
+      // a real gate that publishes no climb/descend level — still a gate
+      "FIR_COPX:*:*:BOKNO:*:*:LFRR·NS UAC·195·325:EGTT·S UAC·195·325:*:*:no level",
     ].join("\n");
-    expect(parseESE(ese).copx.length).toBe(0);
+    const { copx } = parseESE(ese);
+    expect(copx.map((c: any) => c.fix)).toEqual(["BOKNO"]);
+    expect(copx[0].level).toBeNull();
+    expect(copx[0]).toMatchObject({ fromFir: "LFRR", toFir: "EGTT", fromLower: 19500 });
   });
 });
 
@@ -478,5 +483,166 @@ describe("P8 — FIR boundary geometry from [AIRSPACE] sectorlines", () => {
 
     const none = generateFromRule(autoRuleForFallback(), WPTS, new Set(), [], [], "LFBB", {});
     expect(none.error).toMatch(/no LFBB sector geometry and no LFBB FIR_COPX gates/);
+  });
+});
+
+describe("P9 — level bands (v5): FIR boundaries are level-dependent", () => {
+  // Real northern-LFBB lines. DEKOD is a genuine LFFF→LFBB gate, but only in
+  // the FL195–265/295 bands; above that the airspace between DEKOD and DISAK
+  // is LFRR upper and the LFBB boundary is DISAK.
+  const REAL_GATES = [
+    "[AIRSPACE]",
+    "FIR_COPX:*:*:DEKOD:*:*:LFFF·DG2 UAC·195·265:LFBB·P1 1 UAC·195·265:*:29000:DEKOD",
+    "FIR_COPX:*:*:DEKOD:*:*:LFFF·UZ1 UAC·245·265:LFBB·P1 2 UAC·265·295:*:29000:DEKOD",
+    "FIR_COPX:*:*:DISAK:LFBL:*:LFRR·ZS UAC·295·345:LFBB·P1 2 UAC·265·295:*:31000:DISAK",
+    "FIR_COPX:LFPG:*:*:AGOPA:*:LFFF·DG2 UAC·195·265:LFBB·P1 2 UAC·265·295:26000:*:UP",
+  ].join("\n");
+
+  it("parses sector bands, and rescues the COP from the arrival slot on departure lines", () => {
+    const { copx } = parseESE(REAL_GATES);
+    const dekodLow: any = copx.find((c: any) => c.fix === "DEKOD" && c.fromUpper === 26500);
+    expect(dekodLow).toMatchObject({
+      fromFir: "LFFF",
+      fromLower: 19500,
+      fromUpper: 26500,
+      toFir: "LFBB",
+      toLower: 19500,
+      toUpper: 26500,
+    });
+    const disak: any = copx.find((c: any) => c.fix === "DISAK");
+    expect(disak).toMatchObject({ fromFir: "LFRR", fromLower: 29500, fromUpper: 34500 });
+    // departure-flow line: COP sits in the arrival slot, field 1 is the airport
+    const agopa: any = copx.find((c: any) => c.fix === "AGOPA");
+    expect(agopa).toMatchObject({
+      depApt: "LFPG",
+      destApt: "",
+      fromLower: 19500,
+      fromUpper: 26500,
+    });
+  });
+
+  const BAND_WPTS = [
+    { name: "OUT", lat: 50.0, lon: 3.0, type: "FIXES" },
+    { name: "LOWGT", lat: 49.5, lon: 3.0, type: "FIXES" },
+    { name: "HIGGT", lat: 49.0, lon: 3.0, type: "FIXES" },
+    { name: "REST", lat: 48.0, lon: 3.0, type: "FIXES" },
+  ];
+  // LOWGT comes first in the route but is only a gate below FL265;
+  // HIGGT is the gate for upper-level traffic.
+  const BAND_COPX = [
+    {
+      fix: "LOWGT",
+      level: 25000,
+      destApt: "",
+      kind: "fir",
+      fromFir: "LFFF",
+      toFir: "LFBB",
+      fromLower: 19500,
+      fromUpper: 26500,
+    },
+    {
+      fix: "HIGGT",
+      level: 31000,
+      destApt: "",
+      kind: "fir",
+      fromFir: "LFRR",
+      toFir: "LFBB",
+      fromLower: 29500,
+      fromUpper: 66000,
+    },
+  ];
+  const bandRule = (over: any = {}) =>
+    poolRule({ spawnMode: "autoBoundary", spawnWaypoint: "", preEntryNm: 5, ...over });
+  const highFlight = [entry("HIGH1", "OUT LOWGT HIGGT REST", "LFBO", 360)];
+
+  it("an upper-level flight gates at the upper-level fix, not the first low-band one", () => {
+    const r = generateFromRule(
+      bandRule({ spawnAltMode: "poolCruise" }),
+      BAND_WPTS,
+      new Set(),
+      highFlight,
+      BAND_COPX,
+      "LFBB",
+    );
+    expect(r.error).toBeNull();
+    expect((r.aircraft[0] as any).spawnWaypoint).toBe("HIGGT");
+  });
+
+  it("a low-level flight on the same route gates at the low-band fix", () => {
+    const r = generateFromRule(
+      bandRule({ spawnAltMode: "poolCruise" }),
+      BAND_WPTS,
+      new Set(),
+      [entry("LOW1", "OUT LOWGT HIGGT REST", "LFBO", 210)],
+      BAND_COPX,
+      "LFBB",
+    );
+    expect(r.error).toBeNull();
+    expect((r.aircraft[0] as any).spawnWaypoint).toBe("LOWGT");
+  });
+
+  it("falls back to the level-blind gate and reports it when no band fits", () => {
+    const r: any = generateFromRule(
+      bandRule({ spawnAltMode: "poolCruise" }),
+      BAND_WPTS,
+      new Set(),
+      highFlight,
+      [BAND_COPX[0]], // only the low-band gate exists
+      "LFBB",
+    );
+    expect(r.error).toBeNull();
+    expect((r.aircraft[0] as any).spawnWaypoint).toBe("LOWGT");
+    expect(r.warning).toMatch(/band fallback|level-blind/);
+  });
+
+  it("priorFix on a banded gate spawns before the previous filed fix", () => {
+    const r = generateFromRule(
+      bandRule({ spawnAltMode: "poolCruise", spawnAnchor: "priorFix" }),
+      BAND_WPTS,
+      new Set(),
+      highFlight,
+      BAND_COPX,
+      "LFBB",
+    );
+    const ac: any = r.aircraft[0];
+    expect(ac.spawnWaypoint).toBe("LOWGT"); // one filed fix before the HIGGT gate
+    expect(ac.simRoute.startsWith("LOWGT")).toBe(true);
+    expect(ac.preEntryNm).toBeGreaterThanOrEqual(1);
+  });
+
+  it("geometry is filtered to the level too — a UAC flight ignores a low TMA edge", () => {
+    // Two boundary lines at the same place: a 0–2500 ft TMA edge at lat 49.5
+    // and the real UAC boundary at lat 49.0.
+    const bounds = {
+      LFBB: [
+        [49.5, 2.0, 49.5, 4.0, 0, 2500],
+        [49.0, 2.0, 49.0, 4.0, 19500, 66000],
+      ],
+    };
+    const wpts = [
+      { name: "OUT", lat: 51.0, lon: 3.0, type: "FIXES" },
+      { name: "IN", lat: 47.0, lon: 3.0, type: "FIXES" },
+    ];
+    const high = generateFromRule(
+      bandRule({ spawnAltMode: "poolCruise" }),
+      wpts,
+      new Set(),
+      [entry("UAC1", "OUT IN", "LFBO", 360)],
+      [],
+      "LFBB",
+      bounds,
+    );
+    // crosses at the UAC boundary (49.0), not the TMA edge (49.5)
+    expect(distanceNm((high.aircraft[0] as any).lat, 3.0, 49.0, 3.0)).toBeCloseTo(5, 0);
+    const low = generateFromRule(
+      bandRule({ spawnAltMode: "fixed", spawnAlt: 2000 }),
+      wpts,
+      new Set(),
+      [entry("VFR1", "OUT IN", "LFBO", 20)],
+      [],
+      "LFBB",
+      bounds,
+    );
+    expect(distanceNm((low.aircraft[0] as any).lat, 3.0, 49.5, 3.0)).toBeCloseTo(5, 0);
   });
 });

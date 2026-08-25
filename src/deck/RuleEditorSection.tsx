@@ -394,7 +394,7 @@ export function RuleEditorSection({
     }
     return Object.entries(g).map(([iaf, starList]) => ({ iaf, starList }));
   }, [starsForRwy]);
-  const getCopx = (iaf: string) => allCopx.find((c: any) => c.fix === iaf);
+  const getCopx = (iaf: string) => allCopx.find((c: any) => c.fix === iaf && c.level);
   const applyStarConfig = (iaf: string, star: any, c: any) => {
     setWptSearch(iaf);
     setWptOpen(false);

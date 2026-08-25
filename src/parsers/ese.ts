@@ -3,6 +3,9 @@
 import { parseDMS } from "../core/geo";
 import { GATE_DENYLIST } from "../core/tables";
 
+// "no upper limit" as a plain number so it survives JSON round-trips.
+export const NO_CEILING = 999999;
+
 export function detectIaf(name: string, waypoints: string[]) {
   let lastMatch: string | null = null;
   for (const part of (name || "").split(/x/i)) {
@@ -32,9 +35,15 @@ export function parseESE(text: string) {
   // sector. Every ESE has this, so FIR boundaries are derivable even when a
   // file carries no FIR_COPX gates at all.
   const sectorLines = new Map<string, number[][]>(); // id -> [[lat,lon], …]
-  const firLineIds = new Map<string, Set<string>>(); // FIR -> sectorline ids
+  // FIR -> sectorline id -> [lowest floor, highest ceiling] of the sectors of
+  // that FIR bounded by the line. Sector blocks carry their band in feet
+  // ("SECTOR:LFBB·P1 1 UAC·195·265:19500:26500"), and most sectorlines are
+  // low-level TMA/CTR edges a UAC-level flight never crosses — so the band
+  // travels with the line and the crossing scan can ignore the irrelevant ones.
+  const firLineBands = new Map<string, Map<string, [number, number]>>();
   let curLine: string | null = null;
   let curSectorFir: string | null = null;
+  let curSectorBand: [number, number] = [0, NO_CEILING];
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.replace(/;.*$/, "").trim();
     if (!line) continue;
@@ -107,11 +116,15 @@ export function parseESE(text: string) {
       // "SECTOR:LFBB·BIARRITZ CTR·000·003:00000:00300" — the FIR is the
       // leading ICAO prefix of the sector name (same encoding caveat as COPX).
       curLine = null;
+      const sp = line.split(":");
       curSectorFir =
-        (line.split(":")[1] || "")
+        (sp[1] || "")
           .trim()
           .toUpperCase()
           .match(/^([A-Z]{4})/)?.[1] || null;
+      const lo = (sp[2] || "").trim();
+      const hi = (sp[3] || "").trim();
+      curSectorBand = [/^\d+$/.test(lo) ? +lo : 0, /^\d+$/.test(hi) ? +hi : NO_CEILING];
       continue;
     }
     if (line.startsWith("BORDER:") && curSectorFir) {
@@ -120,9 +133,15 @@ export function parseESE(text: string) {
         .slice(1)
         .map((x) => x.trim())
         .filter(Boolean);
-      if (!firLineIds.has(curSectorFir)) firLineIds.set(curSectorFir, new Set());
-      const set = firLineIds.get(curSectorFir)!;
-      for (const id of ids) set.add(id);
+      if (!firLineBands.has(curSectorFir)) firLineBands.set(curSectorFir, new Map());
+      const bands = firLineBands.get(curSectorFir)!;
+      for (const id of ids) {
+        const b = bands.get(id);
+        if (b) {
+          b[0] = Math.min(b[0], curSectorBand[0]);
+          b[1] = Math.max(b[1], curSectorBand[1]);
+        } else bands.set(id, [curSectorBand[0], curSectorBand[1]]);
+      }
       continue;
     }
 
@@ -141,20 +160,45 @@ export function parseESE(text: string) {
       const p = line.split(":");
       if (p.length < 10) continue;
       const kind = p[0].trim().toUpperCase() === "FIR_COPX" ? "fir" : "copx";
-      const fix = (p[3] || "").trim().toUpperCase();
-      if (!/^[A-Z0-9]{2,6}$/.test(fix)) continue; // "*" = no named crossing point
+      let fix = (p[3] || "").trim().toUpperCase();
+      let depApt = "";
       const apt = (p[4] || "").trim().toUpperCase();
-      const destApt = /^[A-Z]{4}$/.test(apt) ? apt : "";
-      // Sector fields are "<FIR>·<sector>·<low>·<high>". The separator is a
-      // Latin-1 middle dot (0xB7): decoded as UTF-8 it turns into U+FFFD, so
-      // the FIR is taken as the leading four letters rather than by splitting.
-      const firOf = (f: string) =>
-        (String(f || "")
+      // Departure-flow lines leave the COP slot empty and carry the crossing
+      // point in the arrival slot instead:
+      //   FIR_COPX:LFPG:*:*:AGOPA:*:LFFF·DG2 UAC·195·265:LFBB·P1 2 UAC·265·295:26000:*:UP
+      // Field 1 is then the departure airport. These lines hold the departure
+      // climb levels, so they belong in the gate set.
+      if (fix === "*" && /^[A-Z0-9]{2,6}$/.test(apt) && apt.length !== 4) {
+        fix = apt;
+        const d = (p[1] || "").trim().toUpperCase();
+        depApt = /^[A-Z]{4}$/.test(d) ? d : "";
+      }
+      if (!/^[A-Z0-9]{2,6}$/.test(fix)) continue; // no named crossing point at all
+      const destApt = apt !== fix && /^[A-Z]{4}$/.test(apt) ? apt : "";
+      // Sector fields are "<FIR>·<sector>·<lowFL>·<highFL>", e.g.
+      // "LFRR·ZS UAC·295·345". The separator is a Latin-1 middle dot (0xB7),
+      // which becomes U+FFFD when the file is read as UTF-8 — so the FIR is
+      // taken as the leading four letters and the band from the last two
+      // numeric segments, either way. FIR boundaries are LEVEL-DEPENDENT: the
+      // same fix can be a gate in one band and sit inside a neighbour's
+      // airspace in another, so the band travels with the entry.
+      const sectorOf = (f: string) => {
+        const t = String(f || "")
           .trim()
-          .toUpperCase()
-          .match(/^([A-Z]{4})/) || [])[1] || "";
-      const fromFir = firOf(p[6]);
-      const toFir = firOf(p[7]);
+          .toUpperCase();
+        const fir = (t.match(/^([A-Z]{4})/) || [])[1] || "";
+        const nums = t
+          .split(/[\u00B7\uFFFD]/)
+          .map((x) => x.trim())
+          .filter((x) => /^\d{2,3}$/.test(x));
+        const lower = nums.length >= 2 ? +nums[nums.length - 2] * 100 : 0;
+        const upper = nums.length >= 2 ? +nums[nums.length - 1] * 100 : NO_CEILING;
+        return { fir, lower, upper };
+      };
+      const from = sectorOf(p[6]);
+      const to = sectorOf(p[7]);
+      const fromFir = from.fir;
+      const toFir = to.fir;
       // Descend level if set, else climb level (matches the old right-to-left scan).
       let level: number | null = null;
       for (const raw of [p[9], p[8]]) {
@@ -164,8 +208,23 @@ export function parseESE(text: string) {
         level = (raw || "").trim().toUpperCase().startsWith("FL") || n < 1000 ? n * 100 : n;
         break;
       }
-      if (level === null) continue;
-      copx.push({ fix, level, destApt, kind, fromFir, toFir });
+      // A gate with no published climb/descend level is still a gate — keep it
+      // (consumers that need a level, i.e. the STAR reqAlt auto-fill, ask for
+      // one explicitly). Dropping these lost real crossing points: DEKOD's
+      // FL195-265 line into LFBB publishes no level at all.
+      copx.push({
+        fix,
+        level,
+        destApt,
+        depApt,
+        kind,
+        fromFir,
+        toFir,
+        fromLower: from.lower,
+        fromUpper: from.upper,
+        toLower: to.lower,
+        toUpper: to.upper,
+      });
       continue;
     }
 
@@ -188,14 +247,23 @@ export function parseESE(text: string) {
   // necessarily crosses the perimeter first, so "first crossing along the
   // route" is the entry point, and keeping every line means no perimeter gap
   // where a neighbouring FIR happens to be undefined in the file.
+  // Segments are [lat1, lon1, lat2, lon2, floorFt, ceilingFt]. A 4-number
+  // segment (navdata saved before bands existed) applies at every level.
   const firBounds: Record<string, number[][]> = {};
   const r5 = (n: number) => Math.round(n * 1e4) / 1e4; // ~11 m, plenty for a 1 NM spawn offset
-  for (const [fir, ids] of firLineIds) {
+  for (const [fir, bands] of firLineBands) {
     const segs: number[][] = [];
-    for (const id of ids) {
+    for (const [id, band] of bands) {
       const pts = sectorLines.get(id) || [];
       for (let i = 0; i < pts.length - 1; i++)
-        segs.push([r5(pts[i][0]), r5(pts[i][1]), r5(pts[i + 1][0]), r5(pts[i + 1][1])]);
+        segs.push([
+          r5(pts[i][0]),
+          r5(pts[i][1]),
+          r5(pts[i + 1][0]),
+          r5(pts[i + 1][1]),
+          band[0],
+          band[1],
+        ]);
     }
     if (segs.length) firBounds[fir] = segs;
   }
