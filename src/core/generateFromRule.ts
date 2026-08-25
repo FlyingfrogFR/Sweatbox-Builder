@@ -267,7 +267,14 @@ export function generateFromRule(
     const bandFallbackSet = new Set<any>();
     const spawnPlan = new Map<
       any,
-      { fixName: string; fixWp: any; at?: { lat: number; lon: number }; brg?: number }
+      {
+        fixName: string;
+        fixWp: any;
+        at?: { lat: number; lon: number };
+        brg?: number;
+        fromName?: string;
+        fromWp?: any;
+      }
     >();
     let ref: { lat: number; lon: number } | null = null;
     if (autoBoundary) {
@@ -343,6 +350,8 @@ export function generateFromRule(
           fixWp: any;
           at?: { lat: number; lon: number };
           brg?: number;
+          fromName?: string;
+          fromWp?: any;
         } | null = null;
 
         const level = levelOf(p);
@@ -364,6 +373,10 @@ export function generateFromRule(
                 fixWp: legs[i + 1],
                 at: { lat: hit.lat, lon: hit.lon },
                 brg: bearingBetween(legs[i].lat, legs[i].lon, legs[i + 1].lat, legs[i + 1].lon),
+                // the last filed fix strictly BEFORE the crossing — the
+                // priorFix anchor, and the distance the gate measures from
+                fromName: names[i],
+                fromWp: legs[i],
               };
             }
             return null;
@@ -489,10 +502,23 @@ export function generateFromRule(
       // the leg's inbound bearing. Set only when boundary geometry produced it.
       let crossAt: { lat: number; lon: number } | null = null;
       let crossBrg: number | null = null;
+      let crossFrom: string | null = null; // last filed fix before the crossing
+      let spawnLabel: string | null = null;
       // How this aircraft's placement was arrived at — attached to the aircraft
       // so a field report ("it spawned in the wrong place") is diagnosable from
       // the saved scenario alone. Not serialized into the .scn.
       const how: string[] = [];
+      // Route tokens that look like fixes but are not in the loaded navdata —
+      // a high count usually means the wrong .sct, and it explains why a spawn
+      // landed further along the route than expected.
+      const unresolved = (fpR ? String(fpR).toUpperCase().split(/\s+/).filter(Boolean) : []).filter(
+        (t: string) => {
+          const b = t.split("/")[0];
+          if (b === "DCT" || /^[A-Z]{1,3}\d{1,4}[A-Z]?$/.test(b)) return false; // DCT / airways
+          if (!/^[A-Z]{2,6}$/.test(b)) return false;
+          return !waypoints.some((w) => String(w.name).toUpperCase() === b);
+        },
+      ).length;
       if (autoBoundary) {
         const plan = spawnPlan.get(tmpl)!;
         spawnName = plan.fixName;
@@ -502,6 +528,10 @@ export function generateFromRule(
         if (plan.at && plan.brg !== undefined) {
           crossAt = plan.at;
           crossBrg = plan.brg;
+          crossFrom = plan.fromName || null;
+          // The aircraft enters between two filed fixes, so neither of them
+          // names the spawn: say where the boundary was crossed instead.
+          spawnLabel = `${(boundaryFir || "").trim().toUpperCase()} boundary · ${plan.fromName || "?"}→${plan.fixName}`;
         }
       }
       // spawnAnchor "priorFix": walk back from the entry fix in the aircraft's
@@ -510,7 +540,24 @@ export function generateFromRule(
       // is none, it's not in this FP, or it's farther than priorFixMaxNm.
       const entryName = spawnName;
       const entryWp = spawnWp;
-      if (hasNewFields && anchorPrior && fpR) {
+      if (hasNewFields && anchorPrior && crossAt && crossFrom) {
+        // Geometry mode: the candidate is the last filed fix strictly before
+        // the crossing, and the gate measures candidate -> crossing — that is
+        // the extra distance actually flown, not the whole fix-to-fix leg
+        // (ARNAV->LMG is 83 NM, but ARNAV sits only 8 NM from the boundary).
+        const plan = spawnPlan.get(tmpl)!;
+        const cw = plan.fromWp;
+        if (cw && distanceNm(cw.lat, cw.lon, crossAt.lat, crossAt.lon) <= priorMax) {
+          spawnName = crossFrom;
+          spawnWp = cw;
+          spawnLabel = crossFrom;
+          how.push("prior-fix");
+          // The anchor is a real fix again: place it there and let the normal
+          // upstream offset run from its own inbound leg.
+          crossAt = null;
+          crossBrg = null;
+        }
+      } else if (hasNewFields && anchorPrior && fpR) {
         const toks = String(fpR)
           .toUpperCase()
           .split(/\s+/)
@@ -539,14 +586,20 @@ export function generateFromRule(
       let acLat = spawnWp ? spawnWp.lat : 0;
       let acLon = spawnWp ? spawnWp.lon : 0;
       let acPre = hasNewFields ? effPre : +rule.preEntryNm || 0;
+      // Bearing of the crossed leg, when the anchor is a boundary crossing
+      // rather than a named fix — the serializer offsets along its reciprocal.
+      let crossLegBrg: number | null = null;
       if (crossAt && crossBrg !== null && !priorChosen) {
-        // Spawn effPre NM BEFORE the crossing point, on the inbound leg, so the
-        // aircraft is outside the FIR and flies in along its own filed track.
-        // The position is final — the serializer must not offset it again.
-        const back = destinationPoint(crossAt.lat, crossAt.lon, (crossBrg + 180) % 360, effPre);
-        acLat = back.lat;
-        acLon = back.lon;
-        acPre = 0;
+        // The aircraft enters between two fixes, so the anchor is the crossing
+        // point itself: store it with the leg bearing and let the serializer
+        // back it off by preEntryNm along that leg, exactly as it does for a
+        // fix-anchored spawn. Keeping preEntryNm (never 0 — the 1 NM invariant
+        // applies here too) means an aircraft is never left sitting on the
+        // boundary line, and the editor's slider still moves it.
+        acLat = crossAt.lat;
+        acLon = crossAt.lon;
+        acPre = effPre;
+        crossLegBrg = crossBrg;
         how.push("offset-at-crossing");
       } else if (hasNewFields) {
         // Never-on-fix invariant: predict the serializer's offset. When no
@@ -642,7 +695,15 @@ export function generateFromRule(
         ...(hasNewFields
           ? {
               spawnMode: autoBoundary ? "autoBoundary" : "waypoint",
-              spawnDebug: `${spawnName} · ${how.join(" · ") || "on-fix"} · ${acPre} NM`,
+              // What to show a human: a crossing is between two fixes, so the
+              // functional spawnWaypoint alone would name the wrong thing.
+              ...(spawnLabel ? { spawnLabel } : {}),
+              ...(crossLegBrg !== null ? { spawnBrg: crossLegBrg } : {}),
+              spawnDebug: `${spawnLabel || spawnName} · ${how.join(" · ") || "on-fix"} · ${acPre} NM${
+                unresolved
+                  ? ` · ${unresolved} route fix${unresolved > 1 ? "es" : ""} unresolved`
+                  : ""
+              }`,
             }
           : {}),
       });

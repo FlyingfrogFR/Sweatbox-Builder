@@ -430,16 +430,31 @@ describe("P8 — FIR boundary geometry from [AIRSPACE] sectorlines", () => {
 
     const w: any = r.aircraft.find((a: any) => a.callsign === "WEST1");
     const e: any = r.aircraft.find((a: any) => a.callsign === "EAST1");
-    // crossing points are on the edges; spawn sits 10 NM outside, still on the leg
-    expect(w.lon).toBeLessThan(2);
-    expect(distanceNm(w.lat, w.lon, 49, 2)).toBeCloseTo(10, 0);
-    expect(e.lon).toBeGreaterThan(4);
-    expect(distanceNm(e.lat, e.lon, 49, 4)).toBeCloseTo(10, 0);
+    // The aircraft is anchored ON its crossing point and carries the leg
+    // bearing + preEntryNm; the serializer backs it off along that leg (v8).
+    expect(w.lon).toBeCloseTo(2, 3);
+    expect(e.lon).toBeCloseTo(4, 3);
+    expect(w.preEntryNm).toBe(10);
+    const scn = generateSweatbox(
+      { name: "T", airportAlt: 0, ils: [], controllers: [], holdings: [], aircraft: r.aircraft },
+      GEO_WPTS,
+      {},
+    );
+    const at = (cs: string) => {
+      const l = scn.split("\n").find((x: string) => x.startsWith(`@N:${cs}`))!;
+      return { lat: +l.split(":")[4], lon: +l.split(":")[5] };
+    };
+    const ws = at("WEST1");
+    const es = at("EAST1");
+    expect(ws.lon).toBeLessThan(2); // 10 NM outside, still on the leg
+    expect(distanceNm(ws.lat, ws.lon, 49, 2)).toBeCloseTo(10, 0);
+    expect(es.lon).toBeGreaterThan(4);
+    expect(distanceNm(es.lat, es.lon, 49, 4)).toBeCloseTo(10, 0);
     // routed at the first fix INSIDE the FIR, flying its own filed route
     expect(w.spawnWaypoint).toBe("MID");
     expect(w.simRoute).toBe("MID");
     expect(w.fpRoute).toBe("WEST MID");
-    expect(w.preEntryNm).toBe(0); // position is final — no second offset
+    expect(w.spawnLabel).toBe("LFBB boundary · WEST→MID"); // names the crossing, not the fix
   });
 
   it("direction filter uses the crossing point, and geometry beats published gates", () => {
@@ -633,7 +648,7 @@ describe("P9 — level bands (v5): FIR boundaries are level-dependent", () => {
       bounds,
     );
     // crosses at the UAC boundary (49.0), not the TMA edge (49.5)
-    expect(distanceNm((high.aircraft[0] as any).lat, 3.0, 49.0, 3.0)).toBeCloseTo(5, 0);
+    expect((high.aircraft[0] as any).lat).toBeCloseTo(49.0, 3);
     const low = generateFromRule(
       bandRule({ spawnAltMode: "fixed", spawnAlt: 2000 }),
       wpts,
@@ -643,7 +658,7 @@ describe("P9 — level bands (v5): FIR boundaries are level-dependent", () => {
       "LFBB",
       bounds,
     );
-    expect(distanceNm((low.aircraft[0] as any).lat, 3.0, 49.5, 3.0)).toBeCloseTo(5, 0);
+    expect((low.aircraft[0] as any).lat).toBeCloseTo(49.5, 3);
   });
 });
 
@@ -861,5 +876,143 @@ describe("P11 — TVF50FL field regression (v7)", () => {
   it("records how each spawn was derived", () => {
     const r: any = generateFromRule(tvfRule(), TW, new Set(), tvf(290), TGATES, "LFBB");
     expect((r.aircraft[0] as any).spawnDebug).toMatch(/ERIXU · published-gate · band-fallback/);
+  });
+});
+
+describe("P12 — geometry-crossing spawn semantics (v8)", () => {
+  // A -> K -> R -> L southbound; the LFBB edge cuts the R->L leg ~8 NM south
+  // of R, so neither R (outside) nor L (89 NM inside) is the entry itself.
+  const CW = [
+    { name: "A", lat: 48.08, lon: 2.01, type: "FIXES" },
+    { name: "K", lat: 47.63, lon: 2.04, type: "FIXES" },
+    { name: "R", lat: 47.21, lon: 1.79, type: "FIXES" },
+    { name: "L", lat: 45.82, lon: 1.03, type: "FIXES" },
+  ];
+  const CB = { LFBB: [[47.08, 0.5, 47.08, 3.0, 0, 999999]] };
+  const CPOOL = [
+    {
+      callsign: "TST1",
+      type: "A320",
+      origin: "LFPG",
+      dest: "LFBD",
+      route: "A DCT K DCT R DCT L",
+      cruiseFL: 290,
+      squawk: "1000",
+    },
+  ];
+  const cRule = (over: any = {}) =>
+    poolRule({
+      spawnMode: "autoBoundary",
+      spawnWaypoint: "",
+      spawnAltMode: "poolCruise",
+      preEntryNm: 5,
+      ...over,
+    });
+  const spawnOf = (r: any) => {
+    const scn = generateSweatbox(
+      { name: "T", airportAlt: 0, ils: [], controllers: [], holdings: [], aircraft: r.aircraft },
+      CW,
+      {},
+    );
+    const l = scn.split("\n").find((x: string) => x.startsWith("@N:TST1"))!;
+    return { lat: +l.split(":")[4], lon: +l.split(":")[5], hdg: +l.split(":")[8] / 4 / 2.88 };
+  };
+
+  it("entry anchor: spawns preEntryNm upstream of the crossing, never on the line", () => {
+    const r: any = generateFromRule(cRule(), CW, new Set(), CPOOL, [], "LFBB", CB);
+    const a: any = r.aircraft[0];
+    expect(a.preEntryNm).toBe(5); // the rule's value, not 0
+    expect(a.lat).toBeCloseTo(47.08, 3); // anchored on the crossing…
+    const s = spawnOf(r); // …and serialized 5 NM up the R->L leg
+    expect(distanceNm(s.lat, s.lon, 47.08, a.lon)).toBeCloseTo(5, 0);
+    expect(s.lat).toBeGreaterThan(47.08); // north = outside = upstream
+    expect(distanceNm(s.lat, s.lon, 47.08, a.lon)).toBeGreaterThanOrEqual(1); // never on the line
+    // heading follows the crossed leg (south-west-ish), not its reciprocal
+    expect(s.hdg).toBeGreaterThan(180);
+    expect(s.hdg).toBeLessThan(230);
+  });
+
+  it("the 1 NM invariant still applies at a crossing", () => {
+    const r: any = generateFromRule(cRule({ preEntryNm: 0 }), CW, new Set(), CPOOL, [], "LFBB", CB);
+    expect((r.aircraft[0] as any).preEntryNm).toBe(1);
+    const s = spawnOf(r);
+    expect(distanceNm(s.lat, s.lon, 47.08, (r.aircraft[0] as any).lon)).toBeCloseTo(1, 1);
+  });
+
+  it("priorFix anchors on the last fix BEFORE the crossing, gated on fix→crossing", () => {
+    const r: any = generateFromRule(
+      cRule({ spawnAnchor: "priorFix", priorFixMaxNm: 80 }),
+      CW,
+      new Set(),
+      CPOOL,
+      [],
+      "LFBB",
+      CB,
+    );
+    const a: any = r.aircraft[0];
+    // R is 89 NM from L but only ~8 NM from the crossing — the gate measures
+    // the extra distance flown, so it engages.
+    expect(a.spawnWaypoint).toBe("R");
+    expect(a.simRoute.startsWith("R DCT L")).toBe(true); // R retained
+    expect(a.preEntryNm).toBe(5);
+    const s = spawnOf(r);
+    expect(distanceNm(s.lat, s.lon, 47.21, 1.79)).toBeCloseTo(5, 0); // 5 NM before R
+    expect(s.lat).toBeGreaterThan(47.21); // on the K->R leg, i.e. north of R
+  });
+
+  it("priorFixMaxNm below the fix→crossing distance falls back to the crossing", () => {
+    const r: any = generateFromRule(
+      cRule({ spawnAnchor: "priorFix", priorFixMaxNm: 5 }),
+      CW,
+      new Set(),
+      CPOOL,
+      [],
+      "LFBB",
+      CB,
+    );
+    const a: any = r.aircraft[0];
+    expect(a.spawnWaypoint).toBe("L");
+    expect(a.lat).toBeCloseTo(47.08, 3);
+    expect(a.spawnLabel).toBe("LFBB boundary · R→L");
+  });
+
+  it("labels and diagnostics say what happened", () => {
+    const cross: any = generateFromRule(cRule(), CW, new Set(), CPOOL, [], "LFBB", CB);
+    expect((cross.aircraft[0] as any).spawnLabel).toBe("LFBB boundary · R→L"); // both leg fixes
+    expect((cross.aircraft[0] as any).spawnDebug).toMatch(/boundary-crossing/);
+    const prior: any = generateFromRule(
+      cRule({ spawnAnchor: "priorFix", priorFixMaxNm: 80 }),
+      CW,
+      new Set(),
+      CPOOL,
+      [],
+      "LFBB",
+      CB,
+    );
+    expect((prior.aircraft[0] as any).spawnLabel).toBe("R");
+    expect((prior.aircraft[0] as any).spawnDebug).toMatch(/prior-fix/);
+  });
+
+  it("counts route fixes the navdata cannot resolve", () => {
+    const r: any = generateFromRule(
+      cRule(),
+      CW,
+      new Set(),
+      [{ ...CPOOL[0], route: "A DCT K DCT ZZZZZ DCT R DCT L" }],
+      [],
+      "LFBB",
+      CB,
+    );
+    expect((r.aircraft[0] as any).spawnDebug).toMatch(/1 route fix unresolved/);
+  });
+
+  it("legacy aircraft carry no crossing fields and serialize unchanged", () => {
+    const legacy: any = { ...poolRule({ preEntryNm: 5 }), spawnWaypoint: "R" };
+    delete legacy.spawnMode;
+    const r: any = generateFromRule(legacy, CW, new Set(), CPOOL);
+    const a: any = r.aircraft[0];
+    expect(a.spawnBrg).toBeUndefined();
+    expect(a.spawnLabel).toBeUndefined();
+    expect(a.spawnDebug).toBeUndefined();
   });
 });

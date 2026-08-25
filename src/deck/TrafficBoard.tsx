@@ -10,7 +10,8 @@ import { sortByStart } from "../state/aircraft";
 import { Latch, HoldKey, DeckKey } from "./ui";
 import { SessionTimeline } from "./SessionTimeline";
 
-const COLS = "grid grid-cols-[96px_46px_52px_minmax(0,1fr)_104px_54px_112px_92px] gap-x-2.5 items-center";
+const COLS =
+  "grid grid-cols-[96px_46px_52px_minmax(0,1fr)_104px_54px_112px_92px] gap-x-2.5 items-center";
 
 // Copied verbatim from src/panels/ScenarioPanel.tsx so both shells agree.
 function RoleBadge({ dep }: { dep: boolean }) {
@@ -31,7 +32,20 @@ const ACT =
   "w-6 h-6 rounded-md grid place-items-center text-tx6 hover:bg-bd2 hover:text-tx1 active:translate-y-px";
 
 export const TrafficBoard = forwardRef<HTMLDivElement, any>(function TrafficBoard(
-  { scenario, onChange, filter, setFilter, flashIds, onEdit, onOpenRule, onOpenTray, onSnapshot, onRewind, onAddAc, toast },
+  {
+    scenario,
+    onChange,
+    filter,
+    setFilter,
+    flashIds,
+    onEdit,
+    onOpenRule,
+    onOpenTray,
+    onSnapshot,
+    onRewind,
+    onAddAc,
+    toast,
+  },
   ref,
 ) {
   const aircraft: any[] = scenario.aircraft || [];
@@ -45,7 +59,9 @@ export const TrafficBoard = forwardRef<HTMLDivElement, any>(function TrafficBoar
   const rows = useMemo(
     () =>
       sortByStart(
-        aircraft.filter((a) => (filter === "all" ? true : filter === "arr" ? !a.isDeparture : a.isDeparture)),
+        aircraft.filter((a) =>
+          filter === "all" ? true : filter === "arr" ? !a.isDeparture : a.isDeparture,
+        ),
       ),
     [aircraft, filter],
   );
@@ -90,10 +106,20 @@ export const TrafficBoard = forwardRef<HTMLDivElement, any>(function TrafficBoar
         <Latch on={filter === "all"} onClick={() => setFilter("all")} title="Show all aircraft">
           ALL <b className="font-mono">{aircraft.length}</b>
         </Latch>
-        <Latch tone="arr" on={filter === "arr"} onClick={() => setFilter("arr")} title="Show arrivals only">
+        <Latch
+          tone="arr"
+          on={filter === "arr"}
+          onClick={() => setFilter("arr")}
+          title="Show arrivals only"
+        >
           ARR <b className="font-mono">{arrCount}</b>
         </Latch>
-        <Latch tone="dep" on={filter === "dep"} onClick={() => setFilter("dep")} title="Show departures only">
+        <Latch
+          tone="dep"
+          on={filter === "dep"}
+          onClick={() => setFilter("dep")}
+          title="Show departures only"
+        >
           DEP <b className="font-mono">{depCount}</b>
         </Latch>
         <span className="flex-1" />
@@ -137,7 +163,10 @@ export const TrafficBoard = forwardRef<HTMLDivElement, any>(function TrafficBoar
               <span className="block mt-2.5 text-[15px] text-cy-fg">↓</span>
               <span className="dk-kref">FPLN POOL</span>
             </button>
-            <button className="dk-ghost cursor-pointer hover:border-cy-fg/60 transition-colors" onClick={onAddAc}>
+            <button
+              className="dk-ghost cursor-pointer hover:border-cy-fg/60 transition-colors"
+              onClick={onAddAc}
+            >
               <b>Add one by hand</b>
               Drop a blank aircraft and type its plan.
               <span className="block mt-2.5 text-[15px] text-cy-fg">↓</span>
@@ -160,7 +189,8 @@ export const TrafficBoard = forwardRef<HTMLDivElement, any>(function TrafficBoar
             </div>
             {rows.length === 0 && (
               <div className="px-3.5 py-10 text-center text-tx7 text-[12px]">
-                No {filter === "arr" ? "ARR" : "DEP"} aircraft on the board — flip the filter latches above.
+                No {filter === "arr" ? "ARR" : "DEP"} aircraft on the board — flip the filter
+                latches above.
               </div>
             )}
             {rows.map((a: any, i: number) => (
@@ -193,11 +223,19 @@ export const TrafficBoard = forwardRef<HTMLDivElement, any>(function TrafficBoar
                   <RoleBadge dep={!!a.isDeparture} />
                 </span>
                 <span className="font-mono text-[11px] text-tx3 truncate">{a.type || "—"}</span>
-                <span className="text-tx5 text-[11.5px] truncate" title={`${a.origin || "?"} → ${a.dest || "?"}`}>
+                <span
+                  className="text-tx5 text-[11.5px] truncate"
+                  title={`${a.origin || "?"} → ${a.dest || "?"}`}
+                >
                   {a.origin || "?"} → {a.dest || "?"}
                 </span>
-                <span className="font-mono text-[11px] text-tx3 truncate">
-                  {a.spawnWaypoint || `${(+a.lat).toFixed(2)},${(+a.lon).toFixed(2)}`}
+                <span
+                  className="font-mono text-[11px] text-tx3 truncate"
+                  title={a.spawnDebug || undefined}
+                >
+                  {a.spawnLabel ||
+                    a.spawnWaypoint ||
+                    `${(+a.lat).toFixed(2)},${(+a.lon).toFixed(2)}`}
                   {(+a.preEntryNm || 0) > 0 ? ` -${a.preEntryNm}nm` : ""}
                 </span>
                 <span className="text-right font-mono text-[11px] text-tx3">
@@ -233,7 +271,11 @@ export const TrafficBoard = forwardRef<HTMLDivElement, any>(function TrafficBoar
                   <button title="Duplicate" className={ACT} onClick={(e) => dup(e, a)}>
                     <Icon name="copy" size={13} />
                   </button>
-                  <button title="Delete" className={`${ACT} hover:text-rd-fg`} onClick={(e) => del(e, a)}>
+                  <button
+                    title="Delete"
+                    className={`${ACT} hover:text-rd-fg`}
+                    onClick={(e) => del(e, a)}
+                  >
                     <Icon name="trash" size={13} />
                   </button>
                 </span>

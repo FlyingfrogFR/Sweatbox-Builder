@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { emptyAc } from "../core/model";
 import { trimRoute } from "../core/route";
-import { preEntryOffset } from "../core/geo";
+import { preEntryOffset, destinationPoint } from "../core/geo";
 import { DeckKey, Latch, HoldKey } from "./ui";
 
 const LB = "block text-[9.5px] tracking-wide text-tx7 uppercase font-bold mb-1 select-none";
@@ -15,7 +15,11 @@ const IP =
   "w-full bg-inset border border-bd3 rounded-md px-2 py-[5px] font-mono text-[12.5px] text-tx1 focus:border-cy-fg focus:outline-none";
 
 function SectionLabel({ children }: any) {
-  return <div className="text-[9.5px] font-extrabold tracking-[0.12em] text-tx6 uppercase select-none">{children}</div>;
+  return (
+    <div className="text-[9.5px] font-extrabold tracking-[0.12em] text-tx6 uppercase select-none">
+      {children}
+    </div>
+  );
 }
 
 export function AircraftDrawer({ aircraft, waypoints, onSave, onCancel, onDelete }: any) {
@@ -59,12 +63,20 @@ export function AircraftDrawer({ aircraft, waypoints, onSave, onCancel, onDelete
     return m;
   }, [waypoints]);
   const off = useMemo(() => {
-    if (!((+a.preEntryNm || 0) > 0 && a.spawnWaypoint)) return null;
+    if (!((+a.preEntryNm || 0) > 0)) return null;
+    // Boundary-crossing spawns carry the crossed leg's bearing and sit ON the
+    // crossing point — the offset runs back up that leg, not through a fix.
+    // Mirror the serializer exactly so the preview is the position written out.
+    if (a.spawnBrg !== undefined && a.spawnBrg !== null)
+      return destinationPoint(+a.lat, +a.lon, (+a.spawnBrg + 180) % 360, +a.preEntryNm);
+    if (!a.spawnWaypoint) return null;
     // Resolve just the names the offset math can touch (spawn + route tokens,
     // tokenized like preEntryOffset) so slider ticks skip full-list scans.
     const names = new Set<string>([a.spawnWaypoint]);
     for (const route of [a.simRoute, a.fpRoute])
-      for (const t of String(route || "").trim().split(/\s+/))
+      for (const t of String(route || "")
+        .trim()
+        .split(/\s+/))
         if (t) names.add(t.split("/")[0].toUpperCase());
     const subset: any[] = [];
     for (const n of names) {
@@ -72,7 +84,7 @@ export function AircraftDrawer({ aircraft, waypoints, onSave, onCancel, onDelete
       if (w && !subset.includes(w)) subset.push(w);
     }
     return preEntryOffset(a.spawnWaypoint, a.simRoute, +a.preEntryNm, subset, a.fpRoute);
-  }, [a.preEntryNm, a.spawnWaypoint, a.simRoute, a.fpRoute, wptByName]);
+  }, [a.preEntryNm, a.spawnWaypoint, a.spawnBrg, a.lat, a.lon, a.simRoute, a.fpRoute, wptByName]);
 
   const doSave = () => {
     if (!String(a.callsign || "").trim()) {
@@ -103,7 +115,9 @@ export function AircraftDrawer({ aircraft, waypoints, onSave, onCancel, onDelete
     >
       {/* ===== header ===== */}
       <div className="flex-none flex items-center gap-2.5 px-4 py-2.5 border-b border-bd1 bg-inset">
-        <span className="text-[11px] font-extrabold tracking-[0.12em] text-tx6 truncate">{title}</span>
+        <span className="text-[11px] font-extrabold tracking-[0.12em] text-tx6 truncate">
+          {title}
+        </span>
         <span className="flex-1" />
         <DeckKey size="sm" onClick={onCancel}>
           CANCEL
@@ -149,15 +163,28 @@ export function AircraftDrawer({ aircraft, waypoints, onSave, onCancel, onDelete
         <div className="grid grid-cols-3 gap-2.5">
           <div>
             <label className={LB}>Type</label>
-            <input className={IP} value={a.type} onChange={(e) => update("type", e.target.value.toUpperCase())} placeholder="A320" />
+            <input
+              className={IP}
+              value={a.type}
+              onChange={(e) => update("type", e.target.value.toUpperCase())}
+              placeholder="A320"
+            />
           </div>
           <div>
             <label className={LB}>Squawk</label>
-            <input className={IP} value={a.squawk} onChange={(e) => update("squawk", e.target.value)} />
+            <input
+              className={IP}
+              value={a.squawk}
+              onChange={(e) => update("squawk", e.target.value)}
+            />
           </div>
           <div>
             <label className={LB}>Runway</label>
-            <input className={IP} value={a.runway} onChange={(e) => update("runway", e.target.value.toUpperCase())} />
+            <input
+              className={IP}
+              value={a.runway}
+              onChange={(e) => update("runway", e.target.value.toUpperCase())}
+            />
           </div>
         </div>
 
@@ -166,20 +193,37 @@ export function AircraftDrawer({ aircraft, waypoints, onSave, onCancel, onDelete
         <div className="grid grid-cols-3 gap-2.5">
           <div>
             <label className={LB}>Origin</label>
-            <input className={IP} value={a.origin} onChange={(e) => update("origin", e.target.value.toUpperCase())} />
+            <input
+              className={IP}
+              value={a.origin}
+              onChange={(e) => update("origin", e.target.value.toUpperCase())}
+            />
           </div>
           <div>
             <label className={LB}>Destination</label>
-            <input className={IP} value={a.dest} onChange={(e) => update("dest", e.target.value.toUpperCase())} />
+            <input
+              className={IP}
+              value={a.dest}
+              onChange={(e) => update("dest", e.target.value.toUpperCase())}
+            />
           </div>
           <div>
             <label className={LB}>Cruise Alt (ft)</label>
-            <input type="number" className={IP} value={a.cruiseAlt} onChange={(e) => update("cruiseAlt", +e.target.value)} />
+            <input
+              type="number"
+              className={IP}
+              value={a.cruiseAlt}
+              onChange={(e) => update("cruiseAlt", +e.target.value)}
+            />
           </div>
         </div>
         <div>
           <label className={LB}>FP Route</label>
-          <textarea className={`${IP} min-h-[56px]`} value={a.fpRoute} onChange={(e) => update("fpRoute", e.target.value)} />
+          <textarea
+            className={`${IP} min-h-[56px]`}
+            value={a.fpRoute}
+            onChange={(e) => update("fpRoute", e.target.value)}
+          />
         </div>
 
         {/* --- spawn position --- */}
@@ -187,6 +231,9 @@ export function AircraftDrawer({ aircraft, waypoints, onSave, onCancel, onDelete
         <div>
           <label className={LB}>
             Waypoint {a.spawnWaypoint && <span className="text-cy-fg">· {a.spawnWaypoint}</span>}
+            {a.spawnLabel && a.spawnLabel !== a.spawnWaypoint && (
+              <span className="text-tx6 normal-case tracking-normal"> · {a.spawnLabel}</span>
+            )}
           </label>
           <div className="relative">
             <input
@@ -216,21 +263,43 @@ export function AircraftDrawer({ aircraft, waypoints, onSave, onCancel, onDelete
         <div className="grid grid-cols-2 gap-2.5">
           <div>
             <label className={LB}>Lat</label>
-            <input type="number" step="0.0000001" className={IP} value={a.lat} onChange={(e) => update("lat", +e.target.value)} />
+            <input
+              type="number"
+              step="0.0000001"
+              className={IP}
+              value={a.lat}
+              onChange={(e) => update("lat", +e.target.value)}
+            />
           </div>
           <div>
             <label className={LB}>Lon</label>
-            <input type="number" step="0.0000001" className={IP} value={a.lon} onChange={(e) => update("lon", +e.target.value)} />
+            <input
+              type="number"
+              step="0.0000001"
+              className={IP}
+              value={a.lon}
+              onChange={(e) => update("lon", +e.target.value)}
+            />
           </div>
         </div>
         <div className="grid grid-cols-3 gap-2.5">
           <div>
             <label className={LB}>Alt (ft)</label>
-            <input type="number" className={IP} value={a.alt} onChange={(e) => update("alt", +e.target.value)} />
+            <input
+              type="number"
+              className={IP}
+              value={a.alt}
+              onChange={(e) => update("alt", +e.target.value)}
+            />
           </div>
           <div>
             <label className={LB}>GS</label>
-            <input type="number" className={IP} value={a.gs} onChange={(e) => update("gs", +e.target.value)} />
+            <input
+              type="number"
+              className={IP}
+              value={a.gs}
+              onChange={(e) => update("gs", +e.target.value)}
+            />
           </div>
           <div>
             <label className={LB}>Start (min)</label>
@@ -252,13 +321,19 @@ export function AircraftDrawer({ aircraft, waypoints, onSave, onCancel, onDelete
             <DeckKey
               size="sm"
               title={`Drop everything before ${a.spawnWaypoint}`}
-              onClick={() => setA((prev: any) => ({ ...prev, simRoute: trimRoute(a.simRoute, a.spawnWaypoint) }))}
+              onClick={() =>
+                setA((prev: any) => ({ ...prev, simRoute: trimRoute(a.simRoute, a.spawnWaypoint) }))
+              }
             >
               TRIM FROM {a.spawnWaypoint}
             </DeckKey>
           )}
         </div>
-        <textarea className={`${IP} min-h-[56px]`} value={a.simRoute} onChange={(e) => update("simRoute", e.target.value)} />
+        <textarea
+          className={`${IP} min-h-[56px]`}
+          value={a.simRoute}
+          onChange={(e) => update("simRoute", e.target.value)}
+        />
 
         {/* --- pre-entry offset --- */}
         <SectionLabel>Pre-entry Offset</SectionLabel>
@@ -272,19 +347,31 @@ export function AircraftDrawer({ aircraft, waypoints, onSave, onCancel, onDelete
             value={a.preEntryNm || 1}
             onChange={(e) => update("preEntryNm", +e.target.value)}
           />
-          <span className="w-14 text-right font-mono text-[12.5px] text-cy-fg">{a.preEntryNm || 1} NM</span>
+          <span className="w-14 text-right font-mono text-[12.5px] text-cy-fg">
+            {a.preEntryNm || 1} NM
+          </span>
         </div>
         {off ? (
           <div className="font-mono text-[11px] text-cy-fg bg-inset border border-cy-bd/50 rounded-md px-2.5 py-1.5">
             <div className="text-[9.5px] tracking-wide text-tx7 uppercase mb-0.5">
-              Computed ({a.preEntryNm} NM before {a.spawnWaypoint})
+              Computed ({a.preEntryNm} NM before {a.spawnLabel || a.spawnWaypoint})
             </div>
             {off.lat.toFixed(5)}, {off.lon.toFixed(5)}
           </div>
         ) : (
           (+a.preEntryNm || 0) > 0 && (
-            <div className="text-[10.5px] text-am-fg">⚠ Cannot compute — need upstream waypoint in FP/sim route</div>
+            <div className="text-[10.5px] text-am-fg">
+              ⚠ Cannot compute — need upstream waypoint in FP/sim route
+            </div>
           )
+        )}
+        {a.spawnDebug && (
+          <div className="font-mono text-[10.5px] text-tx6 bg-inset border border-bd3 rounded-md px-2.5 py-1.5 break-words">
+            <div className="text-[9.5px] tracking-wide text-tx7 uppercase mb-0.5">
+              How this spawn was placed
+            </div>
+            {a.spawnDebug}
+          </div>
         )}
 
         {/* --- altitude request --- */}
@@ -292,7 +379,11 @@ export function AircraftDrawer({ aircraft, waypoints, onSave, onCancel, onDelete
         <div className="grid grid-cols-2 gap-2.5">
           <div>
             <label className={LB}>At waypoint</label>
-            <input className={IP} value={a.reqAltWpt} onChange={(e) => update("reqAltWpt", e.target.value.toUpperCase())} />
+            <input
+              className={IP}
+              value={a.reqAltWpt}
+              onChange={(e) => update("reqAltWpt", e.target.value.toUpperCase())}
+            />
           </div>
           <div>
             <label className={LB}>Request altitude</label>

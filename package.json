@@ -1,7 +1,7 @@
 {
   "name": "sweatbox-builder",
   "private": true,
-  "version": "7.3.0",
+  "version": "7.4.0",
   "type": "module",
   "description": "Sweatbox Builder for EuroScope \u2014 native desktop app (Tauri v2 + Vite + React 18 + TS).",
   "scripts": {

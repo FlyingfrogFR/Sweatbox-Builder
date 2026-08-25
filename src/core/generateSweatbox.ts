@@ -8,7 +8,7 @@
 // zeros), $FP / SIMDATA:...:0.010:0.0 / $ROUTE, optional START, DELAY:3:7,
 // optional REQALT:<wpt>:<alt>, and optional INITIALPSEUDOPILOT.
 
-import { preEntryOffset, bearingBetween } from "./geo";
+import { preEntryOffset, bearingBetween, destinationPoint } from "./geo";
 import { nearestResolvableIdx, stripRouteSuffixes } from "./route";
 
 export function generateSweatbox(s: any, waypoints: any[] = [], opts: any = {}) {
@@ -30,12 +30,29 @@ export function generateSweatbox(s: any, waypoints: any[] = [], opts: any = {}) 
     let sLat = +a.lat,
       sLon = +a.lon;
     let offsetApplied = false;
-    if ((+a.preEntryNm || 0) > 0 && a.spawnWaypoint && waypoints.length > 0) {
-      const off = preEntryOffset(a.spawnWaypoint, a.simRoute, +a.preEntryNm, waypoints, a.fpRoute);
-      if (off) {
+    if ((+a.preEntryNm || 0) > 0) {
+      if (a.spawnBrg !== undefined && a.spawnBrg !== null) {
+        // Anchored on a FIR-boundary crossing rather than a fix: lat/lon is the
+        // crossing itself, so back off along the reciprocal of the crossed
+        // leg's bearing. Same contract as the fix case — the aircraft ends up
+        // outside, on its own inbound track, never sitting on the line.
+        const off = destinationPoint(+a.lat, +a.lon, (+a.spawnBrg + 180) % 360, +a.preEntryNm);
         sLat = off.lat;
         sLon = off.lon;
         offsetApplied = true;
+      } else if (a.spawnWaypoint && waypoints.length > 0) {
+        const off = preEntryOffset(
+          a.spawnWaypoint,
+          a.simRoute,
+          +a.preEntryNm,
+          waypoints,
+          a.fpRoute,
+        );
+        if (off) {
+          sLat = off.lat;
+          sLon = off.lon;
+          offsetApplied = true;
+        }
       }
     }
     // Initial heading — encoded into @N's 9th field per EuroScope's
