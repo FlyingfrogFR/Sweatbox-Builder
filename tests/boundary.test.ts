@@ -1016,3 +1016,86 @@ describe("P12 — geometry-crossing spawn semantics (v8)", () => {
     expect(a.spawnDebug).toBeUndefined();
   });
 });
+
+describe("P13 — origin inside the FIR is not autoBoundary traffic (v9)", () => {
+  // The FIR's own fields are the destApt values published on its entry gates:
+  // ALPHA/BRAVO both publish LFBO above, so LFBO is known to be inside LFBB.
+  // A flight leaving LFBO has no entry gate — geometry (or gate) mode would
+  // otherwise match its EXIT and spawn a local departure mid-FIR at cruise.
+  const insideRule = (over: any = {}) =>
+    poolRule({ spawnMode: "autoBoundary", spawnWaypoint: "", preEntryNm: 10, ...over });
+  const local = {
+    callsign: "TVF51",
+    type: "A320",
+    origin: "LFBO",
+    dest: "LFRS",
+    route: "BAMES ALPHA CHARL",
+    cruiseFL: 280,
+    squawk: "1000",
+  };
+  const foreign = { ...local, callsign: "BAW99", origin: "EGLL" };
+
+  it("an LFBO-origin flight is excluded; its EGLL sibling is untouched", () => {
+    const r: any = generateFromRule(insideRule(), WPTS, new Set(), [local, foreign], COPX, "LFBB");
+    expect(r.error).toBeNull();
+    expect(r.aircraft.map((a: any) => a.callsign)).toEqual(["BAW99"]);
+    expect(r.warning).toMatch(/1 aircraft skipped — origin inside FIR \(LFBO\)/);
+  });
+
+  it("the funnel line reports the exclusion when nothing survives", () => {
+    const z: any = generateFromRule(insideRule(), WPTS, new Set(), [local], COPX, "LFBB");
+    expect(z.aircraft.length).toBe(0);
+    expect(z.error).toMatch(/1 origin inside FIR/);
+  });
+
+  it("the same exclusion applies in geometry mode", () => {
+    const CW = [
+      { name: "A", lat: 48.08, lon: 2.01, type: "FIXES" },
+      { name: "L", lat: 45.82, lon: 1.03, type: "FIXES" },
+    ];
+    const CB = { LFBB: [[47.08, 0.5, 47.08, 3.0, 0, 999999]] };
+    const out: any = generateFromRule(
+      insideRule({ spawnAltMode: "poolCruise" }),
+      CW,
+      new Set(),
+      [{ ...local, route: "A DCT L" }],
+      COPX,
+      "LFBB",
+      CB,
+    );
+    expect(out.aircraft.length).toBe(0);
+    expect(out.error).toMatch(/boundary geometry.*1 origin inside FIR/);
+  });
+
+  it('spawnMode "waypoint" rules are unaffected — LFBO still generates', () => {
+    const r: any = generateFromRule(
+      poolRule({ spawnWaypoint: "BAMES", preEntryNm: 10 }),
+      WPTS,
+      new Set(),
+      [local],
+      COPX,
+      "LFBB",
+    );
+    expect(r.error).toBeNull();
+    expect(r.aircraft.map((a: any) => a.callsign)).toEqual(["TVF51"]);
+  });
+
+  it("without copx there is no internal-field set, so nothing is excluded", () => {
+    const CW = [
+      { name: "A", lat: 48.08, lon: 2.01, type: "FIXES" },
+      { name: "L", lat: 45.82, lon: 1.03, type: "FIXES" },
+    ];
+    const CB = { LFBB: [[47.08, 0.5, 47.08, 3.0, 0, 999999]] };
+    const r: any = generateFromRule(
+      insideRule({ spawnAltMode: "poolCruise" }),
+      CW,
+      new Set(),
+      [{ ...local, route: "A DCT L" }],
+      [],
+      "LFBB",
+      CB,
+    );
+    expect(r.error).toBeNull();
+    expect(r.aircraft.length).toBe(1);
+  });
+});

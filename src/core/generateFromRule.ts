@@ -264,6 +264,7 @@ export function generateFromRule(
       rule.spawnAltMode === "poolCruise" ? (tmpl.cruiseFL || 350) * 100 : +rule.spawnAlt || 18000;
 
     let bandFallbackNote: string | null = null;
+    let insideOriginNote: string | null = null;
     const bandFallbackSet = new Set<any>();
     const spawnPlan = new Map<
       any,
@@ -302,6 +303,25 @@ export function generateFromRule(
         });
       }
       const gateApts = gateEntries;
+
+      // Airports INSIDE the session FIR, derived from the gates themselves: an
+      // into-FIR entry publishes the TFLs for a destination field, so every
+      // non-"*" destApt on a toFir === fir line is one of this FIR's own
+      // airports. An aircraft departing one of them starts inside the FIR and
+      // has no entry gate by definition — geometry mode would otherwise find
+      // its EXIT crossing and spawn a local departure mid-FIR at cruise.
+      // Known limitation: a small field that never appears as a destApt on any
+      // entry gate is not caught. The funnel line below makes such gaps
+      // visible. Point-in-polygon against the sectorline soup is NOT an option
+      // — internal sectorlines break ray-casting.
+      const internalApts = new Set<string>();
+      for (const c of copx || []) {
+        if (c.kind !== "fir" || String(c.toFir || "").toUpperCase() !== fir) continue;
+        const d = String(c.destApt || "")
+          .trim()
+          .toUpperCase();
+        if (d && d !== "*") internalApts.add(d);
+      }
       if (!fir || (!useGeometry && gateEntries.size === 0))
         return {
           aircraft: [],
@@ -338,8 +358,20 @@ export function generateFromRule(
       const nDepArr = matches.length;
       let nBoundary = 0;
       let nBandFallback = 0;
+      let nInsideOrigin = 0;
+      const insideOrigins = new Set<string>();
       const survivors: any[] = [];
       for (const p of matches) {
+        // Origin inside the FIR — no entry to derive. Excluded here rather
+        // than downstream so it never reaches the boundary scan.
+        const orig = String(p.origin || "")
+          .trim()
+          .toUpperCase();
+        if (orig && internalApts.has(orig)) {
+          nInsideOrigin++;
+          insideOrigins.add(orig);
+          continue;
+        }
         const toks = (p.route || "")
           .toUpperCase()
           .split(/\s+/)
@@ -433,9 +465,14 @@ export function generateFromRule(
       if (!survivors.length)
         return {
           aircraft: [],
-          error: `Auto-boundary (${useGeometry ? `${fir} boundary geometry` : `${fir} published gates`}): ${nDepArr} matched DEP/ARR · ${nBoundary} enter the FIR${nBandFallback ? ` (${nBandFallback} via band fallback)` : ""} · 0 match direction [${dirList.join(",") || "any"}]`,
+          error: `Auto-boundary (${useGeometry ? `${fir} boundary geometry` : `${fir} published gates`}): ${nDepArr} matched DEP/ARR${nInsideOrigin ? ` · ${nInsideOrigin} origin inside FIR` : ""} · ${nBoundary} enter the FIR${nBandFallback ? ` (${nBandFallback} via band fallback)` : ""} · 0 match direction [${dirList.join(",") || "any"}]`,
         };
       matches = survivors;
+      // Excluded aircraft leave no generated record to tag, so the funnel line
+      // and this warning are where the exclusion is visible — with the fields
+      // named, so an unexpected one is obvious at a glance.
+      if (nInsideOrigin)
+        insideOriginNote = `${nInsideOrigin} aircraft skipped — origin inside FIR (${[...insideOrigins].sort().join(", ")})`;
       if (nBandFallback)
         bandFallbackNote = `${nBandFallback} aircraft matched no ${fir} ${useGeometry ? "boundary" : "gate"} at their level — placed using the level-blind ${useGeometry ? "boundary" : "gate list"} instead`;
     }
@@ -713,6 +750,7 @@ export function generateFromRule(
       error: null,
       warning:
         [
+          insideOriginNote,
           bandFallbackNote,
           noStar > 0
             ? `${noStar} aircraft kept their filed route — no ${rule.rwyInUse} STAR into their destination joins it`
