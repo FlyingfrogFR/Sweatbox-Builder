@@ -14,7 +14,9 @@ const Divider = () => <div className="w-px self-stretch bg-bd1 my-0.5" />;
 function Field({ label, children }: any) {
   return (
     <div className="flex flex-col gap-1">
-      <label className="text-[9.5px] font-bold tracking-[0.1em] text-tx8 select-none">{label}</label>
+      <label className="text-[9.5px] font-bold tracking-[0.1em] text-tx8 select-none">
+        {label}
+      </label>
       {children}
     </div>
   );
@@ -30,6 +32,7 @@ export function CommandDock({
   tokens,
   setTokens,
   tokensSet,
+  exportPinned,
   scnName,
   controllers,
   autoPP,
@@ -150,7 +153,11 @@ export function CommandDock({
         <button
           ref={plateRef}
           onClick={() => (popOpen ? setPopOpen(false) : openPlate(false))}
-          title="Filename tokens — ICAO_X.Y_CONFIGYY + pseudo-pilot"
+          title={
+            exportPinned
+              ? "Filename tokens — ICAO_X.Y_CONFIGYY + pseudo-pilot"
+              : "Seeded from this slot — edit to pin. ICAO_X.Y_CONFIGYY + pseudo-pilot"
+          }
           className={`h-11 inline-flex items-center px-[13px] font-mono text-[11px] font-bold tracking-[0.02em] rounded-lg bg-inset shadow-[inset_0_2px_4px_rgb(0_0_0/0.14)] transition-all border ${
             tokensSet
               ? "text-tx2 border-solid border-bd2 hover:border-bdh"
@@ -169,7 +176,11 @@ export function CommandDock({
           title="Ship the scenario (Ctrl+E)"
         >
           <span className="dk-sweep" />
-          {acCount === 0 ? "FIX: NO AIRCRAFT" : !tokensSet ? "FIX: SET FILENAME" : `EXPORT ${scnName}`}
+          {acCount === 0
+            ? "FIX: NO AIRCRAFT"
+            : !tokensSet
+              ? "FIX: SET FILENAME"
+              : `EXPORT ${scnName}`}
         </DeckKey>
       </Cluster>
 
@@ -190,6 +201,11 @@ export function CommandDock({
           <div className="font-mono text-[12px] font-bold text-tx1 bg-inset border border-bd1 rounded-[7px] px-2.5 py-[7px] mb-3 text-center">
             {tokensSet ? scnName : "— incomplete —"}
           </div>
+          {!exportPinned && (
+            <p className="text-[10px] text-tx7 -mt-1.5 mb-3">
+              Seeded from this slot's name and controllers — any edit pins the plate to the slot.
+            </p>
+          )}
           {/* naming tokens — same semantics as the classic ExportPanel */}
           <div className="flex gap-2.5 items-end flex-wrap mb-3">
             <Field label="ICAO">
@@ -242,10 +258,18 @@ export function CommandDock({
               </Latch>
               {autoPP && (
                 <div className="flex gap-1 ml-1">
-                  <Latch on={ppMode === "list"} onClick={() => setPpMode("list")} title="Pick from Setup controllers">
+                  <Latch
+                    on={ppMode === "list"}
+                    onClick={() => setPpMode("list")}
+                    title="Pick from Setup controllers"
+                  >
                     SETUP CTRL
                   </Latch>
-                  <Latch on={ppMode === "custom"} onClick={() => setPpMode("custom")} title="Type a mentor callsign">
+                  <Latch
+                    on={ppMode === "custom"}
+                    onClick={() => setPpMode("custom")}
+                    title="Type a mentor callsign"
+                  >
                     TYPED
                   </Latch>
                 </div>
@@ -253,13 +277,18 @@ export function CommandDock({
             </div>
             {!autoPP && (
               <p className="text-[10px] text-tx7">
-                When ON, every aircraft starts under the mentor's control (INITIALPSEUDOPILOT in the exported file).
+                When ON, every aircraft starts under the mentor's control (INITIALPSEUDOPILOT in the
+                exported file).
               </p>
             )}
             {autoPP &&
               (ppMode === "list" ? (
                 (controllers || []).length || staleList ? (
-                  <select value={ppList} onChange={(e) => setPpList(e.target.value)} className={`${ip} w-full`}>
+                  <select
+                    value={ppList}
+                    onChange={(e) => setPpList(e.target.value)}
+                    className={`${ip} w-full`}
+                  >
                     <option value="">— pick a controller —</option>
                     {(controllers || []).map((c: any) => (
                       <option key={c.callsign} value={c.callsign}>

@@ -18,6 +18,11 @@ export function defaultScenario() {
     // so rulesets stay FIR-agnostic and portable. Legacy scenarios load as ""
     // via the {...defaultScenario(), ...saved} spreads.
     boundaryFir: "",
+    // Export plate (filename tokens + mentor pseudo-pilot). null = not pinned
+    // yet: the deck derives a plate from the slot name / controllers and the
+    // global "last used" mirror until the first edit pins one here. See
+    // src/core/exportSettings.ts for the precedence.
+    exportSettings: null,
   };
 }
 

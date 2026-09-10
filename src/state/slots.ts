@@ -6,6 +6,7 @@
 // active slot is autosaved by the shell.
 import { storage, KEYS } from "./storage";
 import { defaultScenario, migrateRules } from "../core/model";
+import { normalizeExportSettings } from "../core/exportSettings";
 
 const META_KEY = "sb:slotmeta";
 const DECK_KEY = "sb:deck";
@@ -27,7 +28,13 @@ export function listSlots(): string[] {
 export function readSlot(name: string): any | null {
   const s = storage.get(`sb:sc:${name}`);
   if (!s) return null;
-  return { ...defaultScenario(), ...s, rules: migrateRules(s.rules), name };
+  return {
+    ...defaultScenario(),
+    ...s,
+    rules: migrateRules(s.rules),
+    exportSettings: normalizeExportSettings(s.exportSettings),
+    name,
+  };
 }
 
 export function writeSlot(name: string, scenario: any) {
@@ -59,7 +66,10 @@ export function renameSlot(oldName: string, newName: string): string | null {
   if (listSlots().includes(newName)) return "Name already used";
   const payload = storage.get(`sb:sc:${oldName}`);
   const snaps = storage.get(`sb:snap:${oldName}`);
-  storage.set(KEYS.list, listSlots().map((n) => (n === oldName ? newName : n)));
+  storage.set(
+    KEYS.list,
+    listSlots().map((n) => (n === oldName ? newName : n)),
+  );
   if (payload) storage.set(`sb:sc:${newName}`, { ...payload, name: newName });
   if (snaps) storage.set(`sb:snap:${newName}`, snaps);
   storage.del(`sb:sc:${oldName}`);
@@ -69,17 +79,33 @@ export function renameSlot(oldName: string, newName: string): string | null {
   delete m.meta[oldName];
   if (m.active === oldName) m.active = newName;
   setMeta(m);
+  const le = getLastExport(oldName);
+  if (le) {
+    const by = { ...(getDeckPrefs().lastExportBySlot || {}) };
+    delete by[oldName];
+    by[newName] = le;
+    setDeckPrefs({ lastExportBySlot: by });
+  }
   return null;
 }
 
 export function deleteSlot(name: string) {
-  storage.set(KEYS.list, listSlots().filter((n) => n !== name));
+  storage.set(
+    KEYS.list,
+    listSlots().filter((n) => n !== name),
+  );
   storage.del(`sb:sc:${name}`);
   storage.del(`sb:snap:${name}`);
   const m = getMeta();
   delete m.meta[name];
   if (m.active === name) m.active = "";
   setMeta(m);
+  const by = getDeckPrefs().lastExportBySlot;
+  if (by && by[name]) {
+    const next = { ...by };
+    delete next[name];
+    setDeckPrefs({ lastExportBySlot: next });
+  }
 }
 
 // ---------- snapshots (REWIND) ----------
@@ -104,6 +130,17 @@ export function setDeckPrefs(patch: any) {
   storage.set(DECK_KEY, { ...getDeckPrefs(), ...patch });
 }
 
+// "↳ path · HH:MM" — the file THIS slot last shipped to. Kept in sb:deck rather
+// than on the scenario: the path is a local absolute path and the scenario
+// object travels verbatim in .scenario.json bundles.
+export type LastExport = { path: string; t: string };
+export function getLastExport(name: string): LastExport | null {
+  return getDeckPrefs().lastExportBySlot?.[name] || null;
+}
+export function setLastExport(name: string, le: LastExport) {
+  setDeckPrefs({ lastExportBySlot: { ...(getDeckPrefs().lastExportBySlot || {}), [name]: le } });
+}
+
 // ---------- first-run migration ----------
 // Ensure there is always an active slot. Classic-app saves (sb:list) become
 // slots as-is; a live sb:cur that matches no slot becomes one, so nothing
@@ -120,7 +157,13 @@ export function ensureActiveSlot(): { name: string; scenario: any } {
   const cur = storage.get(KEYS.current);
   if (cur && typeof cur === "object") {
     const name = list.includes(cur.name) ? cur.name : uniqueName(cur.name || "Recovered");
-    const scenario = { ...defaultScenario(), ...cur, rules: migrateRules(cur.rules), name };
+    const scenario = {
+      ...defaultScenario(),
+      ...cur,
+      rules: migrateRules(cur.rules),
+      exportSettings: normalizeExportSettings(cur.exportSettings),
+      name,
+    };
     writeSlot(name, scenario);
     setActive(name);
     return { name, scenario };

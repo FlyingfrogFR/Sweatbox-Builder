@@ -18,6 +18,8 @@ import { generateFromRule } from "../core/generateFromRule";
 import { buildExportName, saveTextFile } from "../io/fileSave";
 import { sortByStart } from "../state/aircraft";
 import * as slots from "../state/slots";
+import { deriveExportSettings, initPseudoPilotFor } from "../core/exportSettings";
+import type { ExportSettings } from "../core/exportSettings";
 
 import { SlotRail } from "./SlotRail";
 import { TrafficBoard } from "./TrafficBoard";
@@ -78,7 +80,9 @@ export default function DeckApp() {
   const [rewindOpen, setRewindOpen] = useState(false);
   const [boardFilter, setBoardFilter] = useState<"all" | "arr" | "dep">("all");
   const [shipped, setShipped] = useState<{ t: string } | null>(null);
-  const [lastExport, setLastExport] = useState<any>(slots.getDeckPrefs().lastExport || null);
+  const [lastExport, setLastExport] = useState<slots.LastExport | null>(() =>
+    slots.getLastExport(boot.name),
+  );
   const [flashIds, setFlashIds] = useState<Set<string>>(new Set());
   const [rulesFocusId, setRulesFocusId] = useState<string | null>(null);
   const boardRef = useRef<HTMLDivElement>(null);
@@ -239,11 +243,12 @@ export default function DeckApp() {
     void el.offsetWidth;
     el.classList.add("dk-board-sweep");
   };
-  const switchSlot = (name: string) => {
-    if (name === slotName) return;
-    flushActiveSlot();
-    const sc = slots.readSlot(name);
-    if (!sc) return;
+  // Everything the shell holds ABOUT the active slot moves together: the open
+  // drawer, filter, tray, rewind strip, shipped state and last-export tab.
+  // Every slot op lands here so none can carry another slot's drawer across
+  // (SAVE on a drawer left open through Ctrl+N used to inject the previous
+  // slot's aircraft into the new one).
+  const enterSlot = (name: string, sc: any) => {
     slots.setActive(name);
     setSlotName(name);
     setScenario(sc);
@@ -251,18 +256,24 @@ export default function DeckApp() {
     setEditingAc(null);
     setTray(null);
     setRewindOpen(false);
+    setShipped(null);
+    setLastExport(slots.getLastExport(name));
     boardSweep();
+  };
+  const switchSlot = (name: string) => {
+    if (name === slotName) return;
+    flushActiveSlot();
+    const sc = slots.readSlot(name);
+    if (!sc) return;
+    enterSlot(name, sc);
   };
   const newSlot = () => {
     flushActiveSlot();
     const name = slots.uniqueName("Untitled");
     const sc = { ...defaultScenario(), name };
     slots.writeSlot(name, sc);
-    slots.setActive(name);
-    setSlotName(name);
-    setScenario(sc);
+    enterSlot(name, sc);
     setSlotList(slots.listSlots());
-    boardSweep();
     toast(`New slot <b>${name}</b> — nothing was discarded`, "ok");
   };
   const renameSlot = (oldName: string, newName: string): string | null => {
@@ -282,12 +293,16 @@ export default function DeckApp() {
     if (!src) return;
     const copy = slots.uniqueName(`${name} copy`);
     slots.writeSlot(copy, { ...src, name: copy });
-    slots.setActive(copy);
-    setSlotName(copy);
-    setScenario({ ...src, name: copy });
+    enterSlot(copy, { ...src, name: copy });
     setSlotList(slots.listSlots());
-    boardSweep();
-    toast(`Cloned to <b>${copy}</b>`, "ok");
+    // A pinned plate is copied verbatim, so the clone would ship over the
+    // original's file — say so rather than let EXPORT overwrite it silently.
+    toast(
+      src.exportSettings
+        ? `Cloned to <b>${copy}</b> — same export name as <b>${name}</b>, change it before shipping`
+        : `Cloned to <b>${copy}</b>`,
+      src.exportSettings ? "warn" : "ok",
+    );
   };
   const removeSlot = (name: string) => {
     slots.deleteSlot(name);
@@ -300,10 +315,7 @@ export default function DeckApp() {
         list = slots.listSlots();
       }
       const next = list[0];
-      slots.setActive(next);
-      setSlotName(next);
-      setScenario(slots.readSlot(next));
-      boardSweep();
+      enterSlot(next, slots.readSlot(next));
     }
     setSlotList(list);
     toast(`Deleted <b>${name}</b>`, "warn");
@@ -316,12 +328,8 @@ export default function DeckApp() {
     flushActiveSlot();
     const name = slots.uniqueName(bundle.scenario.name || "Imported");
     slots.writeSlot(name, { ...bundle.scenario, name });
-    const sc = slots.readSlot(name);
-    slots.setActive(name);
-    setSlotName(name);
-    setScenario(sc);
+    enterSlot(name, slots.readSlot(name));
     setSlotList(slots.listSlots());
-    boardSweep();
     toast(`Bundle imported as <b>${name}</b> — current slot untouched`, "ok");
   };
 
@@ -399,43 +407,55 @@ export default function DeckApp() {
     return fresh.length;
   };
 
-  // ---------- live .scn output ----------
-  const prefs = useMemo(() => storage.get(KEYS.exportPrefs) || {}, []);
-  const [tokens, setTokens] = useState<any>({
-    icao: prefs.icao || "",
-    version: prefs.version || "",
-    config: prefs.config || "",
-    configNum: prefs.configNum || "",
-  });
-  const [autoPP, setAutoPP] = useState(!!prefs.autoAssign);
-  const [ppMode, setPpMode] = useState(prefs.ppMode === "custom" ? "custom" : "list");
-  const [ppList, setPpList] = useState(prefs.ppList || "");
-  const [ppCustom, setPpCustom] = useState(prefs.ppCustom || "");
-  useEffect(() => {
-    storage.set(KEYS.exportPrefs, {
-      autoAssign: autoPP,
-      ppMode,
-      ppList,
-      ppCustom,
-      icao: tokens.icao,
-      version: tokens.version,
-      config: tokens.config,
-      configNum: tokens.configNum,
-    });
-  }, [autoPP, ppMode, ppList, ppCustom, tokens]);
-  const initPP = ppMode === "list" ? ppList : ppCustom;
+  // ---------- export plate: scenario-owned, derived until the first edit ----------
+  // The global sb:export key is only the "last used" mirror that seeds the
+  // mentor-level fields of a slot that has not pinned a plate yet. No effect
+  // touches this state: writes happen in the handler, so a mount, a slot switch
+  // or a StrictMode replay can never stamp one slot's plate onto another.
+  const [globalExport, setGlobalExport] = useState<any>(() => storage.get(KEYS.exportPrefs) || {});
+  const knownAirports = useMemo(
+    () => new Set<string>(airports.map((a: any) => String(a.name || "").toUpperCase())),
+    [airports],
+  );
+  const { settings: exportSettings, pinned: exportPinned } = useMemo(
+    () => deriveExportSettings(scenario, globalExport, knownAirports),
+    [scenario, globalExport, knownAirports],
+  );
+  const setExport = (patch: Partial<ExportSettings>) => {
+    setScenario((s: any) => ({
+      ...s,
+      exportSettings: {
+        ...deriveExportSettings(s, globalExport, knownAirports).settings,
+        ...patch,
+      },
+    }));
+    const mirror = { ...exportSettings, ...patch };
+    storage.set(KEYS.exportPrefs, mirror);
+    setGlobalExport(mirror);
+  };
 
-  const deferredScenario = useDeferredValue(scenario);
-  const deferredPP = useDeferredValue(autoPP ? initPP : "");
+  // ---------- live .scn output ----------
+  // generateSweatbox reads exactly these five fields. Keying the deferred
+  // input on them keeps plate and name edits from re-serialising the board.
+  const genInput = useMemo(
+    () => ({
+      airportAlt: scenario.airportAlt,
+      ils: scenario.ils,
+      holdings: scenario.holdings,
+      controllers: scenario.controllers,
+      aircraft: scenario.aircraft,
+    }),
+    [scenario.airportAlt, scenario.ils, scenario.holdings, scenario.controllers, scenario.aircraft],
+  );
+  const deferredScenario = useDeferredValue(genInput);
+  const deferredPP = useDeferredValue(initPseudoPilotFor(exportSettings));
   const output = useMemo(
     () => generateSweatbox(deferredScenario, waypoints, { initPseudoPilot: deferredPP }),
     [deferredScenario, waypoints, deferredPP],
   );
 
-  const scnName = useMemo(
-    () => buildExportName(tokens, "scenario"),
-    [tokens.icao, tokens.version, tokens.config, tokens.configNum],
-  );
+  const tokens = exportSettings;
+  const scnName = useMemo(() => buildExportName(tokens, "scenario"), [tokens]);
   const tokensSet = !!(tokens.icao && tokens.version && tokens.config && tokens.configNum);
 
   const exportScn = async () => {
@@ -446,7 +466,7 @@ export default function DeckApp() {
         setShipped({ t });
         const le = { path: r.path || scnName, t };
         setLastExport(le);
-        slots.setDeckPrefs({ lastExport: le });
+        slots.setLastExport(slotNameRef.current, le);
         toast(`Shipped <b class="font-mono">${scnName}</b>`, "ok");
         return true;
       }
@@ -766,18 +786,21 @@ export default function DeckApp() {
         acCount={acCount}
         poolCount={pool.length}
         tokens={tokens}
-        setTokens={setTokens}
+        setTokens={(t: any) =>
+          setExport({ icao: t.icao, version: t.version, config: t.config, configNum: t.configNum })
+        }
         tokensSet={tokensSet}
+        exportPinned={exportPinned}
         scnName={scnName}
         controllers={(scenario.controllers || []).filter((c: any) => c.callsign)}
-        autoPP={autoPP}
-        setAutoPP={setAutoPP}
-        ppMode={ppMode}
-        setPpMode={setPpMode}
-        ppList={ppList}
-        setPpList={setPpList}
-        ppCustom={ppCustom}
-        setPpCustom={setPpCustom}
+        autoPP={exportSettings.autoAssign}
+        setAutoPP={(v: boolean) => setExport({ autoAssign: v })}
+        ppMode={exportSettings.ppMode}
+        setPpMode={(m: "list" | "custom") => setExport({ ppMode: m })}
+        ppList={exportSettings.ppList}
+        setPpList={(v: string) => setExport({ ppList: v })}
+        ppCustom={exportSettings.ppCustom}
+        setPpCustom={(v: string) => setExport({ ppCustom: v })}
         lastExport={lastExport}
         breathe={breathe}
         onOpenTray={openTray}
