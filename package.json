@@ -1,9 +1,9 @@
 {
   "name": "sweatbox-builder",
   "private": true,
-  "version": "7.6.0",
+  "version": "7.7.0",
   "type": "module",
-  "description": "Sweatbox Builder for EuroScope \u2014 native desktop app (Tauri v2 + Vite + React 18 + TS).",
+  "description": "Sweatbox Builder for EuroScope — native desktop app (Tauri v2 + Vite + React 18 + TS).",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -21,9 +21,12 @@
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.2.7",
     "@fontsource/ibm-plex-sans": "^5.2.8",
+    "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-dialog": "^2.2.0",
     "@tauri-apps/plugin-fs": "^2.2.0",
     "@tauri-apps/plugin-http": "^2.2.0",
+    "@tauri-apps/plugin-process": "^2.3.1",
+    "@tauri-apps/plugin-updater": "^2.11.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

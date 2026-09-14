@@ -47,6 +47,13 @@ export const KEYS = {
   rampAgent: "sb:rampagent",
   rampConfig: "sb:rampconfig",
   exportPrefs: "sb:export",
+  // Version the user chose to skip in the update dialog, and the personal
+  // access token used to publish shared pools. The token is the one value in
+  // here that is a credential: keep it under its own key so a diagnostics dump
+  // can exclude it by name.
+  updateSkip: "sb:updateskip",
+  ghToken: "sb:ghtoken",
+  poolShare: "sb:poolshare",
 };
 
 // Persist a value to localStorage and (optionally) mirror to a side effect.

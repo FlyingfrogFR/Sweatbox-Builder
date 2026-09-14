@@ -61,6 +61,11 @@ jobs:
     needs: [test, meta]
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     runs-on: windows-latest
+    # Job-level so the guard step below can test whether the key exists: the
+    # `secrets` context is not available in a step-level `if`, but `env` is.
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -79,7 +84,16 @@ jobs:
         env:
           RELEASE_TAG: ${{ needs.meta.outputs.tag }}
         run: node scripts/sync-version.mjs
+      - name: Disable updater artifacts when no signing key is available
+        # The bundler hard-fails on createUpdaterArtifacts with a pubkey but no
+        # private key, which would break forks and any build predating the
+        # secret. Without the key we simply ship installers as before.
+        if: ${{ env.TAURI_SIGNING_PRIVATE_KEY == '' }}
+        run: node scripts/set-updater-artifacts.mjs false
       - name: Build app + installers
+        # The signing vars come from the job env above; the bundler writes a
+        # .sig next to each installer. The password var must be present (empty)
+        # or the CLI prompts for it and the job hangs.
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -90,7 +104,9 @@ jobs:
           if-no-files-found: warn
           path: |
             src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/msi/*.sig
             src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/nsis/*.sig
             src-tauri/target/release/*.exe
 
   # macOS .dmg (universal: Apple Silicon + Intel in one image).
@@ -98,6 +114,9 @@ jobs:
     needs: [test, meta]
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     runs-on: macos-latest
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -116,7 +135,13 @@ jobs:
         env:
           RELEASE_TAG: ${{ needs.meta.outputs.tag }}
         run: node scripts/sync-version.mjs
+      - name: Disable updater artifacts when no signing key is available
+        if: ${{ env.TAURI_SIGNING_PRIVATE_KEY == '' }}
+        run: node scripts/set-updater-artifacts.mjs false
       - name: Build app + DMG
+        # Signing vars come from the job env; with them the bundler also emits
+        # the .app.tar.gz the macOS updater installs, tarred AFTER notarization
+        # so the ticket is preserved.
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -131,12 +156,32 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           args: --target universal-apple-darwin
-      - name: Upload DMG as run artifact
+      - name: Name the updater archive for the release
+        # The bundler writes "Sweatbox Builder.app.tar.gz" — a space, and no
+        # version. gh would publish that as Sweatbox.Builder.app.tar.gz, which
+        # collides across releases. Rename to match the other assets; the
+        # signature covers the bytes, not the filename, so this is safe.
+        if: ${{ needs.meta.outputs.tag != '' }}
+        env:
+          TAG: ${{ needs.meta.outputs.tag }}
+        run: |
+          cd src-tauri/target/universal-apple-darwin/release/bundle/macos
+          V="${TAG#v}"
+          for ext in "" ".sig"; do
+            src="Sweatbox Builder.app.tar.gz$ext"
+            [ -f "$src" ] || continue
+            mv "$src" "Sweatbox.Builder_${V}_universal.app.tar.gz$ext"
+          done
+          ls -la
+      - name: Upload DMG + updater archive as run artifacts
         uses: actions/upload-artifact@v4
         with:
           name: sweatbox-builder-macos
           if-no-files-found: warn
-          path: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          path: |
+            src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+            src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz
+            src-tauri/target/universal-apple-darwin/release/bundle/macos/*.sig
 
   # Publish the Release once both platforms are built. Doing it here (instead of
   # in tauri-action) keeps the builders parallel, makes exactly one job create
@@ -158,8 +203,8 @@ jobs:
           TITLE: ${{ needs.meta.outputs.name }}
         run: |
           mkdir -p upload
-          find artifacts -type f \( -name '*.msi' -o -name '*.exe' -o -name '*.dmg' \) \
-            -exec cp {} upload/ \;
+          find artifacts -type f \( -name '*.msi' -o -name '*.exe' -o -name '*.dmg' \
+            -o -name '*.app.tar.gz' \) -exec cp {} upload/ \;
           ls -la upload
           [ -n "$(ls -A upload)" ] || { echo "no installers found to publish"; exit 1; }
           if gh release view "$TAG" >/dev/null 2>&1; then
@@ -169,3 +214,21 @@ jobs:
               --generate-notes upload/*
           fi
           gh release view "$TAG" --json url,assets
+      - name: Publish the updater manifest
+        # Built AFTER the release exists so the in-app dialog can show the real
+        # generated release notes. Skipped when the build produced no
+        # signatures (no signing key) — the release is still perfectly valid,
+        # it just cannot be installed in place by older versions.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.meta.outputs.tag }}
+        run: |
+          if ! find artifacts -type f -name '*.sig' | grep -q .; then
+            echo "no .sig files in this build — skipping latest.json"
+            exit 0
+          fi
+          gh release view "$TAG" --json body -q .body > notes.md || true
+          node scripts/build-latest-json.mjs --tag "$TAG" --sigs artifacts \
+            --out upload/latest.json --notes notes.md
+          cat upload/latest.json
+          gh release upload "$TAG" upload/latest.json --clobber

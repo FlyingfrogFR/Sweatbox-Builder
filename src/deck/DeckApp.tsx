@@ -19,6 +19,8 @@ import { buildExportName, saveTextFile } from "../io/fileSave";
 import { sortByStart } from "../state/aircraft";
 import * as slots from "../state/slots";
 import { deriveExportSettings, initPseudoPilotFor } from "../core/exportSettings";
+import { UpdateDialog } from "./UpdateDialog";
+import { checkForUpdate, installUpdate, skipVersion, type UpdateInfo } from "../net/updater";
 import type { ExportSettings } from "../core/exportSettings";
 
 import { SlotRail } from "./SlotRail";
@@ -85,6 +87,7 @@ export default function DeckApp() {
   );
   const [flashIds, setFlashIds] = useState<Set<string>>(new Set());
   const [rulesFocusId, setRulesFocusId] = useState<string | null>(null);
+  const [update, setUpdate] = useState<UpdateInfo | null>(null);
   const boardRef = useRef<HTMLDivElement>(null);
 
   // ---------- initial load from localStorage ----------
@@ -112,6 +115,23 @@ export default function DeckApp() {
       setRampConfig(rc);
     }
     setLoaded(true);
+  }, []);
+
+  // ---------- launch-time update check ----------
+  // Deliberately late and deliberately quiet: the deck is usable while this
+  // runs, and a failed check (offline, no release yet) never surfaces. The
+  // browser build resolves null and never mounts the dialog.
+  useEffect(() => {
+    let live = true;
+    const t = setTimeout(() => {
+      checkForUpdate().then((u) => {
+        if (live && u) setUpdate(u);
+      });
+    }, 1500);
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
   }, []);
 
   // ---------- autosave: sb:cur (400ms) + active slot (2s), flush on hide ----------
@@ -808,6 +828,21 @@ export default function DeckApp() {
         toast={toast}
       />
 
+      {update && (
+        <UpdateDialog
+          info={update}
+          onUpdate={(onProgress) => installUpdate(update, onProgress)}
+          onSkip={() => {
+            skipVersion(update.version);
+            setUpdate(null);
+            toast(
+              `Staying on ${update.currentVersion} — you'll be asked again at the next release`,
+              "ok",
+            );
+          }}
+          onLater={() => setUpdate(null)}
+        />
+      )}
       <Toasts toasts={toasts} />
     </div>
   );

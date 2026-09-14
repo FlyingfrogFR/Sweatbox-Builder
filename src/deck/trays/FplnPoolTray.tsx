@@ -19,14 +19,17 @@ import {
 import { ICAO_REGIONS, regionLabel, regionValue, endpointLabel } from "../../core/icaoRegions";
 import { downloadJsonBundle, readJsonFile } from "../../io/bundles";
 import { wrongKindMessage } from "../../state/bundleKind";
+import { PoolShareSection } from "./PoolShareSection";
 
-type Section = "simbrief" | "vatsim" | "pool";
+type Section = "simbrief" | "vatsim" | "pool" | "share";
 
 // Deck-token source chips (the core's SRC_LABELS carries legacy classes).
 const SRC: Record<string, { label: string; cls: string }> = {
   vatsim: { label: "VATSIM", cls: "text-gn-fg bg-gn-bg border-gn-bd" },
   simbrief: { label: "SIMBRIEF", cls: "text-cy-fg bg-cy-soft border-cy-bd" },
   manual: { label: "MANUAL", cls: "text-tx5 bg-inset border-bd3" },
+  library: { label: "LIBRARY", cls: "text-cy-fg bg-cy-soft border-cy-bd" },
+  shared: { label: "SHARED", cls: "text-cy-fg bg-cy-soft border-cy-bd" },
 };
 const srcOf = (s: string) =>
   SRC[s] || { label: (s || "?").toUpperCase(), cls: "text-tx5 bg-inset border-bd3" };
@@ -775,8 +778,11 @@ export function FplnPoolTray(props: any) {
     }
   };
 
+  // SHARE carries its own commit lever (PUBLISH) inside the section, so it gets
+  // no footer — a second lever down there would be a duplicate, and the pool
+  // footer's ADD TO BOARD belongs to the POOL table.
   const footer =
-    section === "simbrief" ? (
+    section === "share" ? null : section === "simbrief" ? (
       <>
         <span className="text-[10.5px] text-tx7">
           {ofp ? "Plan ready to stage" : "Fetch a plan to continue"}
@@ -887,6 +893,13 @@ export function FplnPoolTray(props: any) {
           >
             VATSIM
           </Latch>
+          <Latch
+            on={section === "share"}
+            onClick={() => setSection("share")}
+            title="Load a published pool, or share this one"
+          >
+            SHARE
+          </Latch>
           <span className="w-px self-stretch bg-bd1 mx-1" />
           <Latch
             on={section === "pool"}
@@ -917,6 +930,14 @@ export function FplnPoolTray(props: any) {
             sel={vsSel}
             setSel={setVsSel}
             busyRef={busyRef}
+          />
+        )}
+        {section === "share" && (
+          <PoolShareSection
+            pool={pool}
+            poolAirac={poolAirac}
+            onAddToPool={onAddToPool}
+            toast={toast}
           />
         )}
         {section === "pool" && (

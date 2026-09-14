@@ -2,6 +2,8 @@
 //   - http   : native requests that bypass CORS (replaces the fpd-cors-proxy)
 //   - dialog : native Save-As dialog for .scn / ruleset exports
 //   - fs     : writes the chosen file directly to disk
+// Desktop builds additionally register the updater + process plugins, which
+// power the launch-time "a new version is available" check.
 // The frontend (Vite + React) is served from ../dist in release and from the
 // dev server in development (see tauri.conf.json build.devUrl).
 
@@ -11,6 +13,15 @@ pub fn run() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .setup(|app| {
+            #[cfg(desktop)]
+            {
+                app.handle()
+                    .plugin(tauri_plugin_updater::Builder::new().build())?;
+                app.handle().plugin(tauri_plugin_process::init())?;
+            }
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

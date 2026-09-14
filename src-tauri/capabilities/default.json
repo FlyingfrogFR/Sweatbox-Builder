@@ -1,36 +1,71 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default capability for the main window: native HTTP to the flight-plan APIs (no CORS proxy), native Save-As dialog, and file read/write into the user's home and common export folders.",
-  "windows": ["main"],
+  "description": "Default capability for the main window: native HTTP to the flight-plan APIs and to GitHub (pool library + shared pools), native Save-As dialog, file read/write into the user's home and common export folders, and the in-app updater.",
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "dialog:default",
     "fs:default",
+    "updater:default",
+    "process:default",
     {
       "identifier": "http:default",
       "allow": [
-        { "url": "https://api.flightplandatabase.com/*" },
-        { "url": "https://www.simbrief.com/*" },
-        { "url": "https://data.vatsim.net/*" }
+        {
+          "url": "https://api.flightplandatabase.com/*"
+        },
+        {
+          "url": "https://www.simbrief.com/*"
+        },
+        {
+          "url": "https://data.vatsim.net/*"
+        },
+        {
+          "url": "https://api.github.com/*"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/*"
+        },
+        {
+          "url": "https://gist.githubusercontent.com/*"
+        }
       ]
     },
     {
       "identifier": "fs:allow-write-text-file",
       "allow": [
-        { "path": "$HOME/**" },
-        { "path": "$DOWNLOAD/**" },
-        { "path": "$DESKTOP/**" },
-        { "path": "$DOCUMENT/**" }
+        {
+          "path": "$HOME/**"
+        },
+        {
+          "path": "$DOWNLOAD/**"
+        },
+        {
+          "path": "$DESKTOP/**"
+        },
+        {
+          "path": "$DOCUMENT/**"
+        }
       ]
     },
     {
       "identifier": "fs:allow-read-text-file",
       "allow": [
-        { "path": "$HOME/**" },
-        { "path": "$DOWNLOAD/**" },
-        { "path": "$DESKTOP/**" },
-        { "path": "$DOCUMENT/**" }
+        {
+          "path": "$HOME/**"
+        },
+        {
+          "path": "$DOWNLOAD/**"
+        },
+        {
+          "path": "$DESKTOP/**"
+        },
+        {
+          "path": "$DOCUMENT/**"
+        }
       ]
     }
   ]

@@ -21,7 +21,8 @@ try {
 
   const toml = read("src-tauri/Cargo.toml");
   if (!/^\[package\]/m.test(toml)) throw new Error("src-tauri/Cargo.toml has no [package] section");
-  if (!/^name = "sweatbox-builder"/m.test(toml)) throw new Error("src-tauri/Cargo.toml lost its crate name");
+  if (!/^name = "sweatbox-builder"/m.test(toml))
+    throw new Error("src-tauri/Cargo.toml lost its crate name");
   versions["Cargo.toml"] = toml.match(/^version = "([^"]+)"/m)?.[1];
 
   const lock = read("src-tauri/Cargo.lock");
@@ -35,4 +36,5 @@ for (const [f, v] of Object.entries(versions)) if (!v) fail(`no version found in
 const distinct = [...new Set(Object.values(versions))];
 if (distinct.length > 1) fail(`versions disagree — ${JSON.stringify(versions)}`);
 
-if (!process.exitCode) console.log(`version-sync OK — ${distinct[0]} in all of ${Object.keys(versions).join(", ")}`);
+if (!process.exitCode)
+  console.log(`version-sync OK — ${distinct[0]} in all of ${Object.keys(versions).join(", ")}`);
