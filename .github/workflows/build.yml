@@ -216,6 +216,14 @@ jobs:
           # bare compare link. Falls back to generated notes if the version has
           # no section yet.
           if node scripts/changelog-section.mjs "$TAG" > notes.md; then
+            # Append the compare link the generated notes used to provide, so
+            # the hand-written notes lead and the commit-level detail is still
+            # one click away. PREV is read before the new release exists.
+            PREV=$(gh release list --limit 1 --json tagName -q '.[0].tagName' 2>/dev/null || true)
+            if [ -n "$PREV" ] && [ "$PREV" != "$TAG" ]; then
+              printf '\n**Full Changelog**: https://github.com/%s/compare/%s...%s\n' \
+                "$GITHUB_REPOSITORY" "$PREV" "$TAG" >> notes.md
+            fi
             NOTES=(--notes-file notes.md)
           else
             echo "no CHANGELOG entry for $TAG — falling back to generated notes"
@@ -230,8 +238,8 @@ jobs:
           fi
           gh release view "$TAG" --json url,assets
       - name: Publish the updater manifest
-        # Built AFTER the release exists so the in-app dialog can show the real
-        # generated release notes. Skipped when the build produced no
+        # Built AFTER the release exists so the in-app dialog shows the same
+        # hand-written notes as the Releases page. Skipped when the build made no
         # signatures (no signing key) — the release is still perfectly valid,
         # it just cannot be installed in place by older versions.
         env:
