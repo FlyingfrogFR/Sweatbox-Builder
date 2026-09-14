@@ -27,6 +27,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: node scripts/check-version-sync.mjs
+      - name: Every version must have a changelog entry
+        # Keeps the notes honest: bumping the version without writing what
+        # changed fails here rather than shipping a blank update prompt.
+        run: node scripts/changelog-section.mjs "v$(node -p "require('./package.json').version")" > /dev/null
       - run: npx tsc --noEmit
       - run: npm run lint
       - run: npm test
@@ -207,11 +211,22 @@ jobs:
             -o -name '*.app.tar.gz' \) -exec cp {} upload/ \;
           ls -la upload
           [ -n "$(ls -A upload)" ] || { echo "no installers found to publish"; exit 1; }
+          # Release notes come from CHANGELOG.md so the Releases page and the
+          # in-app update prompt both show notes written for mentors, not a
+          # bare compare link. Falls back to generated notes if the version has
+          # no section yet.
+          if node scripts/changelog-section.mjs "$TAG" > notes.md; then
+            NOTES=(--notes-file notes.md)
+          else
+            echo "no CHANGELOG entry for $TAG — falling back to generated notes"
+            NOTES=(--generate-notes)
+          fi
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" upload/* --clobber
+            gh release edit "$TAG" "${NOTES[@]}"
           else
             gh release create "$TAG" --target "$GITHUB_SHA" --title "$TITLE" \
-              --generate-notes upload/*
+              "${NOTES[@]}" upload/*
           fi
           gh release view "$TAG" --json url,assets
       - name: Publish the updater manifest

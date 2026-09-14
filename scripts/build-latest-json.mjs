@@ -96,10 +96,24 @@ let notes = `Sweatbox Builder ${version}`;
 if (notesFile) {
   try {
     const body = readFileSync(notesFile, "utf8").trim();
-    if (body) notes = body.slice(0, 4000);
+    // The update dialog renders notes as plain text, so light markdown is
+    // flattened here rather than shown as literal ** and ## to the user.
+    if (body) notes = toPlainText(body).slice(0, 4000);
   } catch {
     /* no notes file — keep the default */
   }
+}
+
+function toPlainText(md) {
+  return md
+    .replace(/^#{1,6}\s+/gm, "") // headings
+    .replace(/\*\*([^*]+)\*\*/g, "$1") // bold
+    .replace(/(^|\s)_([^_]+)_(?=\s|$)/g, "$1$2") // italics
+    .replace(/`([^`]+)`/g, "$1") // inline code
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1") // links -> their text
+    .replace(/^(\s*)[-*]\s+/gm, "$1• ") // bullets, keeping nesting
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 const manifest = {
