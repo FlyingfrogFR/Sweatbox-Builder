@@ -50,7 +50,8 @@ await page.route("**/api.github.com/**", async (route) => {
 // Seed a pool so PUBLISH has something to send.
 await page.addInitScript(`localStorage.setItem('sb:pool', ${JSON.stringify(JSON.stringify([
   { id: "p1", addedAt: 111, source: "vatsim", ...entry("AFR99") },
-]))}); localStorage.setItem('sb:poolairac', '"2509"');`);
+]))}); localStorage.setItem('sb:poolairac', '"2509"');
+  localStorage.setItem('sb:poolshare', ${JSON.stringify(JSON.stringify({ id: "old1234567890abcdef", code: "sbx:old1234567890abcdef", name: "an older pool" }))});`);
 await page.goto("http://localhost:1430/", { waitUntil: "networkidle" });
 await page.waitForTimeout(600);
 
@@ -99,7 +100,7 @@ check(t.includes("TOKEN SAVED") && t.includes("flyingfrog"), "token verified and
 
 // ---------- publish ----------
 await tray.locator('input[placeholder="LFBB evening rush"]').fill("LFBB north 32");
-await tray.locator('.dk-key:has-text("PUBLISH POOL")').click();
+await tray.locator('.dk-key:has-text("SHARE CODE")').click();
 await page.waitForTimeout(700);
 check(seen.publishMethod === "POST", `published via POST (${seen.publishMethod})`);
 check(!!seen.publishBody?.files?.["pool.json"], "payload carries pool.json");
@@ -113,6 +114,9 @@ check(!JSON.stringify(published).includes("vatsim"), "source labels never leave 
 t = await tray.textContent();
 check(t.includes(`sbx:${GIST_ID}`), "share code shown after publishing");
 check(t.includes("UPDATE sbx:"), "re-publish in place is offered once a code exists");
+check(t.includes("Your share codes"), "share codes are listed, not just the last one");
+check(t.includes("sbx:old1234567890abcdef"), "a code saved by an older build still shows in the list");
+check(t.includes("private link"), "the copy says a code is NOT a library entry");
 
 const stored = await page.evaluate(() => localStorage.getItem("sb:ghtoken"));
 check(!!stored && stored.includes("github_pat_"), "token stored under its own dedicated key");

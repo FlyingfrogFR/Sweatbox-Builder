@@ -14,6 +14,14 @@ in the update prompt.
   notes, both on the Releases page and in the update prompt, instead of a bare
   link to a list of commits. The history back to 7.0.0 is written up in
   `CHANGELOG.md`.
+- **Clearer sharing.** The third block in FPLN POOL → SHARE was called PUBLISH,
+  which read as "publish to the library" — it does not. It is now **SHARE THIS
+  POOL**, it makes a private share code, and it says in as many words that a
+  code is not a library entry and that getting into the library means opening
+  a pull request.
+- **Your share codes are listed.** Codes you have made are kept in a list with
+  a COPY button each, instead of only ever showing the most recent one, so a
+  code from last week is still findable. Codes saved by 7.7.0 appear there too.
 - This is also the first release that installs itself: if you are on 7.7.0,
   the app should offer it to you on launch rather than sending you to the
   Releases page.

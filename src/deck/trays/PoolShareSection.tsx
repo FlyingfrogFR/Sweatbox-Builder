@@ -3,7 +3,13 @@
 //
 //   LIBRARY          pools committed to the repo, one click to load
 //   IMPORT FROM LINK an sbx: code from a colleague, or any https URL
-//   PUBLISH          push this pool to a secret gist and get a code back
+//   SHARE THIS POOL  mint a share code for this pool and keep a list of them
+//
+// The two directions are deliberately separate and were easy to confuse when
+// the third block was called PUBLISH: a share code is a private link you hand
+// to someone, and it is NOT listed in LIBRARY. Getting into the library is a
+// pull request (pools/README.md). Both the block title and the copy under the
+// codes now say so.
 //
 // Shared pools MERGE into the pool (source chip SHARED/LIBRARY) rather than
 // replacing it — the file-import path is the one that replaces, and losing a
@@ -123,7 +129,14 @@ export function PoolShareSection({ pool, poolAirac, onAddToPool, toast }: any) {
   const [account, setAccount] = useState("");
   const [shareName, setShareName] = useState("");
   const [pubBusy, setPubBusy] = useState(false);
-  const [share, setShare] = useState<any>(() => storage.get(KEYS.poolShare) || null);
+  // A list, so a code minted last week is still findable. Older builds stored a
+  // single record under this key; it is read back as a one-item list.
+  const [shares, setShares] = useState<any[]>(() => {
+    const raw = storage.get(KEYS.poolShare);
+    if (!raw) return [];
+    return Array.isArray(raw.items) ? raw.items : raw.code ? [raw] : [];
+  });
+  const share = shares[0] || null;
 
   const saveToken = async () => {
     const t = tokenDraft.trim();
@@ -159,9 +172,17 @@ export function PoolShareSection({ pool, poolAirac, onAddToPool, toast }: any) {
         shareName,
         asNew ? undefined : share?.id,
       );
-      const rec = { id: r.id, code: r.code, url: r.url, name: shareName, at: Date.now() };
-      storage.set(KEYS.poolShare, rec);
-      setShare(rec);
+      const rec = {
+        id: r.id,
+        code: r.code,
+        url: r.url,
+        name: shareName || `${(pool || []).length} flight plans`,
+        count: (pool || []).length,
+        at: Date.now(),
+      };
+      const next = [rec, ...shares.filter((x: any) => x.id !== rec.id)].slice(0, 20);
+      storage.set(KEYS.poolShare, { items: next });
+      setShares(next);
       try {
         await navigator.clipboard.writeText(r.code);
         toast(`Published — <b class="font-mono">${r.code}</b> copied to the clipboard`, "ok");
@@ -175,14 +196,20 @@ export function PoolShareSection({ pool, poolAirac, onAddToPool, toast }: any) {
     }
   };
 
-  const copyCode = async () => {
-    if (!share?.code) return;
+  const copyCode = async (code: string) => {
+    if (!code) return;
     try {
-      await navigator.clipboard.writeText(share.code);
-      toast(`<b class="font-mono">${share.code}</b> copied`, "ok");
+      await navigator.clipboard.writeText(code);
+      toast(`<b class="font-mono">${code}</b> copied`, "ok");
     } catch {
       toast("Could not reach the clipboard", "err");
     }
+  };
+  const forgetShare = (id: string) => {
+    const next = shares.filter((x: any) => x.id !== id);
+    storage.set(KEYS.poolShare, { items: next });
+    setShares(next);
+    toast("Removed from this list — the link itself still works", "warn");
   };
 
   return (
@@ -214,8 +241,9 @@ export function PoolShareSection({ pool, poolAirac, onAddToPool, toast }: any) {
           <div className="px-3.5 py-6 text-center text-[11.5px] text-tx7">Reading the library…</div>
         ) : lib.length === 0 ? (
           <div className="px-3.5 py-6 text-center text-[11.5px] text-tx7">
-            No pools published yet — yours could be the first. See{" "}
-            <span className="font-mono text-tx5">pools/README.md</span> in the repository.
+            Nothing in the shared library yet. This list only holds pools added to the repository by
+            pull request — see <span className="font-mono text-tx5">pools/README.md</span>. A share
+            code made below does <b>not</b> appear here.
           </div>
         ) : (
           <div className="divide-y divide-rowdiv">
@@ -277,13 +305,16 @@ export function PoolShareSection({ pool, poolAirac, onAddToPool, toast }: any) {
         </div>
       </Block>
 
-      {/* ============================ PUBLISH ============================ */}
-      <Block title="PUBLISH" hint={`${(pool || []).length} flight plans in this pool`}>
+      {/* ======================== SHARE THIS POOL ======================== */}
+      <Block
+        title="SHARE THIS POOL"
+        hint={`${(pool || []).length} flight plans · private link, not the library`}
+      >
         {!token ? (
           <div className="px-3.5 py-3 flex flex-col gap-2.5">
             <Note>
-              Publishing needs a GitHub token so the pool can be written to your own account.
-              Importing never does — anyone can open a code you hand them.
+              Making a share code needs a GitHub token, because the pool is stored under your own
+              account. Importing a code never does — anyone you hand one to can open it.
             </Note>
             <div className="flex items-end gap-2 flex-wrap">
               <div className="flex-1 min-w-[240px]">
@@ -350,27 +381,49 @@ export function PoolShareSection({ pool, poolAirac, onAddToPool, toast }: any) {
                 variant="primary"
                 onClick={() => publish(true)}
                 disabled={pubBusy || !(pool || []).length}
-                title="Publish as a new secret gist and copy the share code"
+                title="Store this pool under your account and copy a new share code"
               >
                 <Icon name="upload" size={13} />
-                {pubBusy ? "PUBLISHING…" : share?.id ? "PUBLISH NEW" : "PUBLISH POOL"}
+                {pubBusy ? "WORKING…" : share?.id ? "NEW SHARE CODE" : "CREATE SHARE CODE"}
               </DeckKey>
             </div>
-            {share?.code && (
-              <div className="flex items-center gap-2 bg-inset border border-bd1 rounded-md px-2.5 py-2">
-                <span className="text-[9.5px] tracking-wide text-tx7 uppercase">
-                  LAST PUBLISHED
-                </span>
-                <span className="font-mono text-[12.5px] text-cy-fg">{share.code}</span>
-                <span className="flex-1" />
-                <DeckKey size="sm" onClick={copyCode} title="Copy the share code">
-                  COPY
-                </DeckKey>
+            {shares.length > 0 && (
+              <div className="bg-inset border border-bd1 rounded-md overflow-hidden">
+                <div className="px-2.5 py-1.5 border-b border-bd1 text-[9.5px] tracking-wide text-tx7 uppercase">
+                  Your share codes
+                </div>
+                <div className="divide-y divide-rowdiv">
+                  {shares.map((sh: any) => (
+                    <div key={sh.id} className="flex items-center gap-2 px-2.5 py-2">
+                      <span className="font-mono text-[12.5px] text-cy-fg flex-none">
+                        {sh.code}
+                      </span>
+                      <span className="text-[11px] text-tx6 min-w-0 truncate">{sh.name}</span>
+                      <span className="flex-1" />
+                      <DeckKey
+                        size="sm"
+                        onClick={() => copyCode(sh.code)}
+                        title="Copy this share code"
+                      >
+                        COPY
+                      </DeckKey>
+                      <DeckKey
+                        size="sm"
+                        onClick={() => forgetShare(sh.id)}
+                        title="Remove from this list — the link keeps working"
+                      >
+                        <Icon name="trash" size={12} />
+                      </DeckKey>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
             <Note>
-              The pool goes into a <b>secret</b> gist: unlisted, but readable by anyone you give the
-              code to. Don't publish anything you wouldn't put in a public file.
+              A share code is a <b>private link</b>, not a library entry: unlisted, but readable by
+              anyone you give it to, so don't put anything in a pool you wouldn't put in a public
+              file. To get a pool into the LIBRARY above, open a pull request —{" "}
+              <span className="font-mono text-tx5">pools/README.md</span> explains how.
             </Note>
           </div>
         )}
