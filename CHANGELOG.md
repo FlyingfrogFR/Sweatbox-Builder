@@ -8,6 +8,23 @@ The app checks this repository for new versions on launch and shows you the
 notes for the release it is offering, so what you read here is what you read
 in the update prompt.
 
+## 7.8.0 — 2026-09-15
+
+- **Name your export files whatever you like.** The filename plate now has a
+  CONVENTION / CUSTOM switch. CONVENTION is what you had — ICAO, version,
+  config, number. CUSTOM is one field: type the name and that is the file, so a
+  session called "LFBB north — session 3" no longer has to be squeezed into
+  four boxes. The extension is still added for you, and characters Windows
+  rejects are dropped, so a custom name can never produce a file EuroScope
+  won't read.
+- The choice belongs to the save slot, like the rest of the plate: one scenario
+  on a typed name and the next on the convention, and neither borrows from the
+  other.
+- **SAVE RULESET asks where to put it.** It used to drop a file straight into
+  Downloads named after the scenario, with no dialog — which is how you lose
+  one. It now opens the same Save-As dialog as EXPORT and uses the same name
+  you chose on the plate, ending in `_RULESET.json`.
+
 ## 7.7.1 — 2026-09-14
 
 - **Release notes you can actually read.** Every release now carries proper

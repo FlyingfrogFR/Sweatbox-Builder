@@ -10,7 +10,8 @@ import { RuleWorkbench } from "../../generators/RuleWorkbench";
 import { GroundSection } from "../GroundSection";
 import { RuleEditorSection } from "../RuleEditorSection";
 import { emptyRule } from "../../core/model";
-import { readJsonFile, downloadJsonBundle } from "../../io/bundles";
+import { readJsonFile } from "../../io/bundles";
+import { saveTextFile } from "../../io/fileSave";
 import { extractRules, normalizeRules } from "../../state/rulesImport";
 import { wrongKindMessage } from "../../state/bundleKind";
 
@@ -36,6 +37,7 @@ export function BuildTray(props: any) {
     runways,
     section,
     setSection,
+    rulesetName,
     focusRuleId,
     clearFocus,
     rating,
@@ -132,20 +134,27 @@ export function BuildTray(props: any) {
       toast("Import failed: " + (err.message || err), "err");
     }
   };
-  const saveRuleset = () => {
+  const saveRuleset = async () => {
     if (!allRules.length) {
       toast("No rules to save yet", "warn");
       return;
     }
-    const prefix = (scenario.name || "scenario").replace(/[^a-z0-9]+/gi, "_");
-    const filename = `${prefix}.RULESET.json`;
-    downloadJsonBundle(filename, {
-      kind: "sweatbox-rules",
-      version: 1,
-      exportedAt: new Date().toISOString(),
-      rules: allRules,
-    });
-    toast(`Ruleset saved — <b class="font-mono">${filename}</b>`, "ok");
+    // Same name basis as the .scn (the plate's convention or a typed name), and
+    // the same native Save-As dialog — this used to drop a file into Downloads
+    // without asking, named after the scenario, which was easy to lose.
+    const filename =
+      rulesetName || `${(scenario.name || "scenario").replace(/[^a-z0-9]+/gi, "_")}_RULESET.json`;
+    const payload = JSON.stringify(
+      { kind: "sweatbox-rules", version: 1, exportedAt: new Date().toISOString(), rules: allRules },
+      null,
+      2,
+    );
+    try {
+      const r = await saveTextFile(filename, payload, "ruleset");
+      if (r.saved) toast(`Ruleset saved — <b class="font-mono">${r.path || filename}</b>`, "ok");
+    } catch (e: any) {
+      toast(`Save failed: ${String(e?.message || e)}`, "err");
+    }
   };
   const firstRule = () => {
     const r = { ...emptyRule(), mode, name: `New ${mode} rule` };

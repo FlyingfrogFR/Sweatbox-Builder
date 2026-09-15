@@ -11,7 +11,9 @@ import {
   EMPTY_EXPORT,
   deriveExportSettings,
   initPseudoPilotFor,
+  nameIsReady,
   normalizeExportSettings,
+  sanitiseFileBase,
   seedFromName,
 } from "../src/core/exportSettings";
 import { generateSweatbox } from "../src/core/generateSweatbox";
@@ -228,5 +230,47 @@ describe("generation never depends on the export block", () => {
       initPseudoPilot: "LFPG_APP",
     });
     expect(d).toBe(a);
+  });
+});
+
+describe("naming mode — a typed name is a per-slot choice (7.8.0)", () => {
+  it("nameIsReady needs all four tokens, or a usable typed name", () => {
+    const t = { ...EMPTY_EXPORT, icao: "LFBB", version: "1.1", config: "NORTH", configNum: "32" };
+    expect(nameIsReady(t)).toBe(true);
+    expect(nameIsReady({ ...t, configNum: "" })).toBe(false);
+    // custom mode ignores the tokens entirely
+    expect(nameIsReady({ ...EMPTY_EXPORT, nameMode: "custom", customName: "evening rush" })).toBe(
+      true,
+    );
+    expect(nameIsReady({ ...EMPTY_EXPORT, nameMode: "custom", customName: "" })).toBe(false);
+    expect(nameIsReady({ ...EMPTY_EXPORT, nameMode: "custom", customName: "///" })).toBe(false);
+    expect(nameIsReady({ ...t, nameMode: "custom", customName: "" })).toBe(false);
+  });
+
+  it("sanitiseFileBase keeps ordinary names and strips the dangerous parts", () => {
+    expect(sanitiseFileBase("LFBB north — session 3")).toBe("LFBB north — session 3");
+    expect(sanitiseFileBase("../../etc/passwd")).toBe("etcpasswd");
+    expect(sanitiseFileBase(".hidden")).toBe("hidden");
+    expect(sanitiseFileBase("x".repeat(200)).length).toBe(80);
+    expect(sanitiseFileBase(null)).toBe("");
+  });
+
+  it("a stored custom name survives normalisation; a bad mode falls back to tokens", () => {
+    const n = normalizeExportSettings({ nameMode: "custom", customName: "evening rush" })!;
+    expect(n.nameMode).toBe("custom");
+    expect(n.customName).toBe("evening rush");
+    expect(normalizeExportSettings({ nameMode: "nonsense" })!.nameMode).toBe("tokens");
+    // a block written before 7.8.0 has neither field
+    const old = normalizeExportSettings({ icao: "LFPG", version: "3.3" })!;
+    expect(old.nameMode).toBe("tokens");
+    expect(old.customName).toBe("");
+  });
+
+  it("an unpinned slot never inherits another slot's typed name", () => {
+    const sc = { ...defaultScenario(), name: "LFBB north" };
+    const g = { ...GLOBAL, nameMode: "custom", customName: "someone else's file" };
+    const r = deriveExportSettings(sc, g);
+    expect(r.settings.nameMode).toBe("tokens");
+    expect(r.settings.customName).toBe("");
   });
 });

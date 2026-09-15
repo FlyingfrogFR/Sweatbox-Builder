@@ -17,18 +17,31 @@
 
 import { isTauri } from "../env";
 import { blobDownload } from "./bundles";
+import { sanitiseFileBase } from "../core/exportSettings";
 
 export type ExportKind = "scenario" | "ruleset";
 
 export interface NameTokens {
+  /** "custom" uses customName verbatim; anything else builds from the tokens. */
+  nameMode?: string;
+  customName?: string;
   icao: string;
   version: string; // "X.Y", e.g. "3.3"
   config: string; // config token, uppercased in the output
   configNum: string; // "YY", e.g. "32"
 }
 
-/** Build the export filename from the four tokens. */
+/**
+ * Build the export filename — either the ICAO_X.Y_CONFIGYY convention or a
+ * name typed by the user. The extension is always ours: a scenario is .txt
+ * (EuroScope's sweatbox loader wants plain text) and a ruleset is
+ * _RULESET.json, so a custom name cannot produce a file EuroScope won't read.
+ */
 export function buildExportName(t: NameTokens, kind: ExportKind): string {
+  if (t.nameMode === "custom") {
+    const base = sanitiseFileBase(t.customName);
+    if (base) return kind === "ruleset" ? `${base}_RULESET.json` : `${base}.txt`;
+  }
   const icao = (t.icao || "").toUpperCase().trim();
   const version = String(t.version ?? "").trim();
   const config = (t.config || "").toUpperCase().trim();

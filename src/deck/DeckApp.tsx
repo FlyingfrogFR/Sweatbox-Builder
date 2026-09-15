@@ -18,7 +18,7 @@ import { generateFromRule } from "../core/generateFromRule";
 import { buildExportName, saveTextFile } from "../io/fileSave";
 import { sortByStart } from "../state/aircraft";
 import * as slots from "../state/slots";
-import { deriveExportSettings, initPseudoPilotFor } from "../core/exportSettings";
+import { deriveExportSettings, initPseudoPilotFor, nameIsReady } from "../core/exportSettings";
 import { UpdateDialog } from "./UpdateDialog";
 import { checkForUpdate, installUpdate, skipVersion, type UpdateInfo } from "../net/updater";
 import type { ExportSettings } from "../core/exportSettings";
@@ -476,7 +476,10 @@ export default function DeckApp() {
 
   const tokens = exportSettings;
   const scnName = useMemo(() => buildExportName(tokens, "scenario"), [tokens]);
-  const tokensSet = !!(tokens.icao && tokens.version && tokens.config && tokens.configNum);
+  const rulesetName = useMemo(() => buildExportName(tokens, "ruleset"), [tokens]);
+  // "Ready" means the plate can produce a filename — all four tokens under the
+  // convention, or a non-empty typed name.
+  const tokensSet = nameIsReady(tokens);
 
   const exportScn = async () => {
     try {
@@ -765,6 +768,7 @@ export default function DeckApp() {
             section={buildSection}
             setSection={setBuildSection}
             {...trayProps}
+            rulesetName={tokensSet ? rulesetName : ""}
             focusRuleId={rulesFocusId}
             clearFocus={() => setRulesFocusId(null)}
             rating={rating}
@@ -807,7 +811,14 @@ export default function DeckApp() {
         poolCount={pool.length}
         tokens={tokens}
         setTokens={(t: any) =>
-          setExport({ icao: t.icao, version: t.version, config: t.config, configNum: t.configNum })
+          setExport({
+            nameMode: t.nameMode,
+            customName: t.customName,
+            icao: t.icao,
+            version: t.version,
+            config: t.config,
+            configNum: t.configNum,
+          })
         }
         tokensSet={tokensSet}
         exportPinned={exportPinned}

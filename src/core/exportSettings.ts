@@ -18,8 +18,12 @@
 // Field names are the sb:export names verbatim so that key keeps its shape.
 
 export type PpMode = "list" | "custom";
+/** How the export filename is built: the vACC convention, or a name you type. */
+export type NameMode = "tokens" | "custom";
 
 export interface ExportSettings {
+  nameMode: NameMode; // "tokens" = ICAO_X.Y_CONFIGYY, "custom" = customName
+  customName: string; // used verbatim (sanitised) when nameMode is "custom"
   icao: string;
   version: string; // "X.Y"
   config: string; // uppercased in the filename
@@ -31,6 +35,8 @@ export interface ExportSettings {
 }
 
 export const EMPTY_EXPORT: ExportSettings = {
+  nameMode: "tokens",
+  customName: "",
   icao: "",
   version: "",
   config: "",
@@ -47,6 +53,8 @@ const str = (v: any) => (v == null ? "" : String(v));
 export function normalizeExportSettings(x: any): ExportSettings | null {
   if (!x || typeof x !== "object" || Array.isArray(x)) return null;
   return {
+    nameMode: x.nameMode === "custom" ? "custom" : "tokens",
+    customName: sanitiseFileBase(x.customName),
     icao: str(x.icao).trim().toUpperCase(),
     version: str(x.version).trim(),
     config: str(x.config).trim().toUpperCase(),
@@ -56,6 +64,27 @@ export function normalizeExportSettings(x: any): ExportSettings | null {
     ppList: str(x.ppList).trim(),
     ppCustom: str(x.ppCustom).trim().toUpperCase(),
   };
+}
+
+/**
+ * Make a typed name safe to hand to a file dialog: no path separators, no
+ * characters Windows rejects, no leading dot, and a sane length. The extension
+ * is added by buildExportName, so any the user typed is dropped here.
+ */
+export function sanitiseFileBase(v: any): string {
+  return str(v)
+    .replace(/\.(txt|json|scn)$/i, "")
+    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, "")
+    .replace(/^\.+/, "")
+    .trim()
+    .slice(0, 80);
+}
+
+/** Is this plate complete enough to export with? */
+export function nameIsReady(s: ExportSettings): boolean {
+  return s.nameMode === "custom"
+    ? !!sanitiseFileBase(s.customName)
+    : !!(s.icao && s.version && s.config && s.configNum);
 }
 
 // A slot named after the file convention carries every token:
@@ -116,6 +145,10 @@ export function deriveExportSettings(
   return {
     pinned: false,
     settings: {
+      // A slot that has never been touched follows the convention; typing a
+      // name of your own is an explicit choice, so it is never inherited.
+      nameMode: "tokens",
+      customName: "",
       icao,
       version: seed.version ?? g.version,
       // Runway configuration is this slot's business — never another slot's.

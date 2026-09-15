@@ -206,43 +206,79 @@ export function CommandDock({
               Seeded from this slot's name and controllers — any edit pins the plate to the slot.
             </p>
           )}
-          {/* naming tokens — same semantics as the classic ExportPanel */}
-          <div className="flex gap-2.5 items-end flex-wrap mb-3">
-            <Field label="ICAO">
-              <input
-                ref={icaoRef}
-                value={tokens.icao}
-                onChange={(e) => setTokens({ ...tokens, icao: e.target.value.toUpperCase() })}
-                placeholder="LFPG"
-                maxLength={4}
-                className={`${ip} w-[70px]`}
-              />
-            </Field>
-            <Field label="VERSION X.Y">
-              <input
-                value={tokens.version}
-                onChange={(e) => setTokens({ ...tokens, version: e.target.value })}
-                placeholder="3.3"
-                className={`${ip} w-[62px]`}
-              />
-            </Field>
-            <Field label="CONFIG">
-              <input
-                value={tokens.config}
-                onChange={(e) => setTokens({ ...tokens, config: e.target.value.toUpperCase() })}
-                placeholder="WEST"
-                className={`${ip} w-[76px]`}
-              />
-            </Field>
-            <Field label="Nº">
-              <input
-                value={tokens.configNum}
-                onChange={(e) => setTokens({ ...tokens, configNum: e.target.value })}
-                placeholder="26"
-                className={`${ip} w-[46px]`}
-              />
-            </Field>
+          {/* How the name is built. View-switching latches stay neutral. */}
+          <div className="flex items-center gap-1.5 mb-3">
+            <Latch
+              on={tokens.nameMode !== "custom"}
+              onClick={() => setTokens({ ...tokens, nameMode: "tokens" })}
+              title="ICAO_X.Y_CONFIGYY — the vACC naming convention"
+            >
+              CONVENTION
+            </Latch>
+            <Latch
+              on={tokens.nameMode === "custom"}
+              onClick={() => setTokens({ ...tokens, nameMode: "custom" })}
+              title="Type the filename yourself"
+            >
+              CUSTOM
+            </Latch>
           </div>
+          {tokens.nameMode === "custom" ? (
+            <div className="mb-3">
+              <Field label="FILE NAME">
+                <input
+                  ref={icaoRef}
+                  value={tokens.customName || ""}
+                  onChange={(e) => setTokens({ ...tokens, customName: e.target.value })}
+                  placeholder="LFBB north — session 3"
+                  className={`${ip} w-full`}
+                />
+              </Field>
+              <p className="text-[10px] text-tx7 mt-1.5">
+                The extension is added for you — <span className="font-mono">.txt</span> for the
+                scenario, <span className="font-mono">_RULESET.json</span> for the ruleset. Slashes
+                and other characters Windows rejects are dropped.
+              </p>
+            </div>
+          ) : (
+            /* naming tokens — same semantics as the classic ExportPanel */
+            <div className="flex gap-2.5 items-end flex-wrap mb-3">
+              <Field label="ICAO">
+                <input
+                  ref={icaoRef}
+                  value={tokens.icao}
+                  onChange={(e) => setTokens({ ...tokens, icao: e.target.value.toUpperCase() })}
+                  placeholder="LFPG"
+                  maxLength={4}
+                  className={`${ip} w-[70px]`}
+                />
+              </Field>
+              <Field label="VERSION X.Y">
+                <input
+                  value={tokens.version}
+                  onChange={(e) => setTokens({ ...tokens, version: e.target.value })}
+                  placeholder="3.3"
+                  className={`${ip} w-[62px]`}
+                />
+              </Field>
+              <Field label="CONFIG">
+                <input
+                  value={tokens.config}
+                  onChange={(e) => setTokens({ ...tokens, config: e.target.value.toUpperCase() })}
+                  placeholder="WEST"
+                  className={`${ip} w-[76px]`}
+                />
+              </Field>
+              <Field label="Nº">
+                <input
+                  value={tokens.configNum}
+                  onChange={(e) => setTokens({ ...tokens, configNum: e.target.value })}
+                  placeholder="26"
+                  className={`${ip} w-[46px]`}
+                />
+              </Field>
+            </div>
+          )}
           {/* pseudo-pilot */}
           <div className="border-t border-bd1 pt-2.5 flex flex-col gap-2">
             <div className="text-[9.5px] font-bold tracking-[0.1em] text-tx8 select-none">
