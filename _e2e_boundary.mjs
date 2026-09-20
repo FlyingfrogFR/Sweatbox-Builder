@@ -62,7 +62,7 @@ const firSel = page.locator('.dk-tray.dk-open select:has(option[value="LFBB"])')
 await firSel.selectOption("LFBB");
 await page.waitForTimeout(300);
 t = await page.locator(".dk-tray.dk-open").textContent();
-/2 entry gates/.test(t) ? ok("gate count badge: 2 entry gates") : fail("missing entry-gate badge: " + (t.match(/SCENARIO FIR.{0,60}/) || [""])[0]);
+/2 published entry gates/.test(t) ? ok("gate count badge: 2 published entry gates") : fail("missing entry-gate badge: " + (t.match(/SCENARIO FIR.{0,60}/) || [""])[0]);
 
 // --- create a C1 rule, set AIRCRAFT POOL + AUTO — FIR BOUNDARY in the full editor ---
 await page.click('.dk-tray.dk-open button:has-text("New")');

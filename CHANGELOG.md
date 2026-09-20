@@ -8,6 +8,22 @@ The app checks this repository for new versions on launch and shows you the
 notes for the release it is offering, so what you read here is what you read
 in the update prompt.
 
+## 7.8.1 — 2026-09-20
+
+Housekeeping release — nothing you do changes, two things get quicker.
+
+- **The scenario rail no longer slows down as you save more sessions.** It
+  used to re-read every saved slot from disk on every keystroke anywhere in
+  the app; it now only re-reads a slot when that slot actually changes.
+- **Slightly smaller download.** The old tabbed interface from before
+  FLIGHTDECK was still being shipped inside the app even though nothing could
+  reach it any more. It is gone from the build (and kept on the `classic`
+  branch of the repository for reference).
+- Under the hood: a lookup table replaces a per-aircraft scan when writing the
+  `.scn`, and a duplicate autosave copy that only the old interface read is no
+  longer written. The generated file is byte-for-byte identical — the parity
+  suite against the original prototype still passes.
+
 ## 7.8.0 — 2026-09-15
 
 - **Name your export files whatever you like.** The filename plate now has a

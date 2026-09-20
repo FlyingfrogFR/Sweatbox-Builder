@@ -36,7 +36,6 @@ import { BuildTray } from "./trays/BuildTray";
 
 // Registers S1/S2 into the plugin registry (side-effect import kept for the
 // GROUND tray, which renders the registered S1 panel).
-import "../generators";
 
 export type TrayId = "setup" | "pool" | "build" | null;
 
@@ -134,33 +133,29 @@ export default function DeckApp() {
     };
   }, []);
 
-  // ---------- autosave: sb:cur (400ms) + active slot (2s), flush on hide ----------
+  // ---------- autosave: active slot (2s), flush on hide ----------
+  // sb:cur was the classic shell's live mirror; it is still READ once by
+  // ensureActiveSlot to migrate a pre-slot install, but with that shell gone
+  // writing the whole scenario there on every edit was pure cost.
   const scenarioRef = useRef(scenario);
   scenarioRef.current = scenario;
   const slotNameRef = useRef(slotName);
   slotNameRef.current = slotName;
   const loadedRef = useRef(false);
   loadedRef.current = loaded;
-  const curTimer = useRef<any>(null);
   const slotTimer = useRef<any>(null);
   useEffect(() => {
     if (!loaded) return;
-    curTimer.current = setTimeout(() => storage.set(KEYS.current, scenario), 400);
     slotTimer.current = setTimeout(() => {
       slots.writeSlot(slotNameRef.current, scenario);
       setSlotList(slots.listSlots());
     }, 2000);
-    return () => {
-      clearTimeout(curTimer.current);
-      clearTimeout(slotTimer.current);
-    };
+    return () => clearTimeout(slotTimer.current);
   }, [scenario, loaded]);
   useEffect(() => {
     const flush = () => {
       if (!loadedRef.current) return;
-      clearTimeout(curTimer.current);
       clearTimeout(slotTimer.current);
-      storage.set(KEYS.current, scenarioRef.current);
       slots.writeSlot(slotNameRef.current, scenarioRef.current);
     };
     const onVis = () => {
@@ -516,7 +511,6 @@ export default function DeckApp() {
   // ---------- deck derived state + guidance ----------
   const navLoaded = waypoints.length > 0;
   const acCount = scenario.aircraft.length;
-  const ruleCount = (scenario.rules || []).length;
   const rating = scenario.rating || null;
   // One element breathes — a hint, never a gate.
   const breathe: string = !navLoaded

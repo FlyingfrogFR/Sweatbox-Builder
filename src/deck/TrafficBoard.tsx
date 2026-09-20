@@ -48,7 +48,7 @@ export const TrafficBoard = forwardRef<HTMLDivElement, any>(function TrafficBoar
   },
   ref,
 ) {
-  const aircraft: any[] = scenario.aircraft || [];
+  const aircraft: any[] = useMemo(() => scenario.aircraft || [], [scenario.aircraft]);
   const [localFlash, setLocalFlash] = useState<Set<string>>(new Set());
 
   const arrCount = aircraft.filter((a) => !a.isDeparture).length;

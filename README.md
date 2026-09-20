@@ -117,8 +117,7 @@ reference/   The original single-file prototype (kept as the regression "oracle"
 src/
   core/      Generation logic, ported VERBATIM (generateSweatbox, generateFromRule, ground, geo, …)
   deck/      The app shell: Slot Rail · Traffic Board · Output Pane · Command Dock, trays + drawers
-  generators/ ES-module plugin registry + S1/S2 generators, S3 rule editor + Workbench (S3/C1)
-  panels/    Legacy tabbed shell, kept for the S1 ground panel the deck embeds
+  generators/ Rule editor (s3.tsx) + the Rule Workbench the deck's BUILD TFC tray mounts
   parsers/   .sct / .ese parsers
   net/ io/ state/ ui/   HTTP + APIs, file save/bundles, localStorage, icons
 src-tauri/   Rust backend: tauri.conf.json, capabilities/, src/lib.rs, icons/
@@ -126,12 +125,11 @@ tests/       Regression harness (oracle in a VM) + golden fixtures + Vitest
 docs/        Screenshots
 ```
 
-### Add a generator
-Generators are plain ES modules registered with `registerGenerator({ id, label, render })`.
-Make `src/generators/mygen.tsx`, call `registerGenerator(...)`, add `import "./mygen";`
-to `src/generators/index.ts`, and it shows up in the Generators tab. (`src/generators/s1.tsx`
-is the full reference; the rule-based S3/C1 modes are rendered by the shared
-Workbench and bypass the registry.)
+### Where the modes live
+S1 ground traffic is `src/deck/GroundSection.tsx` over `src/core/ground.ts`; the
+rule-based S3/C1 modes are the Rule Workbench (`src/generators/RuleWorkbench.tsx`)
+over the shared editor in `src/generators/s3.tsx`. The classic tabbed shell and its
+plugin registry were retired in 7.8.1 and are preserved on the `classic` branch.
 
 ### Why the output is trustworthy
 The generation code was ported **verbatim** from the original prototype, which lives in

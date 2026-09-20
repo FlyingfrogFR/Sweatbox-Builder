@@ -302,8 +302,6 @@ export function generateFromRule(
           upper: c.fromUpper === undefined ? Infinity : +c.fromUpper,
         });
       }
-      const gateApts = gateEntries;
-
       // Airports INSIDE the session FIR, derived from the gates themselves: an
       // into-FIR entry publishes the TFLs for a destination field, so every
       // non-"*" destApt on a toFir === fir line is one of this FIR's own

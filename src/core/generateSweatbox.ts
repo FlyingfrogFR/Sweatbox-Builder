@@ -1,8 +1,11 @@
 // generateSweatbox.ts
 //
-// Copied VERBATIM from the rc3 shell (function generateSweatbox). This is the
-// EuroScope .scn serializer — output parity is the top priority, so nothing here
-// is reinterpreted. Preserves: AIRPORT_ALT formatting, ILS lines, the
+// Ported from the rc3 shell (function generateSweatbox). This is the EuroScope
+// .scn serializer — output parity is the top priority, so nothing here is
+// reinterpreted. The one structural change is the waypoint lookup: a Map built
+// once per call replaces a linear scan per route token, with first-occurrence
+// semantics identical to Array.prototype.find (the parity suite holds the
+// output to the byte). Preserves: AIRPORT_ALT formatting, ILS lines, the
 // HOLDING:<fix>:<inbound>:<-1|1> directive, per-controller PSEUDOPILOT:ALL, the
 // @N line with heading encoded as round(heading*2.88)*4 (fields 8 and 10 literal
 // zeros), $FP / SIMDATA:...:0.010:0.0 / $ROUTE, optional START, DELAY:3:7,
@@ -26,6 +29,9 @@ export function generateSweatbox(s: any, waypoints: any[] = [], opts: any = {}) 
     L.push("PSEUDOPILOT:ALL");
     L.push(`CONTROLLER:${c.callsign}:${c.freq}`);
   }
+  // name -> waypoint, first occurrence wins — exactly what waypoints.find did.
+  const wpByName = new Map<string, any>();
+  for (const w of waypoints) if (!wpByName.has(w.name)) wpByName.set(w.name, w);
   for (const a of s.aircraft) {
     let sLat = +a.lat,
       sLon = +a.lon;
@@ -102,7 +108,7 @@ export function generateSweatbox(s: any, waypoints: any[] = [], opts: any = {}) 
       const targetIdx =
         a.spawnMode !== undefined && spawnIdx >= 0 ? spawnIdx + 1 : toks[0] === spawnWpt ? 1 : 0;
       if (targetIdx < toks.length) {
-        const target = waypoints.find((w) => w.name === toks[targetIdx]);
+        const target = wpByName.get(toks[targetIdx]);
         if (target) hdg = Math.round(bearingBetween(sLat, sLon, target.lat, target.lon));
       }
     }
@@ -112,8 +118,7 @@ export function generateSweatbox(s: any, waypoints: any[] = [], opts: any = {}) 
     // whose oracle output literally encodes the north-pointing bug — keep the
     // rc3 chain byte-for-byte: primary → runway → 0.
     const newSpawn = a.spawnMode !== undefined;
-    const spawnWp =
-      spawnWpt && waypoints.length > 0 ? waypoints.find((w) => w.name === spawnWpt) : null;
+    const spawnWp = spawnWpt ? wpByName.get(spawnWpt) || null : null;
     if (hdg === null && newSpawn && offsetApplied && spawnWp) {
       hdg = Math.round(bearingBetween(sLat, sLon, spawnWp.lat, spawnWp.lon));
     }
@@ -121,7 +126,7 @@ export function generateSweatbox(s: any, waypoints: any[] = [], opts: any = {}) 
       const from = toks[0] === spawnWpt ? 1 : 0;
       const ni = nearestResolvableIdx(toks, from, 1, waypoints);
       if (ni >= 0) {
-        const target = waypoints.find((w) => w.name === toks[ni]);
+        const target = wpByName.get(toks[ni]);
         if (target) hdg = Math.round(bearingBetween(sLat, sLon, target.lat, target.lon));
       }
     }

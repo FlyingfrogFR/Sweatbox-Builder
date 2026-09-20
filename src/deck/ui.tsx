@@ -1,6 +1,6 @@
 // ui.tsx — FLIGHTDECK primitives: keycap buttons with press physics, latches,
 // hold-to-confirm keys, and small shared chrome. Styling lives in deck.css.
-import { useRef, useState, useCallback } from "react";
+import { useRef, useCallback } from "react";
 
 // One-shot animation class helper (rim pulse, badge tick, sweep...).
 export function pulse(el: HTMLElement | null, cls: string) {
@@ -45,7 +45,16 @@ export function DeckKey({
   );
 }
 
-export function Latch({ on, onClick, children, disabled = false, title, size, tone, className = "" }: any) {
+export function Latch({
+  on,
+  onClick,
+  children,
+  disabled = false,
+  title,
+  size,
+  tone,
+  className = "",
+}: any) {
   return (
     <button
       className={`dk-latch ${size === "md" ? "dk-md" : ""} ${tone ? `dk-tone-${tone}` : ""} ${on ? "dk-on" : ""} ${className}`}
@@ -60,7 +69,15 @@ export function Latch({ on, onClick, children, disabled = false, title, size, to
 }
 
 // Press-and-hold 600ms to confirm; releasing early cancels. Replaces confirm().
-export function HoldKey({ onHold, children, size = "sm", tone = "rd", className = "", title, ms = 600 }: any) {
+export function HoldKey({
+  onHold,
+  children,
+  size = "sm",
+  tone = "rd",
+  className = "",
+  title,
+  ms = 600,
+}: any) {
   const ref = useRef<HTMLButtonElement>(null);
   const raf = useRef<number>(0);
   const start = useCallback(
@@ -120,7 +137,9 @@ export function RatingChip({ rating, className = "" }: any) {
 export function Cluster({ label, children, className = "" }: any) {
   return (
     <div className={`flex flex-col gap-1 ${className}`}>
-      <span className="text-[8.5px] font-extrabold tracking-[0.18em] text-tx8 pl-0.5 select-none">{label}</span>
+      <span className="text-[8.5px] font-extrabold tracking-[0.18em] text-tx8 pl-0.5 select-none">
+        {label}
+      </span>
       <div className="flex gap-2 items-center">{children}</div>
     </div>
   );

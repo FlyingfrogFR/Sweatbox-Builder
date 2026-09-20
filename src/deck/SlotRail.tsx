@@ -3,7 +3,7 @@
 // double-click-to-rename inline; a per-card "⋯" menu (rename / clone / export
 // .scenario.json / hold-to-delete); footer IMPORT + AIRAC chip. All slot
 // mutations live in DeckApp — this component only renders and calls back.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { DeckKey, HoldKey, RatingChip, pulse } from "./ui";
 import { Icon } from "../ui/Icon";
 import { downloadJsonBundle, readJsonFile } from "../io/bundles";
@@ -61,6 +61,20 @@ export function SlotRail({
   trayOpen?: boolean;
   toast: (html: string, kind?: "ok" | "warn" | "err" | "info") => void;
 }) {
+  // Slot cards used to JSON.parse every slot payload out of localStorage on
+  // every render — and the shell re-renders on each keystroke. An inactive
+  // slot only changes when it is written, which moves its updatedAt, so those
+  // summaries are memoised on that signature; the active slot is summarised
+  // from the live scenario, which needs no parse at all.
+  const meta = slots.getMeta();
+  const metaSig = slotList.map((n) => `${n}:${meta.meta[n]?.updatedAt || 0}`).join("|");
+  const inactiveSummaries = useMemo(() => {
+    const m = new Map<string, ReturnType<typeof slots.slotSummary>>();
+    for (const n of slotList) if (n !== active) m.set(n, slots.slotSummary(n));
+    return m;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- metaSig is the change signal
+  }, [slotList, active, metaSig]);
+
   const [renaming, setRenaming] = useState<string | null>(null);
   const [val, setVal] = useState("");
   const [menu, setMenu] = useState<{ name: string; x: number; y: number } | null>(null);
@@ -165,7 +179,9 @@ export function SlotRail({
 
       {/* header */}
       <div className="flex-none flex items-center justify-between px-3 pt-3 pb-2">
-        <span className="text-[10px] font-bold tracking-[0.14em] text-tx7 select-none">SCENARIOS</span>
+        <span className="text-[10px] font-bold tracking-[0.14em] text-tx7 select-none">
+          SCENARIOS
+        </span>
         <DeckKey size="sm" onClick={onNew} title="New empty slot (Ctrl+N)">
           + NEW
         </DeckKey>
@@ -174,7 +190,10 @@ export function SlotRail({
       {/* slot cards */}
       <div className="flex-1 min-h-0 overflow-y-auto px-2.5 pb-2.5 pt-0.5 flex flex-col gap-2">
         {slotList.map((name) => {
-          const s = slots.slotSummary(name, activeScenario);
+          const s =
+            name === active
+              ? slots.slotSummary(name, activeScenario)
+              : inactiveSummaries.get(name) || slots.slotSummary(name);
           const isActive = name === active;
           const ap = s.ac ? Math.round((s.arr / s.ac) * 100) : 50;
           return (
@@ -190,7 +209,11 @@ export function SlotRail({
                 if (renaming !== name) onSwitch(name);
               }}
               onKeyDown={(e) => {
-                if ((e.key === "Enter" || e.key === " ") && e.target === e.currentTarget && renaming !== name) {
+                if (
+                  (e.key === "Enter" || e.key === " ") &&
+                  e.target === e.currentTarget &&
+                  renaming !== name
+                ) {
                   e.preventDefault();
                   onSwitch(name);
                 }
@@ -250,7 +273,9 @@ export function SlotRail({
                   <RatingChip rating={s.rating} />
                   <span
                     className={`text-tx6 font-bold leading-none px-[3px] py-0.5 rounded hover:bg-bd1 transition-opacity duration-100 ${
-                      menu?.name === name ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+                      menu?.name === name
+                        ? "opacity-100"
+                        : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
                     }`}
                     onClick={(e) => openMenu(e, name)}
                     title="Slot actions"
@@ -270,8 +295,14 @@ export function SlotRail({
 
               {/* arr/dep mix bar */}
               <span className="flex h-[3px] mt-1.5 rounded-sm overflow-hidden bg-bd1">
-                <span className="block h-full" style={{ width: `${ap}%`, background: "rgb(var(--arr))" }} />
-                <span className="block h-full" style={{ width: `${100 - ap}%`, background: "rgb(var(--dep))" }} />
+                <span
+                  className="block h-full"
+                  style={{ width: `${ap}%`, background: "rgb(var(--arr))" }}
+                />
+                <span
+                  className="block h-full"
+                  style={{ width: `${100 - ap}%`, background: "rgb(var(--dep))" }}
+                />
               </span>
             </div>
           );
@@ -282,12 +313,22 @@ export function SlotRail({
           import button is ever on screen (the navdata section aside). */}
       <div className="flex-none flex items-center gap-2 p-2.5 border-t border-bd1">
         {!trayOpen && (
-          <DeckKey size="sm" onClick={() => fileRef.current?.click()} title="Import a saved scenario (.scenario.json) as a new slot">
+          <DeckKey
+            size="sm"
+            onClick={() => fileRef.current?.click()}
+            title="Import a saved scenario (.scenario.json) as a new slot"
+          >
             <Icon name="upload" size={13} />
             IMPORT SCENARIO
           </DeckKey>
         )}
-        <input ref={fileRef} type="file" accept=".json,application/json" className="hidden" onChange={onFile} />
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".json,application/json"
+          className="hidden"
+          onChange={onFile}
+        />
         {airac && (
           <span className="ml-auto font-mono text-[10px] text-tx6 bg-panel border border-bd1 rounded-md px-[7px] py-[3px]">
             AIRAC {airac}

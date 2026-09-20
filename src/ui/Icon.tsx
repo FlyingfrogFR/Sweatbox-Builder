@@ -81,12 +81,6 @@ export function Icon({
           <polyline points="7 3 7 8 15 8" />
         </svg>
       );
-    case "folder":
-      return (
-        <svg {...p}>
-          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-        </svg>
-      );
     case "search":
       return (
         <svg {...p}>
@@ -107,13 +101,6 @@ export function Icon({
           <polyline points="14 2 14 8 20 8" />
           <line x1="16" y1="13" x2="8" y2="13" />
           <line x1="16" y1="17" x2="8" y2="17" />
-        </svg>
-      );
-    case "settings":
-      return (
-        <svg {...p}>
-          <circle cx="12" cy="12" r="3" />
-          <path d="M12 1v3m0 16v3m11-11h-3M4 12H1m17.07-7.07L16.95 7.05M7.05 16.95l-2.12 2.12m12.02 0l-2.12-2.12M7.05 7.05L4.93 4.93" />
         </svg>
       );
     case "database":
@@ -171,13 +158,6 @@ export function Icon({
           <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
           <line x1="12" y1="9" x2="12" y2="13" />
           <line x1="12" y1="17" x2="12.01" y2="17" />
-        </svg>
-      );
-    case "rotate":
-      return (
-        <svg {...p}>
-          <polyline points="1 4 1 10 7 10" />
-          <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
         </svg>
       );
     // 'star' and 'home' are referenced by plugins; the rc3 Icon had no cases for
