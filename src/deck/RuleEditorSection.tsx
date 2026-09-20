@@ -194,6 +194,7 @@ export function RuleEditorSection({
   copx,
   pool,
   runways,
+  scenarioHome,
   onSave,
   onCancel,
 }: any) {
@@ -600,16 +601,26 @@ export function RuleEditorSection({
                   maxLength={4}
                   value={d.homeIcao ?? ""}
                   onChange={(e) => up("homeIcao", e.target.value.toUpperCase())}
-                  placeholder={d.isDeparture ? "departs" : "lands"}
+                  placeholder={
+                    d.homeIcao === undefined
+                      ? scenarioHome || "scenario?"
+                      : d.isDeparture
+                        ? "departs"
+                        : "lands"
+                  }
                 />
                 <p className={HINT}>
                   {d.poolSource
                     ? "unused — pool entries carry their own"
-                    : homeBlank
-                      ? "blank = overflight"
-                      : d.isDeparture
-                        ? "origin of every aircraft"
-                        : "destination of every aircraft"}
+                    : d.homeIcao === undefined
+                      ? scenarioHome
+                        ? `inherits ${scenarioHome} from the scenario`
+                        : "inherits the scenario's airport — none set yet"
+                      : homeBlank
+                        ? "blank = overflight"
+                        : d.isDeparture
+                          ? "origin of every aircraft"
+                          : "destination of every aircraft"}
                 </p>
               </div>
               {homeBlank && (

@@ -219,6 +219,70 @@ describe("P2 — blank homeIcao draws both ends from pools (overflight)", () => 
     }
   });
 
+  it("legacy rule inherits the SCENARIO's airport when the app passes one (7.8.2)", () => {
+    const home = (rule: any, scenarioHome: string) =>
+      generateFromRule(
+        rule,
+        WPTS,
+        new Set(),
+        [],
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        scenarioHome,
+      );
+    const legacyArr: any = tmplRule({ isDeparture: false });
+    delete legacyArr.homeIcao;
+    for (const ac of home(legacyArr, "LFBB").aircraft) expect(ac.dest).toBe("LFBB");
+    const legacyDep: any = tmplRule({ isDeparture: true });
+    delete legacyDep.homeIcao;
+    for (const ac of home(legacyDep, "lfbo").aircraft) expect(ac.origin).toBe("LFBO");
+    // an explicit home on the rule always beats the scenario's
+    for (const ac of home(tmplRule({ isDeparture: false, homeIcao: "LFMN" }), "LFBB").aircraft)
+      expect(ac.dest).toBe("LFMN");
+    // an explicit blank is still an overflight, whatever the scenario says
+    for (const ac of home(tmplRule({ isDeparture: false, homeIcao: "" }), "LFBB").aircraft)
+      expect(ac.dest).toBe("LIRF");
+  });
+
+  it("legacy rule + a scenario with no airport is an error, never a silent LFPG", () => {
+    const legacy: any = tmplRule({ isDeparture: false });
+    delete legacy.homeIcao;
+    const r: any = generateFromRule(
+      legacy,
+      WPTS,
+      new Set(),
+      [],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "",
+    );
+    expect(r.aircraft.length).toBe(0);
+    expect(r.error).toMatch(/No home airport/);
+    // pool-sourced rules carry their own ends and are unaffected
+    const poolLegacy: any = poolRule();
+    delete poolLegacy.homeIcao;
+    const p: any = generateFromRule(
+      poolLegacy,
+      WPTS,
+      new Set(),
+      POOL,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "",
+    );
+    expect(p.error).toBeNull();
+    expect(p.aircraft.length).toBe(3);
+  });
+
   it("legacy rule (no homeIcao key) still gets LFPG on the home side", () => {
     const legacyArr: any = tmplRule({ isDeparture: false });
     delete legacyArr.homeIcao;

@@ -20,6 +20,7 @@ function produce(
   boundaryFir?: string,
   firBounds?: any,
   claimed?: Set<string>,
+  scenarioHome?: string,
 ) {
   try {
     const r: any = generateFromRule(
@@ -32,6 +33,7 @@ function produce(
       firBounds,
       undefined,
       claimed,
+      scenarioHome,
     );
     return { aircraft: r.aircraft || [], error: r.error || null, warning: r.warning || null };
   } catch (e: any) {
@@ -81,6 +83,7 @@ export function RuleWorkbench({
   firBounds,
   runways,
   FullEditor,
+  scenarioHome,
 }: any) {
   const Editor = FullEditor || RuleEditor;
   const allRules = scenario.rules || [];
@@ -181,11 +184,29 @@ export function RuleWorkbench({
     const claimed = new Set<string>();
     for (const r of rules) {
       if (r.id === deferredDraft.id) break;
-      produce(r, waypoints, pool, copx, scenario.boundaryFir, firBounds, claimed);
+      produce(r, waypoints, pool, copx, scenario.boundaryFir, firBounds, claimed, scenarioHome);
     }
-    return produce(deferredDraft, waypoints, pool, copx, scenario.boundaryFir, firBounds, claimed);
+    return produce(
+      deferredDraft,
+      waypoints,
+      pool,
+      copx,
+      scenario.boundaryFir,
+      firBounds,
+      claimed,
+      scenarioHome,
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deferredDraft, rulesKey, waypoints, pool, copx, scenario.boundaryFir, firBounds]);
+  }, [
+    deferredDraft,
+    rulesKey,
+    waypoints,
+    pool,
+    copx,
+    scenario.boundaryFir,
+    firBounds,
+    scenarioHome,
+  ]);
 
   // Session overview: produce every saved rule of this mode, split by direction.
   // Keyed on the full rule content — any saved field can change the produced
@@ -206,13 +227,14 @@ export function RuleWorkbench({
         scenario.boundaryFir,
         firBounds,
         claimed,
+        scenarioHome,
       );
       counts[r.id] = aircraft.length;
       maxT = Math.max(maxT, (+r.startOffset || 0) + (+r.duration || 0));
       for (const a of aircraft) (a.isDeparture ? dep : arr).push(+a.start || 0);
     }
     return { arr, dep, maxT: maxT || 45, counts, total: arr.length + dep.length };
-  }, [rulesKey, waypoints, pool, copx, scenario.boundaryFir, firBounds]);
+  }, [rulesKey, waypoints, pool, copx, scenario.boundaryFir, firBounds, scenarioHome]);
 
   const ticks = [0, 0.3333, 0.6666, 1].map((f) => Math.round(session.maxT * f));
 
@@ -657,6 +679,7 @@ export function RuleWorkbench({
           copx={copx}
           runways={runways}
           scenarioIls={scenario.ils}
+          scenarioHome={scenarioHome}
           onSave={saveFull}
           onCancel={() => {
             editingFullRef.current = null;

@@ -8,6 +8,20 @@ The app checks this repository for new versions on launch and shows you the
 notes for the release it is offering, so what you read here is what you read
 in the update prompt.
 
+## 7.8.2 — 2026-09-20
+
+- **No more hard-coded LFPG.** A rule with no home airport of its own used to
+  be given Paris — an old default from the app's LFPG origins. It now takes
+  **this scenario's airport**: the ICAO on the export plate (pinned, or read
+  from the slot name / your Setup controllers). Importing an older ruleset
+  stamps that airport onto each rule, visible and editable in HOME ICAO; a
+  rule left without one shows "inherits LFBB from the scenario" in the editor.
+- If the scenario has no airport yet and a rule needs one, RUN RULES says so —
+  "No home airport: set HOME ICAO on the rule, or give the scenario one" —
+  instead of quietly generating traffic for an airport nobody chose.
+- Rules with an explicit home, or an explicit blank (overflight), are
+  untouched. Pool-sourced rules never needed one and are unaffected.
+
 ## 7.8.1 — 2026-09-20
 
 Housekeeping release — nothing you do changes, two things get quicker.

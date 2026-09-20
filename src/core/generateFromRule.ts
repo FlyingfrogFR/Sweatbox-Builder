@@ -25,10 +25,15 @@ import { getStars } from "./stars";
 import { rng } from "./rng";
 
 // Home airport of the scenario: origin of departures / destination of
-// arrivals. Rules created before the field existed carry no homeIcao and keep
-// the original hardcoded LFPG so legacy rulesets generate byte-identically.
-function homeApt(rule: any) {
-  return rule.homeIcao === undefined ? "LFPG" : String(rule.homeIcao).trim().toUpperCase();
+// arrivals. A rule created before the field existed carries no homeIcao and
+// INHERITS the scenario's airport (scenarioHome, resolved by the app from the
+// export plate: pinned ICAO, else the slot name / controllers). Only a caller
+// that passes no scenarioHome at all — the golden harness, legacy callers —
+// gets the original hardcoded LFPG, so legacy rulesets still generate
+// byte-identically there while the app never silently substitutes Paris.
+function homeApt(rule: any, scenarioHome?: string) {
+  if (rule.homeIcao !== undefined) return String(rule.homeIcao).trim().toUpperCase();
+  return scenarioHome === undefined ? "LFPG" : String(scenarioHome).trim().toUpperCase();
 }
 
 // Spawn schedule for a rule. Default ("regular", or field absent) keeps the
@@ -169,10 +174,20 @@ export function generateFromRule(
   firBounds?: Record<string, number[][]>,
   starsIn?: any[],
   claimedSet?: Set<string>,
+  scenarioHome?: string,
 ) {
   // autoBoundary (pool rules only): each aircraft spawns where ITS OWN filed
   // route crosses the scenario FIR boundary — no rule-level spawn waypoint.
   const autoBoundary = rule.spawnMode === "autoBoundary" && !!rule.poolSource;
+  // A template rule that inherits its home airport needs the scenario to have
+  // one. The app passes "" when it cannot tell — say so, rather than quietly
+  // generating traffic for an airport nobody chose.
+  if (!rule.poolSource && rule.homeIcao === undefined && scenarioHome === "")
+    return {
+      aircraft: [],
+      error:
+        "No home airport: set HOME ICAO on the rule, or give the scenario one (name it after the airport, or add a controller)",
+    };
   // STARs come from the same mirror the excludeNonRouting filter already reads,
   // so no new plumbing is needed; tests can pass them explicitly.
   const starList = starsIn || getStars() || [];
@@ -804,15 +819,16 @@ export function generateFromRule(
       callsign: cs,
       squawk: assignSquawk(rule, type),
       type,
-      // Blank homeIcao (an explicit "" — legacy rules without the field still
-      // get LFPG from homeApt) means overflight/transit: BOTH ends come from
-      // the pools. Golden-safe: no fixture rule carries a homeIcao key.
+      // Blank homeIcao (an explicit "" — a rule without the field inherits the
+      // scenario's airport instead) means overflight/transit: BOTH ends come
+      // from the pools. Golden-safe: no fixture rule carries a homeIcao key
+      // and the harness passes no scenarioHome, so those still resolve to LFPG.
       origin: rule.isDeparture
-        ? homeApt(rule) || pickPool(rule.originPool, i)
+        ? homeApt(rule, scenarioHome) || pickPool(rule.originPool, i)
         : pickPool(rule.originPool, i),
       dest: rule.isDeparture
         ? pickPool(rule.destPool, i)
-        : homeApt(rule) || pickPool(rule.destPool, i),
+        : homeApt(rule, scenarioHome) || pickPool(rule.destPool, i),
       cruiseAlt: +rule.cruiseAlt || 35000,
       lat: wp.lat,
       lon: wp.lon,

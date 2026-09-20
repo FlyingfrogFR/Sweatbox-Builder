@@ -36,6 +36,7 @@ const routeMatchesTokens = (route: string, tokens: string[]) => {
 };
 
 export function RuleEditor({
+  scenarioHome,
   rule,
   waypoints,
   pool,
@@ -800,7 +801,13 @@ export function RuleEditor({
                     className={ip}
                     value={r.homeIcao ?? ""}
                     onChange={(e) => update("homeIcao", e.target.value.toUpperCase())}
-                    placeholder={r.isDeparture ? "departures depart from…" : "arrivals land at…"}
+                    placeholder={
+                      r.homeIcao === undefined
+                        ? `inherits ${scenarioHome || "the scenario's airport"}`
+                        : r.isDeparture
+                          ? "departures depart from…"
+                          : "arrivals land at…"
+                    }
                     maxLength={4}
                   />
                   {!(r.homeIcao ?? "").trim() && r.homeIcao !== undefined && (

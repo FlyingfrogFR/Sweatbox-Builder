@@ -38,6 +38,7 @@ export function BuildTray(props: any) {
     section,
     setSection,
     rulesetName,
+    scenarioHome,
     focusRuleId,
     clearFocus,
     rating,
@@ -92,7 +93,7 @@ export function BuildTray(props: any) {
 
   // ---------- ruleset import (merge/replace) ----------
   const applyRules = (incoming: any[]) => {
-    const normalised = normalizeRules(incoming);
+    const normalised = normalizeRules(incoming, scenarioHome);
     const n = normalised.length;
     if (importMode === "replace") {
       snapshot("before REPLACE import");
@@ -347,6 +348,7 @@ export function BuildTray(props: any) {
                   copx={copx}
                   firBounds={firBounds}
                   runways={runways}
+                  scenarioHome={scenarioHome}
                   FullEditor={RuleEditorSection}
                 />
               </div>

@@ -397,6 +397,10 @@ export default function DeckApp() {
         firBounds,
         undefined,
         claimed,
+        // A rule with no home airport of its own inherits the scenario's —
+        // the plate's ICAO (pinned, else derived from the slot name /
+        // controllers). Never a hardcoded default.
+        exportSettings.icao,
       );
       if (error) {
         errors.push(`${r.name}: ${error}`);
@@ -763,6 +767,7 @@ export default function DeckApp() {
             setSection={setBuildSection}
             {...trayProps}
             rulesetName={tokensSet ? rulesetName : ""}
+            scenarioHome={exportSettings.icao}
             focusRuleId={rulesFocusId}
             clearFocus={() => setRulesFocusId(null)}
             rating={rating}
