@@ -126,6 +126,11 @@ export function HoldKey({
   );
 }
 
+// The 24px row-action button (edit · copy · trash) the traffic board and the
+// pool table share — revealed on row hover, neutral until pressed.
+export const ROW_ACT =
+  "w-6 h-6 rounded-md grid place-items-center text-tx6 hover:bg-bd2 hover:text-tx1 active:translate-y-px disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-tx6 disabled:cursor-not-allowed";
+
 export const RATINGS = ["S1", "S2", "S3", "C1"] as const;
 
 export function RatingChip({ rating, className = "" }: any) {

@@ -1,4 +1,4 @@
-// Guard: the four places the app version lives must exist, be non-empty and
+// Guard: the places the app version lives must exist, be non-empty and
 // agree. A truncated or drifted src-tauri manifest is invisible to `npm test`
 // and `npm run build` (both frontend-only) and only surfaces ~10 minutes into
 // a Tauri build, so it is checked up front instead.
@@ -18,6 +18,9 @@ let versions = {};
 try {
   versions["package.json"] = JSON.parse(read("package.json")).version;
   versions["tauri.conf.json"] = JSON.parse(read("src-tauri/tauri.conf.json")).version;
+  const lockJson = JSON.parse(read("package-lock.json"));
+  versions["package-lock.json"] = lockJson.version;
+  versions["package-lock.json#root"] = lockJson.packages?.[""]?.version;
 
   const toml = read("src-tauri/Cargo.toml");
   if (!/^\[package\]/m.test(toml)) throw new Error("src-tauri/Cargo.toml has no [package] section");

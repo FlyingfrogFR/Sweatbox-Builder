@@ -8,6 +8,31 @@ The app checks this repository for new versions on launch and shows you the
 notes for the release it is offering, so what you read here is what you read
 in the update prompt.
 
+## 7.9.0 — 2026-10-06
+
+- **Edit a flight plan without leaving the pool.** Every row in FPLN POOL →
+  POOL now has a pencil. Press it and the row opens in place: callsign,
+  aircraft type, departure, arrival, flight level, squawk and the full route,
+  each in its own box. Enter saves, Escape cancels. A callsign that another
+  entry already uses is refused on the spot, with the reason shown — two
+  entries sharing one would silently merge the next time anything was added.
+- **Copy a plan into a whole family.** The copy button next to the pencil
+  makes a copy of the entry under the next free callsign: the last character
+  is swapped for a letter, A to Z — `AFR1234` becomes `AFR123A`, then
+  `AFR123B`, and so on. Select several entries and the footer offers
+  COPY ×N for up to 25 copies of each in one go. A copy is the entire entry
+  — route, squawk, type, level, where it came from — and a pool rule spawns
+  one aircraft per entry, so ten spaced inbounds on a route you fetched once
+  are a few clicks away. Copies sit right under their original, and copies of
+  a selected entry are selected too, ready for ADD TO BOARD.
+- Letters already taken in the pool are skipped, so copying twice never makes
+  a duplicate, two originals that differ only in their last digit never
+  collide, and the family stops when the alphabet runs out. The footer only
+  copies the selected rows you can see, and if the callsign filter would hide
+  the fresh copies it is cleared and the message says so.
+- The row actions (edit · copy · remove) appear when you hover a row, as they
+  do on the traffic board.
+
 ## 7.8.2 — 2026-09-20
 
 - **No more hard-coded LFPG.** A rule with no home airport of its own used to

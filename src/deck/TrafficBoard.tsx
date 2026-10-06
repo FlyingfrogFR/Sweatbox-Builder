@@ -7,7 +7,7 @@ import { forwardRef, useMemo, useState } from "react";
 import { Icon } from "../ui/Icon";
 import { uid } from "../core/uid";
 import { sortByStart } from "../state/aircraft";
-import { Latch, HoldKey, DeckKey } from "./ui";
+import { Latch, HoldKey, DeckKey, ROW_ACT } from "./ui";
 import { SessionTimeline } from "./SessionTimeline";
 
 const COLS =
@@ -28,8 +28,7 @@ function RoleBadge({ dep }: { dep: boolean }) {
 
 const CHIP =
   "font-mono text-[9px] tracking-[0.03em] px-1.5 py-[2px] rounded-[5px] border justify-self-start max-w-full truncate";
-const ACT =
-  "w-6 h-6 rounded-md grid place-items-center text-tx6 hover:bg-bd2 hover:text-tx1 active:translate-y-px";
+const ACT = ROW_ACT;
 
 export const TrafficBoard = forwardRef<HTMLDivElement, any>(function TrafficBoard(
   {

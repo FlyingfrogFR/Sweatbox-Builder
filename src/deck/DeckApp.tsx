@@ -10,7 +10,7 @@ import { ThemeToggle } from "../ui/ThemeToggle";
 import { useTheme } from "../state/theme";
 import { storage, KEYS, usePersist } from "../state/storage";
 import { defaultScenario } from "../core/model";
-import { addToPool, poolToAc } from "../core/pool";
+import { addToPool, poolToAc, updatePoolEntry, duplicatePoolEntries } from "../core/pool";
 import { setStars } from "../core/stars";
 import { setRampConfig } from "../core/ramp";
 import { generateSweatbox } from "../core/generateSweatbox";
@@ -65,6 +65,10 @@ export default function DeckApp() {
   const [rampAgent, setRampAgent] = useState<any>({});
   const [rampConfig, setRampConfigState] = useState<any>(null);
   const [pool, setPool] = useState<any[]>([]);
+  // The pool as of the latest change, for handlers that must read AND return
+  // (a functional setState can't hand its result back to the caller).
+  const poolRef = useRef<any[]>(pool);
+  poolRef.current = pool;
   const [vatsimCache, setVatsimCache] = useState<any>({
     pilots: [],
     icao: "",
@@ -201,6 +205,9 @@ export default function DeckApp() {
         }
       } catch {}
       try {
+        // NOTE: a pool.json beside the app that carries MORE entries than
+        // the stored pool REPLACES it — including entries edited or copied
+        // in the pool since (7.9.0). Pre-existing behaviour, kept as is.
         const r = await fetch("pool.json", { cache: "no-cache" });
         if (r.ok) {
           const b = await r.json();
@@ -749,6 +756,26 @@ export default function DeckApp() {
             onDeleteFromPool={(ids: string[]) =>
               setPool((prev) => prev.filter((p) => !ids.includes(p.id)))
             }
+            onUpdatePool={(id: string, value: any) => {
+              // Same ref discipline as duplicate: the tray needs to know
+              // whether the store accepted the edit (it re-validates against
+              // the pool as it is NOW, which may have changed under the row).
+              const next = updatePoolEntry(poolRef.current, id, value);
+              if (next === poolRef.current) return false;
+              poolRef.current = next;
+              setPool(next);
+              return true;
+            }}
+            onDuplicatePool={(ids: string[], n: number) => {
+              // Copies are whole entries under a fresh callsign (see
+              // duplicatePoolEntries); the tray words the toast from `made`.
+              // Read through the ref so two calls in one tick build on each
+              // other instead of on the same render's pool.
+              const r = duplicatePoolEntries(poolRef.current, ids, n);
+              poolRef.current = r.pool;
+              setPool(r.pool);
+              return r;
+            }}
             poolAirac={poolAirac}
             onSetPoolAirac={setPoolAirac}
             onImportPool={applyPoolBundle}

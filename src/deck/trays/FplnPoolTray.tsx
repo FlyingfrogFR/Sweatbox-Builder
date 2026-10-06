@@ -6,7 +6,7 @@
 // so button sizes and weights read the same everywhere.
 import { useState, useEffect, useMemo, useCallback, memo, useRef } from "react";
 import { Tray } from "../Tray";
-import { DeckKey, HoldKey, Latch } from "../ui";
+import { DeckKey, HoldKey, Latch, ROW_ACT } from "../ui";
 import { Icon } from "../../ui/Icon";
 import { storage, KEYS } from "../../state/storage";
 import {
@@ -20,6 +20,14 @@ import { ICAO_REGIONS, regionLabel, regionValue, endpointLabel } from "../../cor
 import { downloadJsonBundle, readJsonFile } from "../../io/bundles";
 import { wrongKindMessage } from "../../state/bundleKind";
 import { PoolShareSection } from "./PoolShareSection";
+import {
+  MAX_COPIES,
+  copyBatchTooLarge,
+  MAX_COPY_BATCH,
+  copyCallsigns,
+  poolCallsigns,
+  validatePoolEntry,
+} from "../../core/pool";
 
 type Section = "simbrief" | "vatsim" | "pool" | "share";
 
@@ -433,17 +441,25 @@ const PoolRow = memo(function PoolRow({
   selected,
   routePreview,
   addedStr,
+  nextCopy,
+  pulse,
   onToggle,
+  onEdit,
+  onCopyOne,
   onDeleteOne,
   zebra,
 }: any) {
   const s = srcOf(p.source);
   return (
     <tr
+      data-rowid={p.id}
       onClick={() => onToggle(p.id)}
-      className={`border-t border-rowdiv cursor-pointer transition-colors ${
+      // Two clicks toggle twice, so a double-click leaves the selection as it
+      // was and only opens the editor.
+      onDoubleClick={() => onEdit(p.id)}
+      className={`group border-t border-rowdiv cursor-pointer transition-colors ${
         selected ? "bg-cy-row" : zebra ? "bg-inset/50" : ""
-      } hover:bg-cy-fg/5`}
+      } hover:bg-cy-fg/5 ${pulse || ""}`}
     >
       <td className="px-3 py-1.5">
         <input type="checkbox" readOnly checked={selected} className="accent-cy-fg" />
@@ -462,22 +478,213 @@ const PoolRow = memo(function PoolRow({
         </span>
       </td>
       <td className="px-3 py-1.5 text-tx7">{addedStr}</td>
-      <td className="px-3 py-1.5 text-right" onClick={(e) => e.stopPropagation()}>
-        <button
-          onClick={() => onDeleteOne(p.id)}
-          title="Remove from pool"
-          className="text-tx8 hover:text-rd-fg"
+      <td
+        className="px-2 py-1"
+        onClick={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => e.stopPropagation()}
+      >
+        {/* The board's triad: shown on hover (and always on a selected row),
+            edit · copy, a hairline, then trash kept at the far right. */}
+        <div
+          className={`flex items-center justify-end gap-1 transition-opacity focus-within:opacity-100 ${
+            selected ? "" : "opacity-0 group-hover:opacity-100"
+          }`}
         >
-          <Icon name="trash" size={13} />
-        </button>
+          <button
+            onClick={() => onEdit(p.id)}
+            title="Edit this entry"
+            aria-label={`Edit ${p.callsign || "entry"}`}
+            className={ROW_ACT}
+          >
+            <Icon name="edit" size={13} />
+          </button>
+          <button
+            onClick={() => onCopyOne(p.id)}
+            disabled={!nextCopy}
+            title={
+              nextCopy
+                ? `Copy → ${nextCopy}`
+                : p.callsign
+                  ? "No free letter left for a copy"
+                  : "A copy needs a callsign to start from"
+            }
+            aria-label={`Copy ${p.callsign || "entry"}`}
+            className={ROW_ACT}
+          >
+            <Icon name="copy" size={13} />
+          </button>
+          <span className="w-px h-3.5 bg-bd3 mx-1" aria-hidden />
+          <button
+            onClick={() => onDeleteOne(p.id)}
+            title="Remove from pool"
+            aria-label={`Remove ${p.callsign || "entry"}`}
+            className={`${ROW_ACT} hover:text-rd-fg`}
+          >
+            <Icon name="trash" size={13} />
+          </button>
+        </div>
       </td>
     </tr>
   );
 });
 
+/** The row, opened in place: every field of the entry in its own box.
+ *  Enter saves, Escape cancels; SAVE stays dead while a field is wrong. */
+const draftOf = (p: any) => ({
+  callsign: p.callsign || "",
+  type: p.type || "",
+  origin: p.origin || "",
+  dest: p.dest || "",
+  cruiseFL: p.cruiseFL ? String(p.cruiseFL) : "",
+  squawk: p.squawk || "",
+  route: p.route || "",
+});
+
+function PoolEditRow({ p, pool, selected, onSave, onCancel, onDirty }: any) {
+  const [d, setD] = useState(() => draftOf(p));
+  const { value, errors } = useMemo(() => validatePoolEntry(d, pool, p.id), [d, pool, p.id]);
+  const bad = Object.keys(errors).length > 0;
+  // Dirty = differs from the entry as it was opened; the body uses this to
+  // refuse a second pencil that would silently throw the draft away.
+  const dirty = useMemo(() => JSON.stringify(d) !== JSON.stringify(draftOf(p)), [d, p]);
+  useEffect(() => {
+    onDirty?.(dirty);
+    return () => onDirty?.(false);
+  }, [dirty, onDirty]);
+  const csRef = useRef<HTMLInputElement>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    csRef.current?.focus();
+    csRef.current?.select();
+  }, []);
+  // Escape peels one layer: while a row is open, Escape anywhere in the tray
+  // (or with nothing focused) closes the row, and only the next one closes
+  // the tray. Capture phase on window so the deck's global handler never sees
+  // it. Focus inside another layer — the plate popover, the slot menu, the
+  // update dialog — is left alone; those consume their own Escape.
+  useEffect(() => {
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      const el = gridRef.current;
+      const tray = el?.closest(".dk-tray");
+      // Only while this row can be seen: the pool body stays mounted behind
+      // another section and behind a closed tray, and an Escape there is not
+      // ours — it must never cancel a draft nobody is looking at.
+      if (!el || !el.getClientRects().length || !tray?.classList.contains("dk-open")) return;
+      const t = e.target as Node;
+      const nowhere = t === document.body || t === document.documentElement || t === document;
+      if (!nowhere && !tray.contains(t)) return;
+      e.stopPropagation();
+      e.preventDefault();
+      onCancel();
+    };
+    window.addEventListener("keydown", onEsc, true);
+    return () => window.removeEventListener("keydown", onEsc, true);
+  }, [onCancel]);
+  const set = (k: string) => (e: any) => setD((prev) => ({ ...prev, [k]: e.target.value }));
+  const onKey = (e: any) => {
+    // Enter on a focused key (CANCEL, SAVE) is that key's click — not a save.
+    if (e.key !== "Enter" || (e.target as HTMLElement).tagName === "BUTTON") return;
+    e.preventDefault();
+    if (!bad) onSave(p.id, value);
+    // Otherwise land on the first box that is wrong, so Enter never feels dead.
+    else gridRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+  };
+  const who = p.callsign || "entry";
+  const errId = (k: string) => `pe-${p.id}-${k}-err`;
+  const errLine = (k: string, err?: string) =>
+    err && (
+      <div id={errId(k)} className="mt-1 text-[10px] text-rd-fg leading-tight">
+        {err}
+      </div>
+    );
+  const box = (k: keyof typeof d, label: string, w: string, placeholder: string, ref?: any) => {
+    const err = (errors as any)[k];
+    return (
+      <div className={w}>
+        <label className={LABEL}>{label}</label>
+        <input
+          ref={ref}
+          value={d[k]}
+          onChange={set(k)}
+          placeholder={placeholder}
+          spellCheck={false}
+          aria-label={`${label} of ${who}`}
+          aria-invalid={!!err}
+          aria-describedby={err ? errId(k) : undefined}
+          className={`${INPUT} w-full ${err ? "border-rd-bd focus:border-rd-fg" : ""}`}
+        />
+        {errLine(k, err)}
+      </div>
+    );
+  };
+  return (
+    // Cyan is the SELECTED surface in this table; an editor on an unselected
+    // row stays neutral so the colour keeps meaning one thing.
+    <tr
+      className={`border-t border-rowdiv ${selected ? "bg-cy-row" : "bg-inset/50"}`}
+      data-pool-edit={p.id}
+    >
+      <td colSpan={10} className="px-3 py-2.5">
+        <div ref={gridRef} className="flex flex-col gap-2" onKeyDown={onKey}>
+          <div className="flex items-start gap-2 flex-wrap">
+            {box("callsign", "CALLSIGN", "w-[112px]", "AFR1234", csRef)}
+            {box("type", "TYPE", "w-[76px]", "A320")}
+            {box("origin", "DEP", "w-[68px]", "LFPG")}
+            {box("dest", "ARR", "w-[68px]", "LFBO")}
+            {box("cruiseFL", "FL", "w-[64px]", "350")}
+            {box("squawk", "SQUAWK", "w-[72px]", "1000")}
+          </div>
+          <div className="flex items-end gap-2">
+            <div className="flex-1 min-w-0">
+              <label className={LABEL}>ROUTE</label>
+              {/* Two wrapping lines: a 40-fix route edited to splice in a STAR
+                  is unreadable scrolling sideways. Enter still saves — routes
+                  never carry a newline, and whitespace collapses on save. */}
+              <textarea
+                value={d.route}
+                onChange={set("route")}
+                rows={2}
+                placeholder="OKABO UT163 LMG"
+                spellCheck={false}
+                aria-label={`ROUTE of ${who}`}
+                aria-invalid={!!errors.route}
+                aria-describedby={errors.route ? errId("route") : undefined}
+                className={`${INPUT} w-full h-auto py-1.5 leading-snug resize-none ${
+                  errors.route ? "border-rd-bd focus:border-rd-fg" : ""
+                }`}
+              />
+              {errLine("route", errors.route)}
+            </div>
+            <div className={`flex items-center gap-1.5 flex-none ${errors.route ? "mb-[18px]" : ""}`}>
+              <DeckKey size="sm" onClick={onCancel} title="Discard the changes (Escape)">
+                <Icon name="x" size={12} />
+                CANCEL
+              </DeckKey>
+              <DeckKey
+                size="sm"
+                onClick={() => onSave(p.id, value)}
+                disabled={bad}
+                title={bad ? "Fix the highlighted field first" : "Save this entry (Enter)"}
+              >
+                <Icon name="check" size={12} />
+                SAVE
+              </DeckKey>
+            </div>
+          </div>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 function PoolBody({
   pool,
+  toast,
   onDelete,
+  onUpdate,
+  onDuplicate,
+  pulses,
   airac,
   onSetAirac,
   sel,
@@ -503,9 +710,66 @@ function PoolBody({
       }),
     [setSel],
   );
-  const deleteOne = useCallback((id: string) => onDelete([id]), [onDelete]);
+  // The tray hands down fresh closures every render; route the row callbacks
+  // through refs so memo(PoolRow) keeps its value across 80 rows.
+  const fns = useRef({ onDelete, onUpdate, onDuplicate, toast });
+  fns.current = { onDelete, onUpdate, onDuplicate, toast };
+  const deleteOne = useCallback((id: string) => fns.current.onDelete([id]), []);
+  const copyOne = useCallback((id: string) => fns.current.onDuplicate([id], 1), []);
+  // One entry open in place at a time. A second pencil swaps the open row only
+  // while its draft is untouched — a dirty draft is never thrown away unasked.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const editingRef = useRef<string | null>(null);
+  editingRef.current = editingId;
+  const dirtyRef = useRef(false);
+  const setDirty = useCallback((v: boolean) => (dirtyRef.current = v), []);
+  const requestEdit = useCallback((id: string) => {
+    const cur = editingRef.current;
+    if (cur && cur !== id && dirtyRef.current) {
+      fns.current.toast("Save or cancel the open row first", "warn");
+      return;
+    }
+    setEditingId(id);
+  }, []);
+  // When the row closes, focus goes back to its pencil (or the table) so a
+  // keyboard user keeps their place instead of dropping to <body>.
+  const tableRef = useRef<HTMLDivElement>(null);
+  const refocus = (id: string | null) =>
+    requestAnimationFrame(() => {
+      const t = tableRef.current;
+      (
+        (id && t?.querySelector<HTMLElement>(`tr[data-rowid="${id}"] button[aria-label^="Edit"]`)) ||
+        t
+      )?.focus();
+    });
+  const cancelEdit = useCallback(() => {
+    refocus(editingRef.current);
+    setEditingId(null);
+  }, []);
+  // The store re-validates against the pool as it is NOW; if it refused (the
+  // pool changed under the open row), the row stays open and says why.
+  const saveEdit = useCallback((id: string, value: any) => {
+    if (!fns.current.onUpdate(id, value)) return;
+    refocus(id);
+    setEditingId(null);
+  }, []);
+  // A draft behind a closed tray (DONE, or the deck's Escape) is kept, not
+  // dropped: the body stays mounted, and the row is where you left it when
+  // the tray comes back. Its Escape listener is inert while it cannot be seen.
+  // The row being edited stays on screen even when a filter would hide it —
+  // a half-typed route must never vanish because DEP was corrected. An entry
+  // that leaves the pool (delete, CLEAR ALL, import) takes its editor with it.
+  const editing = editingId ? pool.find((p: any) => p.id === editingId) : null;
+  useEffect(() => {
+    if (editingId && !editing) setEditingId(null);
+  }, [editingId, editing]);
+  const shown = useMemo(
+    () => (editing && !filtered.includes(editing) ? [editing, ...filtered] : filtered),
+    [editing, filtered],
+  );
   const derived = useMemo(() => {
-    const m = new Map<string, { routePreview: string; addedStr: string }>();
+    const taken = poolCallsigns(pool);
+    const m = new Map<string, { routePreview: string; addedStr: string; nextCopy: string }>();
     for (const p of pool) {
       const toks = (p.route || "").split(" ");
       m.set(p.id, {
@@ -513,6 +777,8 @@ function PoolBody({
         addedStr: p.addedAt
           ? new Date(p.addedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
           : "",
+        // The callsign the copy button would mint — shown in its tooltip.
+        nextCopy: copyCallsigns(p.callsign, taken, 1)[0] || "",
       });
     }
     return m;
@@ -609,7 +875,7 @@ function PoolBody({
         </span>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-auto border-t border-bd1">
+      <div ref={tableRef} tabIndex={-1} className="flex-1 min-h-0 overflow-auto border-t border-bd1 outline-none">
         <table className="w-full font-mono text-[11.5px]">
           <thead className="sticky top-0 bg-thead text-tx7">
             <tr className="text-[9.5px] tracking-[0.1em]">
@@ -631,23 +897,39 @@ function PoolBody({
               <th className="text-left px-3 py-2">ROUTE</th>
               <th className="text-left px-3 py-2">SOURCE</th>
               <th className="text-left px-3 py-2">ADDED</th>
-              <th className="w-9 px-3 py-2" />
+              <th className="w-[92px] px-3 py-2" />
             </tr>
           </thead>
           <tbody>
-            {filtered.map((p: any, i: number) => (
-              <PoolRow
-                key={p.id}
-                p={p}
-                zebra={i % 2 === 1}
-                selected={sel.has(p.id)}
-                routePreview={derived.get(p.id)?.routePreview}
-                addedStr={derived.get(p.id)?.addedStr}
-                onToggle={toggleSel}
-                onDeleteOne={deleteOne}
-              />
-            ))}
-            {!filtered.length && (
+            {shown.map((p: any, i: number) =>
+              p.id === editingId ? (
+                <PoolEditRow
+                  key={`edit:${p.id}`}
+                  p={p}
+                  pool={pool}
+                  selected={sel.has(p.id)}
+                  onSave={saveEdit}
+                  onCancel={cancelEdit}
+                  onDirty={setDirty}
+                />
+              ) : (
+                <PoolRow
+                  key={p.id}
+                  p={p}
+                  zebra={i % 2 === 1}
+                  selected={sel.has(p.id)}
+                  routePreview={derived.get(p.id)?.routePreview}
+                  addedStr={derived.get(p.id)?.addedStr}
+                  nextCopy={derived.get(p.id)?.nextCopy}
+                  pulse={pulses.get(p.id)}
+                  onToggle={toggleSel}
+                  onEdit={requestEdit}
+                  onCopyOne={copyOne}
+                  onDeleteOne={deleteOne}
+                />
+              ),
+            )}
+            {!shown.length && (
               <tr>
                 <td colSpan={10} className="px-3 py-8 text-center text-tx7 text-[12px]">
                   No entries match these filters
@@ -674,6 +956,8 @@ export function FplnPoolTray(props: any) {
     setVatsimCache,
     onAddToPool,
     onDeleteFromPool,
+    onUpdatePool,
+    onDuplicatePool,
     poolAirac,
     onSetPoolAirac,
     onImportPool,
@@ -691,6 +975,27 @@ export function FplnPoolTray(props: any) {
   const [fDep, setFDep] = useState("");
   const [fArr, setFArr] = useState("");
   const [fSrc, setFSrc] = useState("");
+  // Copies per selected entry for the footer's COPY ×N. The box keeps what is
+  // typed while it has focus (so backspace-then-3 is 3, not 13) and settles to
+  // the clamped 1..MAX_COPIES value on blur; the action always uses copyN.
+  const [copyNRaw, setCopyNRaw] = useState("1");
+  const copyN = Math.max(1, Math.min(MAX_COPIES, Math.floor(+copyNRaw || 1)));
+  // Row pulses, as on the board: fresh copies slide in, a saved edit flashes.
+  // Cleared after the animation so the same row can pulse again later.
+  const [pulses, setPulses] = useState<Map<string, string>>(new Map());
+  const pulseRows = (ids: string[], cls: string) => {
+    if (!ids.length) return;
+    setPulses((prev) => new Map([...prev, ...ids.map((id) => [id, cls] as [string, string])]));
+    window.setTimeout(
+      () =>
+        setPulses((prev) => {
+          const next = new Map(prev);
+          ids.forEach((id) => next.delete(id));
+          return next;
+        }),
+      700,
+    );
+  };
   const busyRef = useRef<any>({});
   const importRef = useRef<HTMLInputElement>(null);
 
@@ -708,6 +1013,26 @@ export function FplnPoolTray(props: any) {
 
   const ofp = simbriefCache.ofp;
   const vsPilots = vatsimCache.pilots || [];
+
+  const mono = (v: string) => `<b class="font-mono">${String(v).replace(/[<>&]/g, "")}</b>`;
+  const updateEntry = (id: string, value: any): boolean => {
+    if (!onUpdatePool(id, value)) {
+      // The store checks against the pool as it is NOW — the row's own check
+      // may be stale if an import landed while it was open.
+      const { errors } = validatePoolEntry(value, pool, id);
+      toast(`Not saved — ${Object.values(errors)[0] || "the pool changed underneath; check the row"}`, "err");
+      return false;
+    }
+    pulseRows([id], "dk-row-edit");
+    // A save that no longer matches the filter bar makes the row disappear —
+    // say so, or it reads as lost. Informational, not a caution.
+    const hidden =
+      (fQ && !(value.callsign || "").includes(fQ.toUpperCase())) ||
+      (fDep && value.origin !== fDep.toUpperCase()) ||
+      (fArr && value.dest !== fArr.toUpperCase());
+    if (hidden) toast(`${mono(value.callsign || "entry")} saved — hidden by the current filter`, "ok");
+    return true;
+  };
 
   // ---------- commits ----------
   const sbToPool = () => {
@@ -753,6 +1078,56 @@ export function FplnPoolTray(props: any) {
     setPoolSel(new Set());
     onAddToBoard(items);
   };
+  // Copies are whole entries under the next free A–Z callsign (see
+  // duplicatePoolEntries). Here: the ceiling, the toast, and two things that
+  // would otherwise make a correct copy look broken — copies of a selected
+  // row join the selection (so COPY → ADD n TO BOARD is two clicks), and a
+  // callsign filter that would hide the fresh copies is cleared and said so.
+  const duplicate = (ids: string[], n: number) => {
+    if (copyBatchTooLarge(ids.length, n))
+      return toast(
+        `That is ${ids.length * n} new entries in one go — the limit is ${MAX_COPY_BATCH}. Select fewer, or lower the count.`,
+        "warn",
+      );
+    const r = onDuplicatePool(ids, n);
+    if (!r) return;
+    const minted = r.made.reduce((a: number, m: any) => a + m.to.length, 0);
+    const notes: string[] = [];
+    for (const m of r.made)
+      if (m.to.length < m.asked) notes.push(`${mono(m.from)}: only ${m.to.length} letter${m.to.length === 1 ? "" : "s"} left`);
+    for (const c of r.skipped)
+      notes.push(
+        c === "(no callsign)" || c.length < 2
+          ? `${mono(c)}: nothing to copy from`
+          : `${mono(c)}: no free letter`,
+      );
+    if (!minted) return toast(`No copy made — ${notes.join(" · ")}`, "warn");
+    // Shortfalls are cautions; the filter note below is only information.
+    const cautions = notes.length;
+    setPoolSel((prev: Set<string>) => {
+      const next = new Set(prev);
+      for (const m of r.made) if (prev.has(m.fromId)) m.ids.forEach((id: string) => next.add(id));
+      return next;
+    });
+    pulseRows(
+      r.made.flatMap((m: any) => m.ids),
+      "dk-row-in",
+    );
+    const q = fQ.trim().toUpperCase();
+    if (q && r.made.some((m: any) => m.to.some((cs: string) => !cs.includes(q)))) {
+      setFQ("");
+      notes.push("callsign filter cleared so the copies show");
+    }
+    const body =
+      r.made.length === 1
+        ? `${mono(r.made[0].from)} → ${r.made[0].to.map(mono).join(", ")}`
+        : `${minted} copies of ${r.made.length} entries`;
+    toast([body, ...notes].join(" · "), cautions ? "warn" : "ok");
+  };
+  // Like ADD TO BOARD, the footer acts on the selection you can SEE — rows a
+  // filter hides are never copied behind your back.
+  const visibleSel = filtered.filter((p: any) => poolSel.has(p.id)).map((p: any) => p.id);
+  const copySelected = () => visibleSel.length && duplicate(visibleSel, copyN);
   const exportPool = () => {
     downloadJsonBundle("pool.json", {
       kind: "sweatbox-pool",
@@ -837,15 +1212,45 @@ export function FplnPoolTray(props: any) {
           EXPORT POOL
         </DeckKey>
         {poolSel.size > 0 && (
-          <HoldKey
-            onHold={() => {
-              onDeleteFromPool([...poolSel]);
-              setPoolSel(new Set());
-            }}
-            title="Hold to remove the selected entries"
-          >
-            DELETE {poolSel.size}
-          </HoldKey>
+          <>
+            <span className="w-px self-stretch bg-bd1 mx-0.5" />
+            <DeckKey
+              size="sm"
+              onClick={copySelected}
+              disabled={!visibleSel.length}
+              title={`${copyN} cop${copyN === 1 ? "y" : "ies"} of each selected entry, callsigns A–Z — adds ${visibleSel.length * copyN} entr${visibleSel.length * copyN === 1 ? "y" : "ies"}`}
+            >
+              <Icon name="copy" size={12} />
+              COPY {visibleSel.length}
+            </DeckKey>
+            <span className="text-[9.5px] font-bold tracking-[0.1em] text-tx8 select-none">×</span>
+            <input
+              type="number"
+              min={1}
+              max={MAX_COPIES}
+              value={copyNRaw}
+              onChange={(e) => setCopyNRaw(e.target.value)}
+              onBlur={() => setCopyNRaw(String(copyN))}
+              onKeyDown={(e: any) => e.key === "Enter" && copySelected()}
+              aria-label="Copies per selected entry"
+              title={`Copies per selected entry (1–${MAX_COPIES})`}
+              className={`${INPUT} w-[58px] text-center`}
+            />
+            <HoldKey
+              onHold={() => {
+                // Like COPY and ADD TO BOARD: only the selected rows you can see.
+                onDeleteFromPool(visibleSel);
+                setPoolSel((prev: Set<string>) => {
+                  const next = new Set(prev);
+                  visibleSel.forEach((id) => next.delete(id));
+                  return next;
+                });
+              }}
+              title="Hold to remove the selected entries shown"
+            >
+              DELETE {visibleSel.length}
+            </HoldKey>
+          </>
         )}
         {pool.length > 0 && (
           <HoldKey
@@ -861,13 +1266,13 @@ export function FplnPoolTray(props: any) {
         <span className="flex-1" />
         <DeckKey
           size="lever"
-          variant={poolSel.size ? "primary" : "default"}
-          disabled={!poolSel.size}
+          variant={visibleSel.length ? "primary" : "default"}
+          disabled={!visibleSel.length}
           onClick={poolToBoard}
-          title="Put the selected flight plans on the traffic board"
+          title="Put the selected flight plans shown on the traffic board"
         >
           <Icon name="plane" size={14} />
-          ADD {poolSel.size || ""} TO BOARD
+          ADD {visibleSel.length || ""} TO BOARD
         </DeckKey>
       </>
     );
@@ -940,10 +1345,16 @@ export function FplnPoolTray(props: any) {
             toast={toast}
           />
         )}
-        {section === "pool" && (
+        {/* The pool body stays mounted while another section is in front so a
+            half-edited row survives a look at VATSIM or SHARE. */}
+        <div className={section === "pool" ? "h-full min-h-0" : "hidden"}>
           <PoolBody
             pool={pool}
+            toast={toast}
             onDelete={onDeleteFromPool}
+            onUpdate={updateEntry}
+            onDuplicate={duplicate}
+            pulses={pulses}
             airac={poolAirac}
             onSetAirac={onSetPoolAirac}
             sel={poolSel}
@@ -958,7 +1369,7 @@ export function FplnPoolTray(props: any) {
             fSrc={fSrc}
             setFSrc={setFSrc}
           />
-        )}
+        </div>
       </div>
     </Tray>
   );
