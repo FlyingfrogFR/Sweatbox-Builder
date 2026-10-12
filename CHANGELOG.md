@@ -8,6 +8,29 @@ The app checks this repository for new versions on launch and shows you the
 notes for the release it is offering, so what you read here is what you read
 in the update prompt.
 
+## 7.10.0 — 2026-10-12
+
+- **Strip the DCTs.** Real filed routes are cluttered with `DCT` tokens you
+  may not want in a sweatbox file. A STRIP DCT key, with a count of what it
+  will change, now appears wherever there is something to strip:
+  - **Aircraft editor** — beside FP ROUTE and beside SIM ROUTE (the count is
+    the tokens in that field). Press, check the result, SAVE.
+  - **Traffic board** — with the CLEAR keys, counting the airborne aircraft
+    still carrying DCT; one press cleans every one of them. A snapshot is
+    taken first, so REWIND brings the DCTs back. Ground traffic keeps its
+    routes: its `DCT <dest>` placeholders are the ground generator's own.
+  - **FPLN POOL** — in the row editor beside ROUTE, and in the footer for
+    the selected rows you can see. The footer key is hold-to-confirm,
+    because the pool has no REWIND.
+  - **Rule editor** — in the ROUTE TEMPLATES header, covering the FP
+    template, the routes picked from the pool and the sim template, so
+    RUN RULES stops bringing the DCTs back.
+- Only the `DCT` tokens go; fixes, airways, speed and level suffixes stay
+  exactly as filed, and a route with no DCT is left untouched. The aircraft
+  then behaves exactly as if the route had been filed without them. Nothing
+  is removed unless you press the key — existing scenarios export exactly as
+  before.
+
 ## 7.9.0 — 2026-10-06
 
 - **Edit a flight plan without leaving the pool.** Every row in FPLN POOL →

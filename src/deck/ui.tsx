@@ -131,6 +131,24 @@ export function HoldKey({
 export const ROW_ACT =
   "w-6 h-6 rounded-md grid place-items-center text-tx6 hover:bg-bd2 hover:text-tx1 active:translate-y-px disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-tx6 disabled:cursor-not-allowed";
 
+// "STRIP DCT" with a badge saying how many things the press changes (tokens
+// in a field, aircraft on the board, entries in the pool). Renders nothing
+// when there is nothing to strip, so the key is only ever an available action.
+export function StripDctKey({ count, onStrip, title, id }: any) {
+  if (!count) return null;
+  return (
+    <DeckKey
+      size="sm"
+      id={id}
+      badge={count}
+      onClick={onStrip}
+      title={title || "Remove every DCT token"}
+    >
+      STRIP DCT
+    </DeckKey>
+  );
+}
+
 export const RATINGS = ["S1", "S2", "S3", "C1"] as const;
 
 export function RatingChip({ rating, className = "" }: any) {

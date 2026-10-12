@@ -60,3 +60,28 @@ export function expandCS(pat: string, seq: number) {
   if (!m) return pat + seq;
   return m[1] + String(seq).padStart(m[2].length, "0") + m[3];
 }
+
+// ---------------------------------------------------------------- 7.10.0 ---
+// "DCT" is the direct token real filed routes are full of; EuroScope needs
+// none of them. Removing them is an explicit action in the aircraft editor, on
+// the board and in the pool — never automatic — so every existing input still
+// generates byte for byte what it did.
+const isDct = (t: string) => bareFix(t) === "DCT";
+
+/** How many DCT tokens a route carries (any case, with or without a suffix). */
+export function countDct(route: any): number {
+  return String(route || "")
+    .split(/\s+/)
+    .filter(isDct).length;
+}
+
+/**
+ * The route without its DCT tokens. A route with none comes back untouched —
+ * whitespace included — so the action is a no-op rather than a reformat.
+ */
+export function stripDct(route: any): string {
+  const s = String(route || "");
+  const toks = s.trim().split(/\s+/).filter(Boolean);
+  if (!toks.some(isDct)) return s;
+  return toks.filter((t) => !isDct(t)).join(" ");
+}

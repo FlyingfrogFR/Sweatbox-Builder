@@ -6,8 +6,9 @@
 import { forwardRef, useMemo, useState } from "react";
 import { Icon } from "../ui/Icon";
 import { uid } from "../core/uid";
+import { stripDct, countDct } from "../core/route";
 import { sortByStart } from "../state/aircraft";
-import { Latch, HoldKey, DeckKey, ROW_ACT } from "./ui";
+import { Latch, HoldKey, DeckKey, ROW_ACT, StripDctKey } from "./ui";
 import { SessionTimeline } from "./SessionTimeline";
 
 const COLS =
@@ -54,6 +55,12 @@ export const TrafficBoard = forwardRef<HTMLDivElement, any>(function TrafficBoar
   const depCount = aircraft.length - arrCount;
   const genCount = aircraft.filter((a) => a.ruleId).length;
   const gndCount = aircraft.filter((a) => a.groundMeta).length;
+  // Airborne aircraft whose FP or sim route still carries a DCT token. Ground
+  // traffic is left out: its "DCT <dest>" placeholders are the ground
+  // generator's own minimal routes, not filed clutter (same domain split as
+  // CLEAR GEN / CLEAR GND).
+  const hasDct = (a: any) => !a.groundMeta && countDct(a.fpRoute) + countDct(a.simRoute) > 0;
+  const dctCount = aircraft.filter(hasDct).length;
 
   const rows = useMemo(
     () =>
@@ -80,6 +87,21 @@ export const TrafficBoard = forwardRef<HTMLDivElement, any>(function TrafficBoar
     onSnapshot("before CLEAR GND");
     onChange({ ...scenario, aircraft: aircraft.filter((a) => !a.groundMeta) });
     toast("Ground traffic cleared — REWIND is the backstop", "warn");
+  };
+
+  // Every DCT token out of every route on the board. A data edit, not a
+  // delete, so a plain key — the snapshot makes REWIND the way back.
+  const stripDctAll = () => {
+    onSnapshot("before STRIP DCT");
+    onChange({
+      ...scenario,
+      aircraft: aircraft.map((a) =>
+        hasDct(a) ? { ...a, fpRoute: stripDct(a.fpRoute), simRoute: stripDct(a.simRoute) } : a,
+      ),
+    });
+    toast(`DCT removed from ${dctCount} aircraft — REWIND is the backstop`, "ok");
+    // The key unmounts once nothing is left; keep focus on the header.
+    requestAnimationFrame(() => document.getElementById("dk-rewind")?.focus());
   };
 
   const dup = (e: any, a: any) => {
@@ -132,7 +154,12 @@ export const TrafficBoard = forwardRef<HTMLDivElement, any>(function TrafficBoar
             CLEAR GND <span className="dk-badge">{gndCount}</span>
           </HoldKey>
         )}
-        <DeckKey size="sm" onClick={onRewind} title="Snapshots — rewind the board">
+        <StripDctKey
+          count={dctCount}
+          onStrip={stripDctAll}
+          title="Remove every DCT token from the FP and sim routes of all airborne aircraft on the board — ground traffic keeps its routes"
+        />
+        <DeckKey id="dk-rewind" size="sm" onClick={onRewind} title="Snapshots — rewind the board">
           REWIND
         </DeckKey>
       </div>

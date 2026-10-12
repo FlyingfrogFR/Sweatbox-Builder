@@ -6,7 +6,7 @@
 // so button sizes and weights read the same everywhere.
 import { useState, useEffect, useMemo, useCallback, memo, useRef } from "react";
 import { Tray } from "../Tray";
-import { DeckKey, HoldKey, Latch, ROW_ACT } from "../ui";
+import { DeckKey, HoldKey, Latch, ROW_ACT, StripDctKey } from "../ui";
 import { Icon } from "../../ui/Icon";
 import { storage, KEYS } from "../../state/storage";
 import {
@@ -20,6 +20,7 @@ import { ICAO_REGIONS, regionLabel, regionValue, endpointLabel } from "../../cor
 import { downloadJsonBundle, readJsonFile } from "../../io/bundles";
 import { wrongKindMessage } from "../../state/bundleKind";
 import { PoolShareSection } from "./PoolShareSection";
+import { countDct, stripDct } from "../../core/route";
 import {
   MAX_COPIES,
   copyBatchTooLarge,
@@ -542,16 +543,32 @@ const draftOf = (p: any) => ({
 
 function PoolEditRow({ p, pool, selected, onSave, onCancel, onDirty }: any) {
   const [d, setD] = useState(() => draftOf(p));
+  // The entry can change under an open row (footer STRIP DCT, an import).
+  // Fields the user has not touched follow it, so SAVE never writes stale
+  // values back over a change made elsewhere; edited fields keep the draft.
+  const baseRef = useRef(draftOf(p));
+  useEffect(() => {
+    const next = draftOf(p);
+    const base = baseRef.current;
+    setD((prev) => {
+      const out: any = { ...prev };
+      for (const k of Object.keys(next) as (keyof typeof next)[])
+        if (prev[k] === base[k]) out[k] = next[k];
+      return out;
+    });
+    baseRef.current = next;
+  }, [p]);
   const { value, errors } = useMemo(() => validatePoolEntry(d, pool, p.id), [d, pool, p.id]);
   const bad = Object.keys(errors).length > 0;
-  // Dirty = differs from the entry as it was opened; the body uses this to
-  // refuse a second pencil that would silently throw the draft away.
+  // Dirty = differs from the entry as it stands; the body uses this to refuse
+  // a second pencil that would silently throw the draft away.
   const dirty = useMemo(() => JSON.stringify(d) !== JSON.stringify(draftOf(p)), [d, p]);
   useEffect(() => {
     onDirty?.(dirty);
     return () => onDirty?.(false);
   }, [dirty, onDirty]);
   const csRef = useRef<HTMLInputElement>(null);
+  const routeRef = useRef<HTMLTextAreaElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     csRef.current?.focus();
@@ -637,11 +654,22 @@ function PoolEditRow({ p, pool, selected, onSave, onCancel, onDirty }: any) {
           </div>
           <div className="flex items-end gap-2">
             <div className="flex-1 min-w-0">
-              <label className={LABEL}>ROUTE</label>
+              <div className="flex items-center justify-between gap-2 min-h-[32px] mb-1">
+                <label className={`${LABEL} mb-0`}>ROUTE</label>
+                <StripDctKey
+                  count={countDct(d.route)}
+                  onStrip={() => {
+                    setD((prev) => ({ ...prev, route: stripDct(prev.route) }));
+                    requestAnimationFrame(() => routeRef.current?.focus());
+                  }}
+                  title="Remove every DCT token from this route"
+                />
+              </div>
               {/* Two wrapping lines: a 40-fix route edited to splice in a STAR
                   is unreadable scrolling sideways. Enter still saves — routes
                   never carry a newline, and whitespace collapses on save. */}
               <textarea
+                ref={routeRef}
                 value={d.route}
                 onChange={set("route")}
                 rows={2}
@@ -656,7 +684,9 @@ function PoolEditRow({ p, pool, selected, onSave, onCancel, onDirty }: any) {
               />
               {errLine("route", errors.route)}
             </div>
-            <div className={`flex items-center gap-1.5 flex-none ${errors.route ? "mb-[18px]" : ""}`}>
+            <div
+              className={`flex items-center gap-1.5 flex-none ${errors.route ? "mb-[18px]" : ""}`}
+            >
               <DeckKey size="sm" onClick={onCancel} title="Discard the changes (Escape)">
                 <Icon name="x" size={12} />
                 CANCEL
@@ -738,7 +768,8 @@ function PoolBody({
     requestAnimationFrame(() => {
       const t = tableRef.current;
       (
-        (id && t?.querySelector<HTMLElement>(`tr[data-rowid="${id}"] button[aria-label^="Edit"]`)) ||
+        (id &&
+          t?.querySelector<HTMLElement>(`tr[data-rowid="${id}"] button[aria-label^="Edit"]`)) ||
         t
       )?.focus();
     });
@@ -875,7 +906,11 @@ function PoolBody({
         </span>
       </div>
 
-      <div ref={tableRef} tabIndex={-1} className="flex-1 min-h-0 overflow-auto border-t border-bd1 outline-none">
+      <div
+        ref={tableRef}
+        tabIndex={-1}
+        className="flex-1 min-h-0 overflow-auto border-t border-bd1 outline-none"
+      >
         <table className="w-full font-mono text-[11.5px]">
           <thead className="sticky top-0 bg-thead text-tx7">
             <tr className="text-[9.5px] tracking-[0.1em]">
@@ -958,6 +993,7 @@ export function FplnPoolTray(props: any) {
     onDeleteFromPool,
     onUpdatePool,
     onDuplicatePool,
+    onStripDctPool,
     poolAirac,
     onSetPoolAirac,
     onImportPool,
@@ -1020,7 +1056,10 @@ export function FplnPoolTray(props: any) {
       // The store checks against the pool as it is NOW — the row's own check
       // may be stale if an import landed while it was open.
       const { errors } = validatePoolEntry(value, pool, id);
-      toast(`Not saved — ${Object.values(errors)[0] || "the pool changed underneath; check the row"}`, "err");
+      toast(
+        `Not saved — ${Object.values(errors)[0] || "the pool changed underneath; check the row"}`,
+        "err",
+      );
       return false;
     }
     pulseRows([id], "dk-row-edit");
@@ -1030,7 +1069,8 @@ export function FplnPoolTray(props: any) {
       (fQ && !(value.callsign || "").includes(fQ.toUpperCase())) ||
       (fDep && value.origin !== fDep.toUpperCase()) ||
       (fArr && value.dest !== fArr.toUpperCase());
-    if (hidden) toast(`${mono(value.callsign || "entry")} saved — hidden by the current filter`, "ok");
+    if (hidden)
+      toast(`${mono(value.callsign || "entry")} saved — hidden by the current filter`, "ok");
     return true;
   };
 
@@ -1094,7 +1134,10 @@ export function FplnPoolTray(props: any) {
     const minted = r.made.reduce((a: number, m: any) => a + m.to.length, 0);
     const notes: string[] = [];
     for (const m of r.made)
-      if (m.to.length < m.asked) notes.push(`${mono(m.from)}: only ${m.to.length} letter${m.to.length === 1 ? "" : "s"} left`);
+      if (m.to.length < m.asked)
+        notes.push(
+          `${mono(m.from)}: only ${m.to.length} letter${m.to.length === 1 ? "" : "s"} left`,
+        );
     for (const c of r.skipped)
       notes.push(
         c === "(no callsign)" || c.length < 2
@@ -1128,6 +1171,17 @@ export function FplnPoolTray(props: any) {
   // filter hides are never copied behind your back.
   const visibleSel = filtered.filter((p: any) => poolSel.has(p.id)).map((p: any) => p.id);
   const copySelected = () => visibleSel.length && duplicate(visibleSel, copyN);
+  // Selected, visible entries whose route still carries a DCT token.
+  const dctSel = filtered.filter((p: any) => poolSel.has(p.id) && countDct(p.route) > 0).length;
+  // A hold, not a click: the pool has no REWIND, so this edit cannot be undone.
+  const stripDctSelected = () => {
+    const n = onStripDctPool(visibleSel);
+    toast(
+      n ? `DCT removed from ${n} pool entr${n === 1 ? "y" : "ies"}` : "No DCT to remove",
+      n ? "ok" : "warn",
+    );
+    requestAnimationFrame(() => document.getElementById("dk-pool-add")?.focus());
+  };
   const exportPool = () => {
     downloadJsonBundle("pool.json", {
       kind: "sweatbox-pool",
@@ -1214,6 +1268,14 @@ export function FplnPoolTray(props: any) {
         {poolSel.size > 0 && (
           <>
             <span className="w-px self-stretch bg-bd1 mx-0.5" />
+            {dctSel > 0 && (
+              <HoldKey
+                onHold={stripDctSelected}
+                title="Hold to remove every DCT token from the routes of the selected entries shown — the pool has no REWIND"
+              >
+                STRIP DCT <span className="dk-badge">{dctSel}</span>
+              </HoldKey>
+            )}
             <DeckKey
               size="sm"
               onClick={copySelected}
@@ -1265,6 +1327,7 @@ export function FplnPoolTray(props: any) {
         )}
         <span className="flex-1" />
         <DeckKey
+          id="dk-pool-add"
           size="lever"
           variant={visibleSel.length ? "primary" : "default"}
           disabled={!visibleSel.length}

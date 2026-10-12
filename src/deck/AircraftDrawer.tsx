@@ -6,9 +6,9 @@
 // "new" starts from emptyAc(false); the ARR/DEP latch pair flips isDeparture.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { emptyAc } from "../core/model";
-import { trimRoute } from "../core/route";
+import { trimRoute, stripDct, countDct } from "../core/route";
 import { preEntryOffset, destinationPoint } from "../core/geo";
-import { DeckKey, Latch, HoldKey } from "./ui";
+import { DeckKey, Latch, HoldKey, StripDctKey } from "./ui";
 
 const LB = "block text-[9.5px] tracking-wide text-tx7 uppercase font-bold mb-1 select-none";
 const IP =
@@ -28,6 +28,13 @@ export function AircraftDrawer({ aircraft, waypoints, onSave, onCancel, onDelete
   const [wptSearch, setWptSearch] = useState("");
   const [open, setOpen] = useState(false);
   const csRef = useRef<HTMLInputElement>(null);
+  const fpRef = useRef<HTMLTextAreaElement>(null);
+  const simRef = useRef<HTMLTextAreaElement>(null);
+  // Stripping removes the key that had focus; land on the field it cleaned.
+  const strip = (f: "fpRoute" | "simRoute", ref: any) => {
+    update(f, stripDct(a[f]));
+    requestAnimationFrame(() => ref.current?.focus());
+  };
 
   // Slide in after mount, then land focus on the callsign field.
   useEffect(() => {
@@ -218,8 +225,17 @@ export function AircraftDrawer({ aircraft, waypoints, onSave, onCancel, onDelete
           </div>
         </div>
         <div>
-          <label className={LB}>FP Route</label>
+          {/* Fixed-height header so the key coming and going never shifts the field. */}
+          <div className="flex items-center justify-between gap-2 min-h-[32px] mb-1">
+            <label className={`${LB} mb-0`}>FP Route</label>
+            <StripDctKey
+              count={countDct(a.fpRoute)}
+              onStrip={() => strip("fpRoute", fpRef)}
+              title="Remove every DCT token from the FP route"
+            />
+          </div>
           <textarea
+            ref={fpRef}
             className={`${IP} min-h-[56px]`}
             value={a.fpRoute}
             onChange={(e) => update("fpRoute", e.target.value)}
@@ -315,21 +331,32 @@ export function AircraftDrawer({ aircraft, waypoints, onSave, onCancel, onDelete
         </div>
 
         {/* --- sim route --- */}
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center justify-between gap-2 min-h-[32px]">
           <SectionLabel>Sim Route</SectionLabel>
-          {a.spawnWaypoint && (
-            <DeckKey
-              size="sm"
-              title={`Drop everything before ${a.spawnWaypoint}`}
-              onClick={() =>
-                setA((prev: any) => ({ ...prev, simRoute: trimRoute(a.simRoute, a.spawnWaypoint) }))
-              }
-            >
-              TRIM FROM {a.spawnWaypoint}
-            </DeckKey>
-          )}
+          <span className="flex items-center gap-1.5">
+            <StripDctKey
+              count={countDct(a.simRoute)}
+              onStrip={() => strip("simRoute", simRef)}
+              title="Remove every DCT token from the sim route"
+            />
+            {a.spawnWaypoint && (
+              <DeckKey
+                size="sm"
+                title={`Drop everything before ${a.spawnWaypoint}`}
+                onClick={() =>
+                  setA((prev: any) => ({
+                    ...prev,
+                    simRoute: trimRoute(a.simRoute, a.spawnWaypoint),
+                  }))
+                }
+              >
+                TRIM FROM {a.spawnWaypoint}
+              </DeckKey>
+            )}
+          </span>
         </div>
         <textarea
+          ref={simRef}
           className={`${IP} min-h-[56px]`}
           value={a.simRoute}
           onChange={(e) => update("simRoute", e.target.value)}

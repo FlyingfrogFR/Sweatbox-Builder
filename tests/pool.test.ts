@@ -79,7 +79,12 @@ describe("duplicatePoolEntries — the WHOLE entry, right after its original", (
     expect(pool).toHaveLength(3);
     expect(pool[0]).toBe(orig);
     expect(made).toHaveLength(1);
-    expect(made[0]).toMatchObject({ fromId: "p1", from: "AFR1234", to: ["AFR123A", "AFR123B"], asked: 2 });
+    expect(made[0]).toMatchObject({
+      fromId: "p1",
+      from: "AFR1234",
+      to: ["AFR123A", "AFR123B"],
+      asked: 2,
+    });
     expect(made[0].ids).toEqual([pool[1].id, pool[2].id]); // so the UI can select the copies
     expect(skipped).toEqual([]);
     for (const [i, c] of [pool[1], pool[2]].entries()) {
@@ -163,7 +168,15 @@ describe("validatePoolEntry — what SAVE would store, and what it refuses", () 
 
   it("uppercases, drops whitespace in codes and collapses it in the route", () => {
     const { value, errors } = validatePoolEntry(
-      { callsign: " afr 1234 ", type: "a 320", origin: "lfpg", dest: "lfbo", route: "  okabo   ut163\n lmg ", cruiseFL: "350", squawk: "1000" },
+      {
+        callsign: " afr 1234 ",
+        type: "a 320",
+        origin: "lfpg",
+        dest: "lfbo",
+        route: "  okabo   ut163\n lmg ",
+        cruiseFL: "350",
+        squawk: "1000",
+      },
       pool,
       "p1",
     );
@@ -179,18 +192,26 @@ describe("validatePoolEntry — what SAVE would store, and what it refuses", () 
     });
   });
   it("refuses, rather than silently dropping, a character a code cannot contain", () => {
-    expect(validatePoolEntry({ callsign: "AFR-1234" }, pool).errors.callsign).toBe("Letters and digits only");
+    expect(validatePoolEntry({ callsign: "AFR-1234" }, pool).errors.callsign).toBe(
+      "Letters and digits only",
+    );
     expect(validatePoolEntry({ type: "B738/M" }, pool).errors.type).toBe("Letters and digits only");
-    expect(validatePoolEntry({ origin: "LF:G" }, pool).errors.origin).toBe("Letters and digits only");
+    expect(validatePoolEntry({ origin: "LF:G" }, pool).errors.origin).toBe(
+      "Letters and digits only",
+    );
     expect(validatePoolEntry({ dest: "LFBÖ" }, pool).errors.dest).toBe("Letters and digits only");
   });
   it("a route may carry '/' (speed/level suffixes) but never ':' — the .scn field separator", () => {
-    expect(validatePoolEntry({ route: "ETAMO/N0453F370 UT163 LMG" }, pool).errors.route).toBeUndefined();
+    expect(
+      validatePoolEntry({ route: "ETAMO/N0453F370 UT163 LMG" }, pool).errors.route,
+    ).toBeUndefined();
     expect(validatePoolEntry({ route: "OKABO:UT163" }, pool).errors.route).toBeDefined();
     expect(validatePoolEntry({ route: "OKABO \u0007 UT163" }, pool).errors.route).toBeDefined();
   });
   it("refuses a callsign another entry already has, but not the entry's own", () => {
-    expect(validatePoolEntry({ callsign: "klm44" }, pool, "p1").errors.callsign).toMatch(/KLM44 is already in the pool/);
+    expect(validatePoolEntry({ callsign: "klm44" }, pool, "p1").errors.callsign).toMatch(
+      /KLM44 is already in the pool/,
+    );
     expect(validatePoolEntry({ callsign: "AFR1234" }, pool, "p1").errors.callsign).toBeUndefined();
     expect(validatePoolEntry({ callsign: "AFR1234" }, pool).errors.callsign).toBeDefined();
   });
@@ -219,11 +240,19 @@ describe("validatePoolEntry — what SAVE would store, and what it refuses", () 
   });
   it("over-long codes are refused, not cut — so a stray character past the cap cannot hide", () => {
     expect(validatePoolEntry({ type: "ABCDEFGHIJ" }, pool).errors.type).toBe("Too long (max 8)");
-    expect(validatePoolEntry({ callsign: "ABCDEFGHIJKLMNOP" }, pool).errors.callsign).toBe("Too long (max 12)");
-    expect(validatePoolEntry({ callsign: "ABCDEFGHIJKL-" }, pool).errors.callsign).toBe("Letters and digits only");
-    expect(validatePoolEntry({ type: "ABCDEFGH/M" }, pool).errors.type).toBe("Letters and digits only");
+    expect(validatePoolEntry({ callsign: "ABCDEFGHIJKLMNOP" }, pool).errors.callsign).toBe(
+      "Too long (max 12)",
+    );
+    expect(validatePoolEntry({ callsign: "ABCDEFGHIJKL-" }, pool).errors.callsign).toBe(
+      "Letters and digits only",
+    );
+    expect(validatePoolEntry({ type: "ABCDEFGH/M" }, pool).errors.type).toBe(
+      "Letters and digits only",
+    );
     expect(validatePoolEntry({ callsign: "ABCDEFGHIJKL" }, pool).errors.callsign).toBeUndefined();
-    expect(validatePoolEntry({ route: "X".repeat(2001) }, pool).errors.route).toBe("Too long (max 2000)");
+    expect(validatePoolEntry({ route: "X".repeat(2001) }, pool).errors.route).toBe(
+      "Too long (max 2000)",
+    );
   });
 });
 
@@ -272,15 +301,49 @@ describe("updatePoolEntry — fields change, identity does not", () => {
 describe("addToPool merges by callsign — copies must never trip it", () => {
   it("a copied family survives a later add intact", () => {
     const { pool } = duplicatePoolEntries([entry("p1", "AFR1234")], ["p1"], 3);
-    const after = addToPool(pool, [{ callsign: "DLH9", type: "A319", origin: "EDDF", dest: "LFPG", route: "", cruiseFL: 330, squawk: "1000" }], "manual");
-    expect(after.map((p) => p.callsign)).toEqual(["AFR1234", "AFR123A", "AFR123B", "AFR123C", "DLH9"]);
+    const after = addToPool(
+      pool,
+      [
+        {
+          callsign: "DLH9",
+          type: "A319",
+          origin: "EDDF",
+          dest: "LFPG",
+          route: "",
+          cruiseFL: 330,
+          squawk: "1000",
+        },
+      ],
+      "manual",
+    );
+    expect(after.map((p) => p.callsign)).toEqual([
+      "AFR1234",
+      "AFR123A",
+      "AFR123B",
+      "AFR123C",
+      "DLH9",
+    ]);
   });
   it("a later import with a copy's callsign merges INTO the copy — same callsign, same flight", () => {
     // Pins the existing addToPool semantics so nobody "fixes" them for copies:
     // the copy keeps its id and addedAt, the imported fields win.
     const { pool } = duplicatePoolEntries([entry("p1", "AFR1234")], ["p1"], 1);
     const copyId = pool[1].id;
-    const after = addToPool(pool, [{ callsign: "AFR123A", type: "A21N", origin: "LFPG", dest: "LFBO", route: "DIRECT", cruiseFL: 370, squawk: "4321" }], "vatsim");
+    const after = addToPool(
+      pool,
+      [
+        {
+          callsign: "AFR123A",
+          type: "A21N",
+          origin: "LFPG",
+          dest: "LFBO",
+          route: "DIRECT",
+          cruiseFL: 370,
+          squawk: "4321",
+        },
+      ],
+      "vatsim",
+    );
     expect(after).toHaveLength(2);
     const merged = after.find((p) => p.callsign === "AFR123A");
     expect(merged.id).toBe(copyId);

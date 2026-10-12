@@ -21,9 +21,9 @@
 // apply, since generateFromRule does read them there.
 import { useState, useEffect, useMemo } from "react";
 import { Icon } from "../ui/Icon";
-import { DeckKey, HoldKey, Latch } from "./ui";
+import { DeckKey, HoldKey, Latch, StripDctKey } from "./ui";
 import { genCS, poolIcaosByRegion } from "../core/callsign";
-import { trimRoute } from "../core/route";
+import { trimRoute, stripDct, countDct } from "../core/route";
 import { computeSpawnGs, machToTas, iasToTas } from "../core/speed";
 import { GS_BY_WTC, TYPE_CATS } from "../core/tables";
 
@@ -370,6 +370,20 @@ export function RuleEditorSection({
     setShowRoutePicker(false);
   };
   const multiRoutes = (d.fpRouteTemplates || []).filter(Boolean);
+  // DCT tokens across every route template of this rule — the FP template,
+  // the picked-from-pool list and the sim template. PICK FROM POOL copies
+  // routes verbatim, so a rule keeps its DCTs until they are stripped here.
+  const templateDct =
+    countDct(d.fpRouteTemplate) +
+    countDct(d.simRouteTemplate) +
+    (d.fpRouteTemplates || []).reduce((n: number, r: string) => n + countDct(r), 0);
+  const stripTemplateDct = () =>
+    setD((prev: any) => ({
+      ...prev,
+      fpRouteTemplate: stripDct(prev.fpRouteTemplate),
+      simRouteTemplate: stripDct(prev.simRouteTemplate),
+      fpRouteTemplates: (prev.fpRouteTemplates || []).map((r: string) => stripDct(r)),
+    }));
 
   // ---------- STARs (arrivals) ----------
   const starsForRwy = useMemo(
@@ -1519,6 +1533,11 @@ export function RuleEditorSection({
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className={SUBHEAD}>ROUTE TEMPLATES</span>
                   <span className="flex-1" />
+                  <StripDctKey
+                    count={templateDct}
+                    onStrip={stripTemplateDct}
+                    title="Remove every DCT token from this rule's FP, picked and sim route templates"
+                  />
                   {multiRoutes.length > 0 && (
                     <HoldKey
                       onHold={() => up("fpRouteTemplates", [])}

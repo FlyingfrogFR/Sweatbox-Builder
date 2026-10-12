@@ -3,6 +3,7 @@
 
 import { uid } from "./uid";
 import { emptyAc } from "./model";
+import { stripDct } from "./route";
 
 export function addToPool(pool: any[], items: any[], source: string) {
   const map = new Map(pool.map((p) => [p.callsign || p.id, p]));
@@ -65,7 +66,11 @@ const code = (v: any) => up(v).replace(/\s+/g, "");
 // Over-long codes are refused the same way rather than cut.
 const BAD_CODE = /[^A-Z0-9]/;
 const codeError = (v: string, max: number) =>
-  BAD_CODE.test(v) ? "Letters and digits only" : v.length > max ? `Too long (max ${max})` : undefined;
+  BAD_CODE.test(v)
+    ? "Letters and digits only"
+    : v.length > max
+      ? `Too long (max ${max})`
+      : undefined;
 
 /** Callsigns already in the pool (uppercased), optionally leaving one entry out. */
 export function poolCallsigns(pool: any[], exceptId?: string): Set<string> {
@@ -214,4 +219,25 @@ export function duplicatePoolEntries(
     made.push(fam);
   }
   return { pool: out, made, skipped };
+}
+
+/**
+ * Remove the DCT tokens from the routes of the given entries (see
+ * route.ts stripDct). Untouched entries keep their object identity; `changed`
+ * counts the entries whose route actually lost something.
+ */
+export function stripDctFromPool(
+  pool: any[],
+  ids: Iterable<string>,
+): { pool: any[]; changed: number } {
+  const want = new Set(ids);
+  let changed = 0;
+  const out = pool.map((p) => {
+    if (!want.has(p?.id)) return p;
+    const route = stripDct(p.route);
+    if (route === (p.route ?? "")) return p;
+    changed++;
+    return { ...p, route };
+  });
+  return { pool: changed ? out : pool, changed };
 }

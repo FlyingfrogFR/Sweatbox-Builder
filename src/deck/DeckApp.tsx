@@ -10,7 +10,13 @@ import { ThemeToggle } from "../ui/ThemeToggle";
 import { useTheme } from "../state/theme";
 import { storage, KEYS, usePersist } from "../state/storage";
 import { defaultScenario } from "../core/model";
-import { addToPool, poolToAc, updatePoolEntry, duplicatePoolEntries } from "../core/pool";
+import {
+  addToPool,
+  poolToAc,
+  updatePoolEntry,
+  duplicatePoolEntries,
+  stripDctFromPool,
+} from "../core/pool";
 import { setStars } from "../core/stars";
 import { setRampConfig } from "../core/ramp";
 import { generateSweatbox } from "../core/generateSweatbox";
@@ -775,6 +781,14 @@ export default function DeckApp() {
               poolRef.current = r.pool;
               setPool(r.pool);
               return r;
+            }}
+            onStripDctPool={(ids: string[]) => {
+              const r = stripDctFromPool(poolRef.current, ids);
+              if (r.changed) {
+                poolRef.current = r.pool;
+                setPool(r.pool);
+              }
+              return r.changed;
             }}
             poolAirac={poolAirac}
             onSetPoolAirac={setPoolAirac}
