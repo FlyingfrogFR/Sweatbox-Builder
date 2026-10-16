@@ -8,6 +8,31 @@ The app checks this repository for new versions on launch and shows you the
 notes for the release it is offering, so what you read here is what you read
 in the update prompt.
 
+## 7.11.0 — 2026-10-16
+
+- **Departures carry on after the SID.** A pool departure rule with a shared
+  SIM ROUTE TEMPLATE used to end every aircraft's sim route at the template's
+  last fix, so in EuroScope they stopped following a route one or two
+  waypoints out. A new JOIN FILED ROUTE latch (DEPARTURE ROUTING, next to
+  ROUTE MUST CONTAIN) makes each aircraft fly the template up to its SID exit
+  — the first fix of its plan that ROUTE MUST CONTAIN names, or failing that
+  the last template fix its plan shares — then its own filed route from
+  there. `DCT`, the destination and fixes not in your navdata are left out of
+  the tail, and FP RTE is untouched. A plan with no join point keeps the
+  template only and the rule's note says how many. Rulesets that already
+  carry `joinFiledRoute: true` start working as written; everything else
+  generates exactly as before.
+- **Arrivals spawned on an IAF now sit on the STAR track.** The pre-entry
+  offset reads the rule's STAR template as a last resort for the inbound
+  bearing. A real flight plan ends at the STAR entry and the sim route starts
+  at the spawn fix, so an aircraft placed on an IAF used to be backed off
+  along the reverse of the NEXT leg — off the STAR, as seen at OKIPA. The
+  editor's offset preview shows the same position the file gets, and the
+  rule's never-on-fix check reads the same routes, so a few aircraft it used
+  to skip for lack of an inbound leg are now kept. Scenarios whose aircraft
+  already had a fix before the spawn point are unchanged, and the parity
+  fixtures are byte-identical.
+
 ## 7.10.0 — 2026-10-12
 
 - **Strip the DCTs.** Real filed routes are cluttered with `DCT` tokens you

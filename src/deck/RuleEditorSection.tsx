@@ -732,6 +732,24 @@ export function RuleEditorSection({
                       </Latch>
                     </div>
                   )}
+                  {d.isDeparture && d.poolSource && !autoB && (
+                    <div>
+                      <label className={LABEL}>DEPARTURE ROUTING</label>
+                      <Latch
+                        size="md"
+                        on={d.joinFiledRoute === true && !!d.simRouteTemplate}
+                        onClick={() => up("joinFiledRoute", d.joinFiledRoute !== true)}
+                        disabled={!d.simRouteTemplate}
+                        title={
+                          d.simRouteTemplate
+                            ? "After the SIM ROUTE TEMPLATE (the SID), continue down each aircraft's own filed route from its exit fix — instead of stopping at the template's last fix"
+                            : "Needs a SIM ROUTE TEMPLATE — the shared SID the filed route is joined onto"
+                        }
+                      >
+                        JOIN FILED ROUTE
+                      </Latch>
+                    </div>
+                  )}
                   {!autoB && (
                     <div className="flex-1 min-w-[160px]">
                       <label className={LABEL}>ROUTE MUST CONTAIN (CSV)</label>
@@ -744,6 +762,22 @@ export function RuleEditorSection({
                     </div>
                   )}
                 </div>
+                {d.joinFiledRoute === true && d.isDeparture && d.poolSource && !autoB && (
+                  <p className="text-[10.5px] text-tx7 leading-snug">
+                    {d.simRouteTemplate ? (
+                      <>
+                        Filed-route join: each aircraft flies the SIM ROUTE TEMPLATE up to its SID
+                        exit — the first fix of its plan that ROUTE MUST CONTAIN names, or failing
+                        that the last template fix its plan shares — then its own filed route from
+                        there. DCT, the destination and fixes not in navdata are dropped from the
+                        tail. A plan with no join point keeps the template only and is counted in
+                        the rule's note. FP RTE is untouched.
+                      </>
+                    ) : (
+                      <>JOIN FILED ROUTE is waiting on a SIM ROUTE TEMPLATE (ROUTING, below).</>
+                    )}
+                  </p>
+                )}
                 {d.appendStar && !d.isDeparture && (
                   <p className="text-[10.5px] text-tx7 leading-snug">
                     STAR join: the sim route follows the filed route to the first fix that opens a{" "}

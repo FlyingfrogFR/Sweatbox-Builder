@@ -80,7 +80,7 @@ export function AircraftDrawer({ aircraft, waypoints, onSave, onCancel, onDelete
     // Resolve just the names the offset math can touch (spawn + route tokens,
     // tokenized like preEntryOffset) so slider ticks skip full-list scans.
     const names = new Set<string>([a.spawnWaypoint]);
-    for (const route of [a.simRoute, a.fpRoute])
+    for (const route of [a.simRoute, a.fpRoute, a.starRoute])
       for (const t of String(route || "")
         .trim()
         .split(/\s+/))
@@ -90,8 +90,27 @@ export function AircraftDrawer({ aircraft, waypoints, onSave, onCancel, onDelete
       const w = wptByName.get(n);
       if (w && !subset.includes(w)) subset.push(w);
     }
-    return preEntryOffset(a.spawnWaypoint, a.simRoute, +a.preEntryNm, subset, a.fpRoute);
-  }, [a.preEntryNm, a.spawnWaypoint, a.spawnBrg, a.lat, a.lon, a.simRoute, a.fpRoute, wptByName]);
+    // Same three routes, same order, as generateSweatbox (7.11.0: the STAR
+    // template is the last resort for the inbound bearing).
+    return preEntryOffset(
+      a.spawnWaypoint,
+      a.simRoute,
+      +a.preEntryNm,
+      subset,
+      a.fpRoute,
+      a.starRoute,
+    );
+  }, [
+    a.preEntryNm,
+    a.spawnWaypoint,
+    a.spawnBrg,
+    a.lat,
+    a.lon,
+    a.simRoute,
+    a.fpRoute,
+    a.starRoute,
+    wptByName,
+  ]);
 
   const doSave = () => {
     if (!String(a.callsign || "").trim()) {
@@ -388,7 +407,7 @@ export function AircraftDrawer({ aircraft, waypoints, onSave, onCancel, onDelete
         ) : (
           (+a.preEntryNm || 0) > 0 && (
             <div className="text-[10.5px] text-am-fg">
-              ⚠ Cannot compute — need upstream waypoint in FP/sim route
+              ⚠ Cannot compute — need an upstream fix in the sim route, FP or STAR template
             </div>
           )
         )}

@@ -47,12 +47,18 @@ export function generateSweatbox(s: any, waypoints: any[] = [], opts: any = {}) 
         sLon = off.lon;
         offsetApplied = true;
       } else if (a.spawnWaypoint && waypoints.length > 0) {
+        // The STAR template is the third route tried for the inbound bearing
+        // (7.11.0; rc3 never passed it). A real FPL ends at the STAR entry and
+        // the sim route is trimmed to the spawn fix, so without it an arrival
+        // spawned on an IAF fell back to the reverse of the NEXT leg and sat
+        // off the STAR track. Goldens carry no such aircraft: byte-identical.
         const off = preEntryOffset(
           a.spawnWaypoint,
           a.simRoute,
           +a.preEntryNm,
           waypoints,
           a.fpRoute,
+          a.starRoute,
         );
         if (off) {
           sLat = off.lat;

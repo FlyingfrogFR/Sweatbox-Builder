@@ -76,6 +76,10 @@ export function emptyRule() {
     fpRouteTemplate: "",
     fpRouteTemplates: [],
     simRouteTemplate: "",
+    // Pool departures: after the shared SID template, continue down each
+    // aircraft's OWN filed route (joined at its routeContains exit fix) instead
+    // of ending at the template's last fix. Off = rc3 behaviour.
+    joinFiledRoute: false,
     rate: 8,
     duration: 30,
     timingMode: "regular", // "regular" = evenly spaced · "random" = same count, random times, >=2 min apart

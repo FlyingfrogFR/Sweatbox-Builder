@@ -536,6 +536,22 @@ export function generateFromRule(
     const priorMax = +rule.priorFixMaxNm || 80;
     let excluded = 0;
     let noStar = 0;
+    let noJoin = 0;
+    // joinFiledRoute: the sim route = the shared template (the SID), then the
+    // aircraft's own filed route from its exit fix onward — so a departure
+    // keeps flying after the last SID point instead of stopping there. Tail
+    // tokens must resolve in navdata (airways and unknown names are dropped),
+    // so the lookup set is built once per rule.
+    // Departures only (a STAR template ends at the runway — nothing to join),
+    // mirroring appendStar's arrival-only gate. Names are kept exactly as
+    // navdata stores them: the same `w.name === token` equality the offset
+    // math and the unresolved counter use.
+    const joinFiled =
+      rule.joinFiledRoute === true &&
+      !!rule.isDeparture &&
+      !!rule.simRouteTemplate &&
+      !autoBoundary;
+    const wptNames = joinFiled ? new Set(waypoints.map((w: any) => String(w.name))) : null;
     const out = [];
     for (let i = 0; i < Math.min(count, matches.length); i++) {
       const tmpl = matches[i];
@@ -633,6 +649,43 @@ export function generateFromRule(
         autoBoundary || priorChosen
           ? trimRoute(fpR, spawnName)
           : trimRoute(rule.simRouteTemplate || fpR, spawnName);
+      // joinFiledRoute (opt-in, pool departure rules with a sim template):
+      // head = the template trimmed from the spawn fix (what simR already is),
+      // tail = the filed route from its join point. The join is the first fix
+      // OF THE PLAN that routeContains names (the SID exit), else the last
+      // template fix that also appears in the plan. The head is cut at the join
+      // fix wherever it sits in the template — the SID points after an exit
+      // belong to other exits — so the route never doubles back. No join →
+      // head only, counted. Done here so the never-on-fix check below sees the
+      // route export will see.
+      if (joinFiled && wptNames && !priorChosen) {
+        const rawHead = String(simR).trim().split(/\s+/).filter(Boolean);
+        const headToks = rawHead.map((t: string) => t.split("/")[0].toUpperCase());
+        const filed = String(fpR || "")
+          .trim()
+          .split(/\s+/)
+          .filter(Boolean)
+          .map((t: string) => t.split("/")[0].toUpperCase());
+        let j = filed.findIndex((t: string) => rcList.includes(t));
+        if (j < 0)
+          for (let h = headToks.length - 1; h >= 0 && j < 0; h--) j = filed.indexOf(headToks[h]);
+        if (j < 0) {
+          noJoin++;
+          how.push("no-join");
+        } else {
+          const dest = String(tmpl.dest || "").toUpperCase();
+          const tail = filed
+            .slice(j)
+            .filter((t: string) => t !== "DCT" && t !== dest && wptNames.has(t));
+          let head = rawHead;
+          if (tail.length) {
+            const k = headToks.indexOf(tail[0]);
+            if (k >= 0) head = rawHead.slice(0, k);
+          }
+          simR = [...head, ...tail].join(" ");
+          how.push(`join-filed@${filed[j]}`);
+        }
+      }
       let acLat = spawnWp ? spawnWp.lat : 0;
       let acLon = spawnWp ? spawnWp.lon : 0;
       let acPre = hasNewFields ? effPre : +rule.preEntryNm || 0;
@@ -657,7 +710,16 @@ export function generateFromRule(
         // autoBoundary uses the last-resort radial (spawn effPre NM beyond the
         // gate on the centroid→gate radial, i.e. outside the FIR, heading
         // toward the gate); waypoint mode excludes the aircraft and reports it.
-        const off = preEntryOffset(spawnName, simR, acPre, waypoints, fpR);
+        // Same inputs as the serializer (sim, FP, then the STAR template), so
+        // the aircraft kept here are exactly the ones export can place.
+        const off = preEntryOffset(
+          spawnName,
+          simR,
+          acPre,
+          waypoints,
+          fpR,
+          autoBoundary ? "" : rule.simRouteTemplate || "",
+        );
         if (off) how.push("offset-upstream");
         if (!off && autoBoundary && ref && entryWp) {
           const radial = bearingBetween(ref.lat, ref.lon, entryWp.lat, entryWp.lon);
@@ -768,6 +830,9 @@ export function generateFromRule(
           noStar > 0
             ? `${noStar} aircraft kept their filed route — no ${rule.rwyInUse} STAR into their destination joins it`
             : null,
+          noJoin > 0
+            ? `${noJoin} aircraft: no join point — sim route ends at the template (their filed route names neither a ROUTE MUST CONTAIN fix nor a template fix)`
+            : null,
         ]
           .filter(Boolean)
           .join(" · ") ||
@@ -810,7 +875,10 @@ export function generateFromRule(
     // bearing is derivable the aircraft would sit exactly on the fix, so it is
     // excluded and reported instead. Checked after the callsign draw so the
     // rng stream of the shared path is untouched.
-    if (hasNewFields && !preEntryOffset(rule.spawnWaypoint, simR, effPre, waypoints, fpR)) {
+    if (
+      hasNewFields &&
+      !preEntryOffset(rule.spawnWaypoint, simR, effPre, waypoints, fpR, rule.simRouteTemplate || "")
+    ) {
       excludedTmpl++;
       continue;
     }
