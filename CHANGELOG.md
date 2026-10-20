@@ -8,6 +8,32 @@ The app checks this repository for new versions on launch and shows you the
 notes for the release it is offering, so what you read here is what you read
 in the update prompt.
 
+## 7.11.1 — 2026-10-20
+
+- **Fixed: scenarios that would not open.** Everything the app saves lives in
+  the webview's local storage, which has a hard limit of about 5 MB. When it
+  filled up, the app carried on as if it had saved: a scenario created at
+  that point was listed in the rail but never written, and clicking it later
+  did nothing at all — the "frozen" scenario. REWIND history was the usual
+  culprit: ten full copies of the traffic board per scenario add up fast.
+  - A refused save now opens a **STORAGE FULL** dialog that shows what takes
+    the space (scenarios, REWIND history, navdata, pool) and offers
+    **FREE SPACE** — hold to confirm — which drops every scenario's REWIND
+    history, the one thing that is always safe to lose, and saves again. A
+    webview that refuses to store anything at all gets its own message
+    instead, since freeing space would not help there.
+  - A new scenario, a clone, an import or a rename is only added to the rail
+    once it is actually saved; a refused rename or slot switch leaves the
+    scenario exactly where it was and says so.
+  - Slots that already are ghosts show **NO SAVED DATA** on the rail; click
+    one and it opens empty with a note (there was nothing to lose). A slot
+    whose data is unreadable shows **UNREADABLE** and says so when clicked;
+    ⋯ → DELETE removes it.
+  - Each scenario's REWIND history is now capped by size as well as depth.
+- If the display ever stops on an error, a recovery screen now offers a
+  **rescue copy** — every saved scenario, the pool and the navdata as one
+  file, never your GitHub token — and a reload, instead of a blank window.
+
 ## 7.11.0 — 2026-10-16
 
 - **Departures carry on after the SID.** A pool departure rule with a shared

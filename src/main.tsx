@@ -14,11 +14,14 @@ import "@fontsource/ibm-plex-mono/latin-500.css";
 import "@fontsource/ibm-plex-mono/latin-600.css";
 
 import DeckApp from "./deck/DeckApp";
+import { CrashScreen } from "./deck/CrashScreen";
 import "./index.css";
 import "./deck/deck.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <DeckApp />
+    <CrashScreen>
+      <DeckApp />
+    </CrashScreen>
   </React.StrictMode>,
 );

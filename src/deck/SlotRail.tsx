@@ -144,7 +144,12 @@ export function SlotRail({
     // The active slot's freshest state lives in memory (autosave lags 2s).
     const scenario = name === active ? activeScenario : slots.readSlot(name);
     if (!scenario) {
-      toast("Slot not found", "err");
+      toast(
+        slots.readSlotStatus(name) === "missing"
+          ? `<b>${name}</b> has no saved data — nothing to export`
+          : `<b>${name}</b> cannot be exported — its saved data is unreadable`,
+        "err",
+      );
       return;
     }
     downloadJsonBundle(`${name.replace(/\s+/g, "_")}.scenario.json`, {
@@ -204,7 +209,16 @@ export function SlotRail({
               }}
               role="button"
               tabIndex={0}
-              title={isActive ? undefined : "Switch to this slot"}
+              data-slot={name}
+              title={
+                isActive
+                  ? undefined
+                  : s.status === "corrupt"
+                    ? "Cannot be opened — its saved data is unreadable (⋯ → DELETE)"
+                    : s.status === "missing"
+                      ? "Never saved — click to open it empty"
+                      : "Switch to this slot"
+              }
               onClick={() => {
                 if (renaming !== name) onSwitch(name);
               }}
@@ -287,9 +301,25 @@ export function SlotRail({
 
               {/* meta line */}
               <span className="flex justify-between font-mono text-[10px] text-tx6 mt-[3px]">
-                <span>
-                  {s.ac} AC · {s.rules} RULES
-                </span>
+                {s.status === "missing" ? (
+                  <span
+                    className="text-am-fg font-bold tracking-[0.06em]"
+                    title="Listed, but never saved — storage was full at the time. Click to open it empty, or ⋯ → DELETE."
+                  >
+                    NO SAVED DATA
+                  </span>
+                ) : s.status === "corrupt" ? (
+                  <span
+                    className="text-am-fg font-bold tracking-[0.06em]"
+                    title="Its saved data cannot be read. ⋯ → DELETE removes it."
+                  >
+                    UNREADABLE
+                  </span>
+                ) : (
+                  <span>
+                    {s.ac} AC · {s.rules} RULES
+                  </span>
+                )}
                 <span>{fmtRel(s.updatedAt)}</span>
               </span>
 

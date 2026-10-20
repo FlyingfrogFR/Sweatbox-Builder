@@ -8,7 +8,14 @@
 import { useState, useEffect, useRef, useMemo, useCallback, useDeferredValue } from "react";
 import { ThemeToggle } from "../ui/ThemeToggle";
 import { useTheme } from "../state/theme";
-import { storage, KEYS, usePersist } from "../state/storage";
+import {
+  storage,
+  KEYS,
+  usePersist,
+  storageUsage,
+  isQuotaError,
+  type StorageUsage,
+} from "../state/storage";
 import { defaultScenario } from "../core/model";
 import {
   addToPool,
@@ -26,6 +33,7 @@ import { sortByStart } from "../state/aircraft";
 import * as slots from "../state/slots";
 import { deriveExportSettings, initPseudoPilotFor, nameIsReady } from "../core/exportSettings";
 import { UpdateDialog } from "./UpdateDialog";
+import { StorageDialog, type StorageReason } from "./StorageDialog";
 import { checkForUpdate, installUpdate, skipVersion, type UpdateInfo } from "../net/updater";
 import type { ExportSettings } from "../core/exportSettings";
 
@@ -48,6 +56,36 @@ export type TrayId = "setup" | "pool" | "build" | null;
 export default function DeckApp() {
   const { theme, toggle } = useTheme();
   const { toasts, toast } = useToasts();
+  // STORAGE FULL: the first refused write opens the dialog; it stays closed
+  // after LATER until a later write is refused again.
+  const [storageAlert, setStorageAlert] = useState<{
+    slot: string;
+    usage: StorageUsage;
+    reason: StorageReason;
+    result: string;
+  } | null>(null);
+  const storageAlertRef = useRef(false);
+  // Every key refused since the dialog opened; FREE SPACE retries them all.
+  const refusedKeys = useRef<Set<string>>(new Set());
+  // LATER buys a minute: the 2 s autosave would otherwise reopen the dialog
+  // on the very next keystroke.
+  const storageLaterAt = useRef(0);
+  const slotNameAtFailure = useRef("");
+  useEffect(
+    () =>
+      storage.onFailure((key, err) => {
+        refusedKeys.current.add(key);
+        if (storageAlertRef.current) return;
+        if (Date.now() - storageLaterAt.current < 60_000) return;
+        storageAlertRef.current = true;
+        const usage = storageUsage();
+        // A quota error with a non-empty store is "full"; anything else (a
+        // disabled or denied store) is a different problem with different advice.
+        const reason: StorageReason = isQuotaError(err) && usage.total > 0 ? "full" : "unavailable";
+        setStorageAlert({ slot: slotNameAtFailure.current, usage, reason, result: "" });
+      }),
+    [],
+  );
 
   // ---------- slot-bound scenario ----------
   const boot = useMemo(() => slots.ensureActiveSlot(), []);
@@ -151,6 +189,7 @@ export default function DeckApp() {
   scenarioRef.current = scenario;
   const slotNameRef = useRef(slotName);
   slotNameRef.current = slotName;
+  slotNameAtFailure.current = slotName;
   const loadedRef = useRef(false);
   loadedRef.current = loaded;
   const slotTimer = useRef<any>(null);
@@ -261,9 +300,10 @@ export default function DeckApp() {
   }
 
   // ---------- slot actions ----------
-  const flushActiveSlot = useCallback(() => {
-    slots.writeSlot(slotNameRef.current, scenarioRef.current);
-  }, []);
+  const flushActiveSlot = useCallback(
+    () => slots.writeSlot(slotNameRef.current, scenarioRef.current),
+    [],
+  );
   const boardSweep = () => {
     const el = boardRef.current;
     if (!el) return;
@@ -290,16 +330,43 @@ export default function DeckApp() {
   };
   const switchSlot = (name: string) => {
     if (name === slotName) return;
-    flushActiveSlot();
+    if (!flushActiveSlot()) {
+      // Leaving now would drop every edit since the last save that went in.
+      toast(
+        `Storage is full — <b>${slotName}</b> could not be saved, so it stays open. Free space first (or delete / export other slots from their ⋯ menu).`,
+        "err",
+      );
+      return;
+    }
     const sc = slots.readSlot(name);
-    if (!sc) return;
+    if (!sc) {
+      // Listed, but nothing readable behind it. "missing" is the storage-full
+      // ghost: it was never written, so there is nothing to lose by opening it
+      // empty. "corrupt" is left exactly as stored — DELETE is the way out.
+      if (slots.readSlotStatus(name) === "missing") {
+        toast(
+          `<b>${name}</b> has no saved data — it was created while storage was full and never saved. Opening it empty.`,
+          "warn",
+        );
+        enterSlot(name, { ...defaultScenario(), name });
+      } else {
+        toast(
+          `<b>${name}</b> cannot be opened — its saved data is unreadable. Use ⋯ → DELETE to remove it.`,
+          "err",
+        );
+      }
+      return;
+    }
     enterSlot(name, sc);
   };
   const newSlot = () => {
     flushActiveSlot();
     const name = slots.uniqueName("Untitled");
     const sc = { ...defaultScenario(), name };
-    slots.writeSlot(name, sc);
+    if (!slots.writeSlot(name, sc)) {
+      toast(`Storage is full — <b>${name}</b> could not be created`, "err");
+      return;
+    }
     enterSlot(name, sc);
     setSlotList(slots.listSlots());
     toast(`New slot <b>${name}</b> — nothing was discarded`, "ok");
@@ -318,9 +385,20 @@ export default function DeckApp() {
   const cloneSlot = (name: string) => {
     flushActiveSlot();
     const src = slots.readSlot(name);
-    if (!src) return;
+    if (!src) {
+      toast(
+        slots.readSlotStatus(name) === "missing"
+          ? `<b>${name}</b> has no saved data — nothing to clone`
+          : `<b>${name}</b> cannot be cloned — its saved data is unreadable. Use ⋯ → DELETE.`,
+        "err",
+      );
+      return;
+    }
     const copy = slots.uniqueName(`${name} copy`);
-    slots.writeSlot(copy, { ...src, name: copy });
+    if (!slots.writeSlot(copy, { ...src, name: copy })) {
+      toast(`Storage is full — <b>${name}</b> could not be cloned`, "err");
+      return;
+    }
     enterSlot(copy, { ...src, name: copy });
     setSlotList(slots.listSlots());
     // A pinned plate is copied verbatim, so the clone would ship over the
@@ -334,18 +412,25 @@ export default function DeckApp() {
   };
   const removeSlot = (name: string) => {
     slots.deleteSlot(name);
-    let list = slots.listSlots();
+    const list = slots.listSlots();
     if (name === slotName) {
-      if (!list.length) {
+      // The next slot must be one that can be opened: a readable one first,
+      // then a never-saved one (opened empty), never an unreadable one. With
+      // nothing suitable, a fresh Untitled — kept in memory if storage is
+      // full, so the deck is never left without a scenario.
+      const next =
+        list.find((n) => slots.readSlotStatus(n) === "ok") ??
+        list.find((n) => slots.readSlotStatus(n) === "missing");
+      if (next !== undefined) {
+        enterSlot(next, slots.readSlot(next) || { ...defaultScenario(), name: next });
+      } else {
         const nn = slots.uniqueName("Untitled");
         const sc = { ...defaultScenario(), name: nn };
         slots.writeSlot(nn, sc);
-        list = slots.listSlots();
+        enterSlot(nn, sc);
       }
-      const next = list[0];
-      enterSlot(next, slots.readSlot(next));
     }
-    setSlotList(list);
+    setSlotList(slots.listSlots());
     toast(`Deleted <b>${name}</b>`, "warn");
   };
   const importSlotBundle = (bundle: any) => {
@@ -355,7 +440,10 @@ export default function DeckApp() {
     }
     flushActiveSlot();
     const name = slots.uniqueName(bundle.scenario.name || "Imported");
-    slots.writeSlot(name, { ...bundle.scenario, name });
+    if (!slots.writeSlot(name, { ...bundle.scenario, name })) {
+      toast(`Storage is full — the bundle could not be saved as <b>${name}</b>`, "err");
+      return;
+    }
     enterSlot(name, slots.readSlot(name));
     setSlotList(slots.listSlots());
     toast(`Bundle imported as <b>${name}</b> — current slot untouched`, "ok");
@@ -879,7 +967,7 @@ export default function DeckApp() {
         toast={toast}
       />
 
-      {update && (
+      {update && !storageAlert && (
         <UpdateDialog
           info={update}
           onUpdate={(onProgress) => installUpdate(update, onProgress)}
@@ -892,6 +980,58 @@ export default function DeckApp() {
             );
           }}
           onLater={() => setUpdate(null)}
+        />
+      )}
+      {storageAlert && (
+        <StorageDialog
+          slot={storageAlert.slot}
+          usage={storageAlert.usage}
+          reason={storageAlert.reason}
+          result={storageAlert.result}
+          onFreeSpace={() => {
+            const freed = slots.purgeSnapshots();
+            // Retry everything that was refused, from what is live in memory:
+            // the active slot, then any other key (pool, navdata, prefs).
+            const live: Record<string, () => any> = {
+              [KEYS.pool]: () => poolRef.current,
+              [KEYS.waypoints]: () => waypoints,
+              [KEYS.airports]: () => airports,
+              [KEYS.positions]: () => positions,
+              [KEYS.runways]: () => runways,
+              [KEYS.stars]: () => stars,
+              [KEYS.copx]: () => copx,
+              [KEYS.firBounds]: () => firBounds,
+              [KEYS.gates]: () => gates,
+              [KEYS.navMeta]: () => navMeta,
+            };
+            const failed: string[] = [];
+            if (!slots.writeSlot(slotNameRef.current, scenarioRef.current))
+              failed.push(slotNameRef.current);
+            for (const k of [...refusedKeys.current])
+              if (live[k] && !storage.set(k, live[k]())) failed.push(k.replace(/^sb:/, ""));
+            setSlotList(slots.listSlots());
+            if (!failed.length) {
+              refusedKeys.current.clear();
+              storageAlertRef.current = false;
+              setStorageAlert(null);
+              toast(
+                `Freed ${Math.round(freed / 1024)} KB of REWIND history — <b>${slotNameRef.current}</b> saved`,
+                "ok",
+              );
+            } else {
+              setStorageAlert({
+                slot: slotNameRef.current,
+                usage: storageUsage(),
+                reason: "full",
+                result: `Freed ${Math.round(freed / 1024)} KB — still not enough for ${failed.join(", ")}. Export what you want to keep and delete scenarios from the rail.`,
+              });
+            }
+          }}
+          onLater={() => {
+            storageAlertRef.current = false;
+            storageLaterAt.current = Date.now();
+            setStorageAlert(null);
+          }}
         />
       )}
       <Toasts toasts={toasts} />
