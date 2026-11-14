@@ -247,6 +247,9 @@ export function RuleEditor({
   // own filed route crosses the scenario FIR — no fixed waypoint, no
   // routeContains, no exclude-non-routing.
   const autoB = !!r.poolSource && r.spawnMode === "autoBoundary";
+  // Climbing entries act only when each aircraft spawns at its own filed level.
+  const poolCruise = !!r.poolSource && r.spawnAltMode === "poolCruise";
+  const climbOn = r.climbOuts === true && poolCruise;
   const OCTS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
   const dirSet = new Set(parseTokenList(r.entryDirection || ""));
   const toggleOct = (o: string) => {
@@ -469,6 +472,26 @@ export function RuleEditor({
                           />
                         </div>
                       )}
+                    </div>
+                    <div>
+                      <label className={lb}>Nearby departures</label>
+                      <button
+                        onClick={() => update("climbOuts", r.climbOuts !== true)}
+                        disabled={!poolCruise}
+                        className={`px-3 py-1.5 rounded text-xs font-medium transition-opacity ${climbOn ? "bg-sky-700 text-white" : !poolCruise ? "bg-slate-800 text-slate-600 opacity-40 cursor-not-allowed" : "bg-slate-800 text-slate-400 hover:text-slate-200"}`}
+                        title={
+                          poolCruise
+                            ? "Traffic departing close to the FIR pops in the climb, cleared to the ESE transfer level"
+                            : "Requires Filed cruise (per-aircraft) under Spawn Alt"
+                        }
+                      >
+                        Climbing entries
+                      </button>
+                      <p className="text-xs text-slate-500 mt-1">
+                        {poolCruise
+                          ? "Traffic departing close to the FIR pops in the climb, cleared to the ESE transfer level."
+                          : "Needs Spawn Alt = filed cruise."}
+                      </p>
                     </div>
                   </div>
                 )}

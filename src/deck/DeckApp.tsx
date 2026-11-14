@@ -502,6 +502,9 @@ export default function DeckApp() {
         // the plate's ICAO (pinned, else derived from the slot name /
         // controllers). Never a hardcoded default.
         exportSettings.icao,
+        // Sector-file airports: geometric "origin inside the FIR" and
+        // climbing entries for traffic departing close to it (v10).
+        airports,
       );
       if (error) {
         errors.push(`${r.name}: ${error}`);

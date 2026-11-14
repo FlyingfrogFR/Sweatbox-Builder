@@ -841,7 +841,48 @@ export function RuleEditorSection({
                           />
                         </div>
                       )}
+                      <div>
+                        <label className={LABEL}>NEARBY DEPARTURES</label>
+                        {/* Lit only while it can act: a dead latch makes no colour statement. */}
+                        <Latch
+                          size="md"
+                          on={d.climbOuts === true && poolCruise}
+                          disabled={!poolCruise}
+                          onClick={() => up("climbOuts", d.climbOuts !== true)}
+                          title={
+                            poolCruise
+                              ? "Traffic departing close to the FIR pops in the climb, cleared to the ESE transfer level"
+                              : "Needs FILED CRUISE under FLIGHT · ALTITUDES (each aircraft at its own level)"
+                          }
+                        >
+                          CLIMBING ENTRIES
+                        </Latch>
+                      </div>
                     </div>
+                    {(d.climbOuts === true || !poolCruise) && (
+                      <p className="text-[10.5px] text-tx7 leading-snug">
+                        {!poolCruise && d.climbOuts !== true ? (
+                          <>CLIMBING ENTRIES needs FILED CRUISE (FLIGHT · ALTITUDES).</>
+                        ) : poolCruise ? (
+                          <>
+                            Climbing entries: traffic departing close to the FIR pops in the climb —
+                            at least 15 NM from its airport where the route allows, at the altitude
+                            a normal climb gives there, cleared (REQALT) to the transfer level the
+                            ESE publishes for its airport and gate, or to its cruise level when none
+                            is published. A published level below cruise applies at its gate
+                            whatever the distance; other flights from far away are untouched.
+                            {allCopx.length > 0 &&
+                              !allCopx.some((c: any) => c && "climbLevel" in c) &&
+                              " Your ESE was parsed by an older version — re-parse it once (SETUP → NAVDATA → LOAD .ESE) so the climb levels are read."}
+                          </>
+                        ) : (
+                          <>
+                            CLIMBING ENTRIES is waiting on FILED CRUISE (FLIGHT · ALTITUDES) — a
+                            fixed spawn altitude is left exactly as set.
+                          </>
+                        )}
+                      </p>
+                    )}
                   </>
                 ) : (
                   <p className="text-[10.5px] text-tx7 leading-snug">

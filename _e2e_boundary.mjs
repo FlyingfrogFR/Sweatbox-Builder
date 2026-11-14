@@ -1,7 +1,7 @@
 // Auto-boundary e2e: FIR selector, auto-mode rule editing, and end-to-end
 // generation with per-aircraft gates — driven through the real deck UI.
 import { chromium } from "playwright-core";
-const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome" });
+const browser = await chromium.launch({ executablePath: process.env.PW_CHROME || "/opt/pw-browsers/chromium" });
 const page = await (await browser.newContext({ viewport: { width: 1500, height: 940 }, deviceScaleFactor: 2 })).newPage();
 const errors = [];
 page.on("pageerror", (e) => errors.push(String(e)));

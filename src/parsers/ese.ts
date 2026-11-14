@@ -41,6 +41,14 @@ export function parseESE(text: string) {
   // low-level TMA/CTR edges a UAC-level flight never crosses — so the band
   // travels with the line and the crossing scan can ignore the irrelevant ones.
   const firLineBands = new Map<string, Map<string, [number, number]>>();
+  // v10: which sectors each line bounds, so "is this point inside the FIR"
+  // can be answered per sector (stacked sectors share an outline, and the
+  // internal splits break a single ray cast over every line). A sector gets a
+  // per-FIR ordinal in reading order; whether it takes part is decided once
+  // the whole file is read, because its lines may be defined after it.
+  const firSectorCount = new Map<string, number>();
+  const sectors: { fir: string; ord: number; ids: Set<string> }[] = [];
+  let curSector: { fir: string; ord: number; ids: Set<string> } | null = null;
   let curLine: string | null = null;
   let curSectorFir: string | null = null;
   let curSectorBand: [number, number] = [0, NO_CEILING];
@@ -97,6 +105,7 @@ export function parseESE(text: string) {
     if (line.startsWith("SECTORLINE:")) {
       curLine = line.slice(11).trim();
       curSectorFir = null;
+      curSector = null;
       if (!sectorLines.has(curLine)) sectorLines.set(curLine, []);
       continue;
     }
@@ -104,6 +113,7 @@ export function parseESE(text: string) {
       // circular sectorlines carry no COORD list — nothing to trace
       curLine = null;
       curSectorFir = null;
+      curSector = null;
       continue;
     }
     if (line.startsWith("COORD:") && curLine) {
@@ -125,6 +135,13 @@ export function parseESE(text: string) {
       const lo = (sp[2] || "").trim();
       const hi = (sp[3] || "").trim();
       curSectorBand = [/^\d+$/.test(lo) ? +lo : 0, /^\d+$/.test(hi) ? +hi : NO_CEILING];
+      curSector = null;
+      if (curSectorFir) {
+        const ord = firSectorCount.get(curSectorFir) || 0;
+        firSectorCount.set(curSectorFir, ord + 1);
+        curSector = { fir: curSectorFir, ord, ids: new Set() };
+        sectors.push(curSector);
+      }
       continue;
     }
     if (line.startsWith("BORDER:") && curSectorFir) {
@@ -135,6 +152,7 @@ export function parseESE(text: string) {
         .filter(Boolean);
       if (!firLineBands.has(curSectorFir)) firLineBands.set(curSectorFir, new Map());
       const bands = firLineBands.get(curSectorFir)!;
+      if (curSector) for (const id of ids) curSector.ids.add(id);
       for (const id of ids) {
         const b = bands.get(id);
         if (b) {
@@ -161,17 +179,30 @@ export function parseESE(text: string) {
       if (p.length < 10) continue;
       const kind = p[0].trim().toUpperCase() === "FIR_COPX" ? "fir" : "copx";
       let fix = (p[3] || "").trim().toUpperCase();
-      let depApt = "";
       const apt = (p[4] || "").trim().toUpperCase();
+      // Field 1 is the departure airport whenever it is one — in both shapes
+      // below. Climb-out lines ("Nantes departures via TUPAR are handed over
+      // climbing FL230") are keyed on it.
+      const d1 = (p[1] || "").trim().toUpperCase();
+      const depApt = /^[A-Z]{4}$/.test(d1) ? d1 : "";
+      // The fix the route must continue to after the COP, when the arrival
+      // slot names one instead of an airport:
+      //   FIR_COPX:LFRS:*:TUPAR:CNA:*:…:23000:*:TUPAR   (via TUPAR then CNA → FL230)
+      let nextFix = "";
       // Departure-flow lines leave the COP slot empty and carry the crossing
       // point in the arrival slot instead:
       //   FIR_COPX:LFPG:*:*:AGOPA:*:LFFF·DG2 UAC·195·265:LFBB·P1 2 UAC·265·295:26000:*:UP
-      // Field 1 is then the departure airport. These lines hold the departure
-      // climb levels, so they belong in the gate set.
+      // These lines hold the departure climb levels, so they belong in the
+      // gate set.
       if (fix === "*" && /^[A-Z0-9]{2,6}$/.test(apt) && apt.length !== 4) {
         fix = apt;
-        const d = (p[1] || "").trim().toUpperCase();
-        depApt = /^[A-Z]{4}$/.test(d) ? d : "";
+      } else if (
+        apt !== "*" &&
+        apt !== fix &&
+        !/^[A-Z]{4}$/.test(apt) &&
+        /^[A-Z0-9]{2,6}$/.test(apt)
+      ) {
+        nextFix = apt;
       }
       if (!/^[A-Z0-9]{2,6}$/.test(fix)) continue; // no named crossing point at all
       const destApt = apt !== fix && /^[A-Z]{4}$/.test(apt) ? apt : "";
@@ -199,15 +230,18 @@ export function parseESE(text: string) {
       const to = sectorOf(p[7]);
       const fromFir = from.fir;
       const toFir = to.fir;
-      // Descend level if set, else climb level (matches the old right-to-left scan).
-      let level: number | null = null;
-      for (const raw of [p[9], p[8]]) {
+      // "FL230" / "230" / "23000" → 23000; "*" or anything else → null.
+      const lvl = (raw: string | undefined): number | null => {
         const m = (raw || "").trim().match(/^(?:FL)?(\d{2,5})$/i);
-        if (!m) continue;
+        if (!m) return null;
         const n = +m[1];
-        level = (raw || "").trim().toUpperCase().startsWith("FL") || n < 1000 ? n * 100 : n;
-        break;
-      }
+        return (raw || "").trim().toUpperCase().startsWith("FL") || n < 1000 ? n * 100 : n;
+      };
+      const climbLevel = lvl(p[8]);
+      const descendLevel = lvl(p[9]);
+      // Descend level if set, else climb level (matches the old right-to-left
+      // scan) — the STAR reqAlt auto-fill reads this one.
+      const level: number | null = descendLevel ?? climbLevel;
       // A gate with no published climb/descend level is still a gate — keep it
       // (consumers that need a level, i.e. the STAR reqAlt auto-fill, ask for
       // one explicitly). Dropping these lost real crossing points: DEKOD's
@@ -217,6 +251,9 @@ export function parseESE(text: string) {
         level,
         destApt,
         depApt,
+        nextFix,
+        climbLevel,
+        descendLevel,
         kind,
         fromFir,
         toFir,
@@ -247,14 +284,39 @@ export function parseESE(text: string) {
   // necessarily crosses the perimeter first, so "first crossing along the
   // route" is the entry point, and keeping every line means no perimeter gap
   // where a neighbouring FIR happens to be undefined in the file.
-  // Segments are [lat1, lon1, lat2, lon2, floorFt, ceilingFt]. A 4-number
-  // segment (navdata saved before bands existed) applies at every level.
+  // Segments are [lat1, lon1, lat2, lon2, floorFt, ceilingFt, s1, s2, …]: the
+  // trailing numbers are the per-FIR ordinals of the sectors the line bounds
+  // (v10, for insideFir). A sector takes part only if every one of its border
+  // lines has a traced outline — a CIRCLE_SECTORLINE border has none, so that
+  // sector's polygon is open. A 4-number segment (navdata saved before bands
+  // existed) applies at every level; a 6-number one has no sector ordinals.
+  // Stacked sectors with the same BORDER set have the same outline, hence the
+  // same even-odd parity: only the first one's ordinal is kept, so a deep
+  // stack does not multiply the stored segments (firBounds lives in the
+  // localStorage quota).
+  const lineOrds = new Map<string, Set<number>>(); // `${fir}\n${id}` -> ordinals
+  const outlines = new Set<string>(); // `${fir}\n${sorted ids}` already represented
+  for (const sec of sectors) {
+    if (!sec.ids.size) continue;
+    let closed = true;
+    for (const id of sec.ids) if ((sectorLines.get(id) || []).length < 2) closed = false;
+    if (!closed) continue;
+    const outline = `${sec.fir}\n${[...sec.ids].sort().join("\n")}`;
+    if (outlines.has(outline)) continue;
+    outlines.add(outline);
+    for (const id of sec.ids) {
+      const k = `${sec.fir}\n${id}`;
+      if (!lineOrds.has(k)) lineOrds.set(k, new Set());
+      lineOrds.get(k)!.add(sec.ord);
+    }
+  }
   const firBounds: Record<string, number[][]> = {};
   const r5 = (n: number) => Math.round(n * 1e4) / 1e4; // ~11 m, plenty for a 1 NM spawn offset
   for (const [fir, bands] of firLineBands) {
     const segs: number[][] = [];
     for (const [id, band] of bands) {
       const pts = sectorLines.get(id) || [];
+      const ords = [...(lineOrds.get(`${fir}\n${id}`) || [])].sort((a, b) => a - b);
       for (let i = 0; i < pts.length - 1; i++)
         segs.push([
           r5(pts[i][0]),
@@ -263,6 +325,7 @@ export function parseESE(text: string) {
           r5(pts[i + 1][1]),
           band[0],
           band[1],
+          ...ords,
         ]);
     }
     if (segs.length) firBounds[fir] = segs;

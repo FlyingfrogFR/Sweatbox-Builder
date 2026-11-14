@@ -31,6 +31,7 @@ export function BuildTray(props: any) {
     stars,
     copx,
     firBounds,
+    airports,
     gates,
     rampAgent,
     rampConfig,
@@ -347,6 +348,7 @@ export function BuildTray(props: any) {
                   stars={stars}
                   copx={copx}
                   firBounds={firBounds}
+                  airports={airports}
                   runways={runways}
                   scenarioHome={scenarioHome}
                   FullEditor={RuleEditorSection}

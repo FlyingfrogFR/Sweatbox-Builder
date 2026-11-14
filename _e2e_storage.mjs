@@ -4,7 +4,7 @@
 // rail marks such slots, clicking one explains and recovers, and a refused
 // write opens STORAGE FULL with a FREE SPACE action that drops REWIND rings.
 import { chromium } from "playwright-core";
-const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome" });
+const browser = await chromium.launch({ executablePath: process.env.PW_CHROME || "/opt/pw-browsers/chromium" });
 const page = await (await browser.newContext({ viewport: { width: 1500, height: 940 } })).newPage();
 const errors = [];
 page.on("pageerror", (e) => errors.push(String(e)));

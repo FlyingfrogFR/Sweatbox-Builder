@@ -8,6 +8,45 @@ The app checks this repository for new versions on launch and shows you the
 notes for the release it is offering, so what you read here is what you read
 in the update prompt.
 
+## 7.12.0 — 2026-11-14
+
+- **Traffic departing close to the FIR now arrives climbing.** An
+  auto-boundary rule placed every aircraft at its filed cruise level,
+  `preEntryNm` before its entry — further back than a flight from a nearby
+  airport could have climbed. A Nantes departure to Toulouse popped at
+  FL290 13 NM from Nantes; Paris departures appeared level at FL290 just
+  past the Paris TMA. A new **CLIMBING ENTRIES** latch (auto-boundary rules,
+  next to SPAWN ANCHOR) fixes that. Such a flight now pops in the climb:
+  - at least 15 NM from its departure airport where the route allows,
+  - at the altitude a normal climb gives at that distance,
+  - cleared (`REQALT`) to the transfer level your ESE publishes for its
+    airport and gate — Nantes via TUPAR then CNA is handed over climbing
+    FL230, so it pops at TUPAR — or to its cruise level when none is
+    published.
+
+  A published level below cruise applies at its gate whatever the distance;
+  other flights from far away are untouched, and the rule's note says how
+  many climbed in and from where. The latch needs FILED CRUISE (FLIGHT ·
+  ALTITUDES); a fixed spawn altitude is left exactly as you set it.
+
+- **Fixed: the wrong airports were treated as "inside the FIR".** A flight
+  leaving one of the session FIR's own fields is not boundary traffic, and
+  the app guessed those fields from the destinations named on the entry
+  gates. For LFBB that guess included Barcelona, Lyon, Montpellier and
+  others, so Barcelona → Paris and Lyon → Nantes transits were dropped, and
+  it missed real Bordeaux fields such as LFBZ and LFBH. The FIR's sector
+  outlines now decide, and an airport the ESE publishes a climb-out for is
+  outside by definition. **This changes results even with CLIMBING ENTRIES
+  off:** plans from LEBL, LERS, LFLC, LFLL, LFLS, LFLV, LFLY, LFMH and LFMP
+  are generated again, and plans from Bordeaux fields the guess missed are
+  now left out. LEGE, LEDA and LELL have no coordinates in the sector file
+  and no published climb-out, so they are still judged the old way.
+- **Re-parse your ESE once** (SETUP → NAVDATA → LOAD .ESE) with this version. The climb
+  levels and the sector outlines are read at parse time; until you re-parse,
+  climbing entries climb to cruise and the inside test uses the old guess.
+  The re-parsed navdata takes a little more storage; if the STORAGE FULL
+  dialog opens, FREE SPACE makes room.
+
 ## 7.11.1 — 2026-10-20
 
 - **Fixed: scenarios that would not open.** Everything the app saves lives in

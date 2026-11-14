@@ -1,6 +1,6 @@
 import { chromium } from "playwright-core";
 const b = await chromium.launch({
-  executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+  executablePath: process.env.PW_CHROME || "/opt/pw-browsers/chromium",
 });
 const page = await (
   await b.newContext({ viewport: { width: 1500, height: 940 }, deviceScaleFactor: 2 })

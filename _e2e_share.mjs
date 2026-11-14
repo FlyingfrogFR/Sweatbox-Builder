@@ -2,7 +2,7 @@
 // GitHub calls intercepted at the network layer (the web build uses
 // window.fetch, so route interception covers every request the app makes).
 import { chromium } from "playwright-core";
-const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome" });
+const browser = await chromium.launch({ executablePath: process.env.PW_CHROME || "/opt/pw-browsers/chromium" });
 const ctx = await browser.newContext({ viewport: { width: 1500, height: 940 }, permissions: ["clipboard-read", "clipboard-write"] });
 const page = await ctx.newPage();
 const errors = [];

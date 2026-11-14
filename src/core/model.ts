@@ -70,6 +70,10 @@ export function emptyRule() {
     entryDirection: "", // autoBoundary: comma list of compass octants ("N,NE"), empty = any
     appendStar: false, // arrivals: continue the sim route onto the ESE STAR for rwyInUse
     spawnAnchor: "entry", // "entry" = the boundary/spawn fix · "priorFix" = one filed fix earlier
+    // autoBoundary + poolCruise: traffic departing close to the FIR pops in the
+    // climb (≥15 NM from its airport, at the altitude a climb gives there),
+    // cleared to the ESE's published transfer level. Off = cruise at the pop.
+    climbOuts: false,
     priorFixMaxNm: 80, // priorFix farther than this from the entry fix → fall back to entry
     preEntryNm: 10,
     rwyInUse: "",

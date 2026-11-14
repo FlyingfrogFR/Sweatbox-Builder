@@ -17,7 +17,9 @@
 import { computeSpawnGs } from "./speed";
 import { GS_BY_WTC } from "./tables";
 import { trimRoute, pickPool, expandCS, nearestResolvableIdx, stripRouteSuffixes } from "./route";
-import { preEntryOffset, bearingBetween, destinationPoint, distanceNm } from "./geo";
+import { preEntryOffset, bearingBetween, destinationPoint, distanceNm, insideFir } from "./geo";
+import { climbAlt, pickClimbOut, flOf, MIN_ORIGIN_NM, MIN_CLIMB_ALT } from "./climb";
+import { iasToTas } from "./speed";
 import { genCS } from "./callsign";
 import { assignSquawk } from "./squawk";
 import { uid } from "./uid";
@@ -175,6 +177,11 @@ export function generateFromRule(
   starsIn?: any[],
   claimedSet?: Set<string>,
   scenarioHome?: string,
+  // Airports of the loaded sector file ({name, lat, lon}; they are not in
+  // `waypoints`). With them, "origin inside the FIR" is decided by geometry
+  // and climbing entries know how far each flight has come. Absent → the
+  // pre-v10 behaviour exactly.
+  airports?: any[],
 ) {
   // autoBoundary (pool rules only): each aircraft spawns where ITS OWN filed
   // route crosses the scenario FIR boundary — no rule-level spawn waypoint.
@@ -293,11 +300,29 @@ export function generateFromRule(
       }
     >();
     let ref: { lat: number; lon: number } | null = null;
+    // Climbing entries (v10): only for autoBoundary rules that spawn each
+    // aircraft at its own filed cruise — a fixed spawn altitude is the
+    // author's explicit choice and is left alone.
+    const climbOn = rule.climbOuts === true && autoBoundary && rule.spawnAltMode === "poolCruise";
+    let climbCtx: {
+      fir: string;
+      wpByName: Map<string, any>;
+      aptByName: Map<string, any>;
+    } | null = null;
     if (autoBoundary) {
       const fir = (boundaryFir || "").trim().toUpperCase();
       const wpByName = new Map(waypoints.map((w) => [String(w.name).toUpperCase(), w]));
       const segs = (firBounds || {})[fir] || [];
       const useGeometry = segs.length > 0;
+      const aptByName = new Map<string, any>();
+      for (const a of airports || []) {
+        const n = String(a?.name || "")
+          .trim()
+          .toUpperCase();
+        if (n && Number.isFinite(+a.lat) && Number.isFinite(+a.lon) && !aptByName.has(n))
+          aptByName.set(n, a);
+      }
+      climbCtx = { fir, wpByName, aptByName };
 
       // Gates INTO the session FIR only (toFir filter): a route may cross a
       // neighbouring FIR first, and its first boundary fix overall would
@@ -328,13 +353,39 @@ export function generateFromRule(
       // visible. Point-in-polygon against the sectorline soup is NOT an option
       // — internal sectorlines break ray-casting.
       const internalApts = new Set<string>();
+      // Departure airports the ESE publishes a climb INTO this FIR for — by
+      // definition outside it (fields beyond the FIR, or under its upper
+      // sectors only).
+      const climbOutDeps = new Set<string>();
       for (const c of copx || []) {
         if (c.kind !== "fir" || String(c.toFir || "").toUpperCase() !== fir) continue;
         const d = String(c.destApt || "")
           .trim()
           .toUpperCase();
         if (d && d !== "*") internalApts.add(d);
+        const dep = String(c.depApt || "")
+          .trim()
+          .toUpperCase();
+        if (dep) climbOutDeps.add(dep);
       }
+      // v10: with the sector file's airports and sector-tagged boundary
+      // segments (an ESE parsed by v10+), the FIR's own fields are decided by
+      // geometry — the destApt heuristic above both over- and under-reports
+      // (LEBL/LFLL in, LFBZ/LFBH out). Without them, the heuristic stands.
+      const geomInside = aptByName.size > 0 && segs.some((sg: number[]) => sg.length > 6);
+      const insideMemo = new Map<string, boolean>();
+      const originInside = (orig: string) => {
+        if (!geomInside) return internalApts.has(orig);
+        if (insideMemo.has(orig)) return insideMemo.get(orig)!;
+        let v: boolean;
+        if (climbOutDeps.has(orig)) v = false;
+        else {
+          const a = aptByName.get(orig);
+          v = a ? insideFir({ lat: +a.lat, lon: +a.lon }, segs) : internalApts.has(orig);
+        }
+        insideMemo.set(orig, v);
+        return v;
+      };
       if (!fir || (!useGeometry && gateEntries.size === 0))
         return {
           aircraft: [],
@@ -380,7 +431,7 @@ export function generateFromRule(
         const orig = String(p.origin || "")
           .trim()
           .toUpperCase();
-        if (orig && internalApts.has(orig)) {
+        if (orig && originInside(orig)) {
           nInsideOrigin++;
           insideOrigins.add(orig);
           continue;
@@ -537,6 +588,8 @@ export function generateFromRule(
     let excluded = 0;
     let noStar = 0;
     let noJoin = 0;
+    let nClimbing = 0;
+    const climbOrigins = new Set<string>();
     // joinFiledRoute: the sim route = the shared template (the SID), then the
     // aircraft's own filed route from its exit fix onward — so a departure
     // keeps flying after the last SID point instead of stopping there. Tail
@@ -600,13 +653,117 @@ export function generateFromRule(
           spawnLabel = `${(boundaryFir || "").trim().toUpperCase()} boundary · ${plan.fromName || "?"}→${plan.fixName}`;
         }
       }
+      // ---- climbing entries (v10) ----
+      // A flight that left an airport close to the FIR cannot be at cruise
+      // where it pops. With a published climb-out (the ESE's transfer level
+      // for its departure airport and gate) it pops at that gate; either way
+      // it pops no closer than MIN_ORIGIN_NM to its airport, at the altitude
+      // a climb gives there, cleared up to the transfer level (or cruise).
+      // When none of that lowers it, the aircraft is placed exactly as before.
+      const cruiseFt = (tmpl.cruiseFL || 350) * 100;
+      let climb: {
+        acPre: number;
+        alt: number;
+        cleared: number;
+        loaFix: string;
+        loaLevel: number | null;
+      } | null = null;
+      let climbO: any = null;
+      let climbLoa: any = null;
+      if (climbOn && climbCtx) {
+        const plan = spawnPlan.get(tmpl)!;
+        climbO =
+          climbCtx.aptByName.get(
+            String(tmpl.origin || "")
+              .trim()
+              .toUpperCase(),
+          ) || null;
+        const ftoks = String(fpR || "")
+          .toUpperCase()
+          .split(/\s+/)
+          .filter(Boolean)
+          .map((t: string) => t.split("/")[0]);
+        climbLoa = pickClimbOut(
+          copx,
+          climbCtx.fir,
+          tmpl.origin,
+          tmpl.dest,
+          ftoks,
+          climbCtx.wpByName,
+          plan.fixName,
+        );
+      }
+      // Back-off: never let the pop come closer than MIN_ORIGIN_NM to the
+      // airport. By the triangle inequality, |O–anchor| − back-off ≥ 15 NM.
+      // Rounded DOWN to 0.1 NM (a shorter back-off only moves the pop away
+      // from the airport), so preEntryNm and the drawer read cleanly.
+      const backOff = (anchor: { lat: number; lon: number }) =>
+        climbO
+          ? Math.min(
+              effPre,
+              Math.max(
+                1,
+                Math.floor(
+                  (distanceNm(+climbO.lat, +climbO.lon, anchor.lat, anchor.lon) - MIN_ORIGIN_NM) *
+                    10 +
+                    1e-6, // absorbs float noise in the distance (1e-7 NM)
+                ) / 10,
+              ),
+            )
+          : effPre;
+      // Levels for a pop: cleared to the published level (never above cruise),
+      // and as high as a climb from the airport gets there.
+      const levelsAt = (pop: { lat: number; lon: number }, loaLevel: number | null) => {
+        const cleared = loaLevel !== null ? Math.min(loaLevel, cruiseFt) : cruiseFt;
+        const reachable = climbO
+          ? climbAlt(distanceNm(+climbO.lat, +climbO.lon, pop.lat, pop.lon))
+          : cleared; // no coordinates: assume it made the transfer level
+        const alt = Math.max(MIN_CLIMB_ALT, Math.min(cleared, Math.round(reachable / 1000) * 1000));
+        // Judged on the level it would be placed at: a pop that rounds up to
+        // cruise is level at cruise, i.e. not climbing (alt ≤ cleared, so this
+        // also covers cleared < cruise).
+        const climbing = alt < cruiseFt;
+        return { cleared, climbing, alt };
+      };
+      if (climbLoa && climbCtx) {
+        // With a published climb-out the anchor is its gate: that is where the
+        // flow is actually handed over (the geometric crossing was computed at
+        // cruise level, which this flight is not at).
+        const gw = climbCtx.wpByName.get(String(climbLoa.fix).toUpperCase());
+        const pre = backOff(gw);
+        const pop = preEntryOffset(gw.name, trimRoute(fpR, gw.name), pre, waypoints, fpR);
+        if (pop) {
+          const lv = levelsAt(pop, +climbLoa.climbLevel);
+          if (lv.climbing) {
+            spawnName = gw.name;
+            spawnWp = gw;
+            crossAt = null;
+            crossBrg = null;
+            crossFrom = null;
+            spawnLabel = gw.name;
+            const hc = how.indexOf("boundary-crossing");
+            if (hc >= 0) how[hc] = "published-gate";
+            climb = {
+              acPre: pre,
+              alt: lv.alt,
+              cleared: lv.cleared,
+              loaFix: gw.name,
+              loaLevel: +climbLoa.climbLevel,
+            };
+          }
+        }
+      }
+
       // spawnAnchor "priorFix": walk back from the entry fix in the aircraft's
       // own filed route to the previous resolvable fix, so the real filed leg
       // into the boundary gets flown. Falls back to the entry fix when there
       // is none, it's not in this FP, or it's farther than priorFixMaxNm.
+      // A climb-out anchored on its published gate skips the walk.
       const entryName = spawnName;
       const entryWp = spawnWp;
-      if (hasNewFields && anchorPrior && crossAt && crossFrom) {
+      if (climb) {
+        // anchored on the published gate — no prior-fix walk
+      } else if (hasNewFields && anchorPrior && crossAt && crossFrom) {
         // Geometry mode: the candidate is the last filed fix strictly before
         // the crossing, and the gate measures candidate -> crossing — that is
         // the extra distance actually flown, not the whole fix-to-fix leg
@@ -686,6 +843,24 @@ export function generateFromRule(
           how.push(`join-filed@${filed[j]}`);
         }
       }
+      // Climbing without a published climb-out — or with one whose gate pop is
+      // already at cruise (its level is not below cruise): anchor where the
+      // existing logic put it (the crossing, or the entry / prior fix, which
+      // can sit well upstream of the gate) and see whether a climb from the
+      // airport gets the flight to cruise by the pop. Cleared = cruise.
+      if (climbOn && !climb && spawnWp) {
+        const crossing = !!(crossAt && crossBrg !== null && !priorChosen);
+        const anchor = crossing ? crossAt! : spawnWp;
+        const pre = backOff(anchor);
+        const pop = crossing
+          ? destinationPoint(crossAt!.lat, crossAt!.lon, (crossBrg! + 180) % 360, pre)
+          : preEntryOffset(spawnName, simR, pre, waypoints, fpR, "");
+        if (pop) {
+          const lv = levelsAt(pop, null);
+          if (lv.climbing)
+            climb = { acPre: pre, alt: lv.alt, cleared: lv.cleared, loaFix: "", loaLevel: null };
+        }
+      }
       let acLat = spawnWp ? spawnWp.lat : 0;
       let acLon = spawnWp ? spawnWp.lon : 0;
       let acPre = hasNewFields ? effPre : +rule.preEntryNm || 0;
@@ -736,6 +911,10 @@ export function generateFromRule(
           continue;
         }
       }
+      // A climbing entry keeps its backed-off distance (the placement block
+      // above uses the rule's preEntryNm for the crossing case).
+      if (climb && acPre !== 0) acPre = climb.acPre;
+
       // Continue onto the ESE STAR for the runway in use — the filed route is
       // kept up to where it meets the STAR, and the STAR takes over from there
       // (S3-style arrivals without truncating the enroute portion).
@@ -755,8 +934,37 @@ export function generateFromRule(
       // "fixed" reproduces the original rule-level spawnAlt exactly. Note the
       // separation-mode interval math above keeps using the rule-level
       // representative speed (_rgs) — an acceptable approximation.
-      const acAlt =
+      let acAlt =
         rule.spawnAltMode === "poolCruise" ? (tmpl.cruiseFL || 350) * 100 : +rule.spawnAlt || 18000;
+      let reqAltWpt = rule.reqAltWpt;
+      let reqAltVal = rule.reqAltVal;
+      let climbGs: number | null = null;
+      if (climb) {
+        acAlt = climb.alt;
+        // Climbing below the level it is cleared to: say where it must be by
+        // — the same REQALT:<fix>:<level> form departure rules export. A rule
+        // that sets its own REQALT keeps it.
+        // On the gate for a published climb-out; otherwise on the first fix
+        // inside (the spawn may be a prior fix outside, only the back-off
+        // distance downstream of the pop).
+        if (acAlt < climb.cleared && !(rule.reqAltWpt && rule.reqAltVal)) {
+          reqAltWpt = climb.loaFix || entryName;
+          reqAltVal = String(climb.cleared);
+        }
+        // Display speed at a climb IAS (Mach 0.78 at FL090 would show ~500 kt).
+        climbGs = Math.round(iasToTas(acAlt < 10000 ? 250 : 290, acAlt));
+        how.push(
+          climb.loaLevel !== null
+            ? `climb-out · LoA ${flOf(climb.loaLevel)} @${climb.loaFix}${
+                climb.cleared !== climb.loaLevel ? ` → ${flOf(climb.cleared)}` : ""
+              }`
+            : climbLoa
+              ? `climb-out · LoA ${flOf(+climbLoa.climbLevel)} @${climbLoa.fix} not used → cruise`
+              : "climb-out · no published level → cruise",
+        );
+        nClimbing++;
+        climbOrigins.add(String(tmpl.origin || "").toUpperCase());
+      }
       let cs = tmpl.callsign;
       if (!cs) {
         cs = genCS((rule.isDeparture ? dArr : dDep) || "", usedSet, { heavy: !!rule.heavy });
@@ -790,7 +998,7 @@ export function generateFromRule(
         lat: acLat,
         lon: acLon,
         alt: acAlt,
-        gs: computeSpawnGs(rule, typ, acAlt),
+        gs: climbGs ?? computeSpawnGs(rule, typ, acAlt),
         runway: rwy,
         spawnWaypoint: spawnName,
         preEntryNm: acPre,
@@ -798,8 +1006,8 @@ export function generateFromRule(
         simRoute: simR,
         starRoute: autoBoundary ? "" : rule.simRouteTemplate || "",
         start: Math.round(startMin * 10) / 10,
-        reqAltWpt: rule.reqAltWpt,
-        reqAltVal: rule.reqAltVal,
+        reqAltWpt,
+        reqAltVal,
         isDeparture: rule.isDeparture,
         ruleId: rule.id,
         // Marks aircraft whose spawn went through the never-on-fix invariant;
@@ -826,6 +1034,9 @@ export function generateFromRule(
       warning:
         [
           insideOriginNote,
+          nClimbing > 0
+            ? `${nClimbing} climbing in from nearby fields (${[...climbOrigins].sort().join(", ")})`
+            : null,
           bandFallbackNote,
           noStar > 0
             ? `${noStar} aircraft kept their filed route — no ${rule.rwyInUse} STAR into their destination joins it`

@@ -21,6 +21,7 @@ function produce(
   firBounds?: any,
   claimed?: Set<string>,
   scenarioHome?: string,
+  airports?: any[],
 ) {
   try {
     const r: any = generateFromRule(
@@ -34,6 +35,7 @@ function produce(
       undefined,
       claimed,
       scenarioHome,
+      airports,
     );
     return { aircraft: r.aircraft || [], error: r.error || null, warning: r.warning || null };
   } catch (e: any) {
@@ -81,6 +83,7 @@ export function RuleWorkbench({
   stars,
   copx,
   firBounds,
+  airports,
   runways,
   FullEditor,
   scenarioHome,
@@ -184,7 +187,17 @@ export function RuleWorkbench({
     const claimed = new Set<string>();
     for (const r of rules) {
       if (r.id === deferredDraft.id) break;
-      produce(r, waypoints, pool, copx, scenario.boundaryFir, firBounds, claimed, scenarioHome);
+      produce(
+        r,
+        waypoints,
+        pool,
+        copx,
+        scenario.boundaryFir,
+        firBounds,
+        claimed,
+        scenarioHome,
+        airports,
+      );
     }
     return produce(
       deferredDraft,
@@ -195,6 +208,7 @@ export function RuleWorkbench({
       firBounds,
       claimed,
       scenarioHome,
+      airports,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -206,6 +220,7 @@ export function RuleWorkbench({
     scenario.boundaryFir,
     firBounds,
     scenarioHome,
+    airports,
   ]);
 
   // Session overview: produce every saved rule of this mode, split by direction.
@@ -228,13 +243,14 @@ export function RuleWorkbench({
         firBounds,
         claimed,
         scenarioHome,
+        airports,
       );
       counts[r.id] = aircraft.length;
       maxT = Math.max(maxT, (+r.startOffset || 0) + (+r.duration || 0));
       for (const a of aircraft) (a.isDeparture ? dep : arr).push(+a.start || 0);
     }
     return { arr, dep, maxT: maxT || 45, counts, total: arr.length + dep.length };
-  }, [rulesKey, waypoints, pool, copx, scenario.boundaryFir, firBounds, scenarioHome]);
+  }, [rulesKey, waypoints, pool, copx, scenario.boundaryFir, firBounds, scenarioHome, airports]);
 
   const ticks = [0, 0.3333, 0.6666, 1].map((f) => Math.round(session.maxT * f));
 

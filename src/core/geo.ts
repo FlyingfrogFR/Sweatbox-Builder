@@ -107,3 +107,21 @@ export function preEntryOffset(
   if (brg === undefined) return null;
   return destinationPoint(wp.lat, wp.lon, (brg + 180) % 360, nm);
 }
+
+// True when the point lies within the lateral limits of at least one sector of
+// the FIR. Even-odd ray cast PER SECTOR (segments carry their sector ordinals
+// from index 6): stacked sectors share an outline, so a single cast over all
+// lines would cancel out. Segments without ordinals (navdata parsed before
+// v10) take no part, so they can never make a point "inside".
+export function insideFir(pt: { lat: number; lon: number }, segs: number[][]): boolean {
+  const n = new Map<number, number>();
+  for (const sg of segs) {
+    if (sg.length <= 6) continue;
+    if (sg[0] > pt.lat === sg[2] > pt.lat) continue;
+    const x = sg[1] + ((pt.lat - sg[0]) * (sg[3] - sg[1])) / (sg[2] - sg[0]);
+    if (x <= pt.lon) continue;
+    for (let k = 6; k < sg.length; k++) n.set(sg[k], (n.get(sg[k]) || 0) + 1);
+  }
+  for (const c of n.values()) if (c % 2 === 1) return true;
+  return false;
+}
